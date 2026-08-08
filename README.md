@@ -82,13 +82,65 @@ regarde le morceau en entier.
 |-------|-------|
 | Deux doigts | Défiler dans le temps et dans les fréquences |
 | Pincement | Zoom temporel, ancré sous le curseur |
-| ⇧ + pincement | Zoom fréquentiel |
+| ⇧ + pincement, ⇧ + molette | Zoom fréquentiel, ancré lui aussi |
 | ⌥ + molette | Zoom temporel (souris à molette) |
 | Clic, glisser | Placer la tête de lecture |
+| Glisser dans la réglette, ⇧ + glisser | Tracer la boucle |
 | Espace | Lire / mettre en pause |
 | ← → (⇧ pour 5 s) | Reculer, avancer |
+| `[` `]` | Poser le début, la fin de la boucle |
+| `L` / `B` / échap | Boucler / caler sur les mesures / effacer |
+| `T` | Poser le premier temps ici |
 
-Survoler l'image affiche la note, la fréquence et l'instant.
+Les deux axes se zooment séparément : le temps au pincement, les fréquences avec
+⇧. Dans les deux cas le point sous le curseur ne bouge pas — c'est la seule façon
+qu'un zoom au trackpad ne donne pas l'impression de glisser.
+
+## L'aimantation du curseur
+
+Survoler n'affiche pas ce qu'il y a *sous le pixel* mais **la raie la plus
+proche** — comme un graphique en courbe qui accroche le point de donnée voisin.
+Une raie, ici, est un maximum local le long de l'axe des fréquences : une
+fondamentale ou une harmonique. Le sommet est affiné par une parabole sur les
+trois niveaux voisins, si bien que la fréquence lue est plus fine que le pas de
+l'analyse et que l'écart en cents devient exploitable.
+
+Le critère d'éligibilité est **exactement la clarté affichée** : la même formule
+que le shader, seuil, pente et γ compris. Une région que vous avez réglée en noir
+vaut zéro et n'attire donc rien. Monter le seuil retire du bruit de l'aimant en
+même temps que de l'image, et c'est vérifié par `check.sh`. À distance comparable,
+une raie franche l'emporte sur une raie pâle.
+
+## Boucle A–B
+
+Un glisser dans la réglette du haut trace la boucle ; ce qui est en dehors
+s'assombrit, de sorte qu'on voit d'un coup d'œil ce qui va être joué. `B` la cale
+sur les mesures qui l'encadrent, ce qui est presque toujours ce qu'on veut.
+
+Les tours sont **programmés d'avance dans la file du lecteur** (trois d'avance,
+réalimentés à mesure) plutôt que déclenchés à l'arrivée sur la fin : la reprise
+est sans trou ni clic. La position de lecture n'est pas lue dans cette file mais
+recalculée en repliant le temps écoulé sur la longueur de la boucle.
+
+## La grille métrique
+
+Le tempo est estimé au chargement, sans rien relire du fichier : la matrice
+contient tout ce qu'il faut. Le **flux spectral** — somme des montées de niveau
+d'une colonne à la suivante, les descentes ne comptant pas puisqu'une note qui
+s'éteint n'est pas un évènement rythmique — donne une courbe qui pique à chaque
+attaque. Son autocorrélation donne la période, pondérée par un a priori centré sur
+120 BPM sans lequel l'estimation choisit volontiers la moitié ou le double, qui
+corrèlent presque aussi bien. Une parabole sur le sommet affine sous la colonne,
+puis deux recherches de phase placent les temps, et parmi eux le premier.
+
+Selon le zoom, la grille montre les **mesures**, les **temps**, ou les
+**subdivisions** — le pas le plus fin qui reste lisible, jamais une bouillie de
+traits. Les mesures sont numérotées dès qu'elles ont la place.
+
+L'estimation reste une estimation : quand le pic d'autocorrélation n'est pas
+franc, un « ≈ » s'affiche devant le tempo plutôt que de faire croire à une
+certitude. ÷2, ×2, la signature et « 1 ici » permettent de rattraper les erreurs
+classiques en trois clics.
 
 ## La palette « notes »
 
@@ -113,6 +165,13 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
   d'écart doivent *se voir* simultanées malgré des fenêtres de 683 ms et 43 ms, et
   une analyse en tranches de 0,7 s doit être identique au bit près à une analyse
   d'un seul tenant.
+- **Tempo** — un click-track de synthèse à 132 BPM, accentué sur le premier temps,
+  passe par toute la chaîne : le tempo doit ressortir à moins d'un BPM près, les
+  temps tomber sur les clicks, et le premier temps sur l'accent.
+- **Magnétisme** — sur une matrice fabriquée, le curseur doit préférer une raie
+  franche à une raie pâle plus proche, ne rien accrocher au-delà de son rayon, et
+  surtout ne rien accrocher du tout dans une région que les réglages rendent
+  noire.
 - **Rendu** — une matrice de synthèse passe par la vraie chaîne (téléversement →
   shader → image hors écran) et les pixels sont relus : la raie tombe-t-elle où la
   fenêtre visible le prévoit, les graves sont-ils en bas, une colonne isolée
@@ -127,7 +186,9 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
 | `Analyzer.swift` | Banc multi-résolution : décimation, FFT, mapping des lignes |
 | `OfflineAnalysis.swift` | Découpage en tranches, pré-roll, recalage temporel |
 | `Spectrogram.swift` | La matrice temps × fréquence et ses conversions |
-| `Viewport.swift` | Fenêtre visible, zoom ancré, recadrage |
+| `Viewport.swift` | Fenêtre visible, zoom ancré (temps et fréquences), recadrage |
+| `Tempo.swift` | Flux spectral, autocorrélation, phase des temps et des mesures |
+| `Snapping.swift` | Aimantation du curseur sur les raies |
 | `Renderer.swift` | Tuiles Metal + shader (fenêtre, palettes, max par pixel) |
 | `TimelineView.swift` | Vue Metal, gestes trackpad, repères dessinés par-dessus |
 | `Player.swift` | Lecture, ralenti et transposition |
@@ -139,16 +200,14 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
 
 Par ordre d'utilité décroissante, à mon avis :
 
-1. **Boucle A–B**, avec poignées et pré-roll — c'est ce qui fait qu'on transcrit
-   vraiment un passage plutôt qu'on l'écoute.
-2. **Le spectre d'une sélection projeté sur un clavier**, avec suppression des
+1. **Le spectre d'une sélection projeté sur un clavier**, avec suppression des
    harmoniques (déconvolution NNLS contre un dictionnaire de peignes) pour que le
    piano n'allume pas toute la série harmonique à chaque note.
-3. **Filtrage** : passe-bande dessiné par-dessus le spectrogramme, puis séparation
+2. **Filtrage** : passe-bande dessiné par-dessus le spectrogramme, puis séparation
    de sources (Demucs converti en Core ML) pour isoler la basse.
-4. **Vue piano-roll** : bandes de demi-tons plutôt que pixels de fréquence, grille
+3. **Vue piano-roll** : bandes de demi-tons plutôt que pixels de fréquence, grille
    de mesures, et par-dessus les notes détectées, éditables à la souris.
-5. **Panneau de réglages** (fenêtre d'analyse, lignes par octave, diapason) et
+4. **Panneau de réglages** (fenêtre d'analyse, lignes par octave, diapason) et
    sauvegarde de session à côté du fichier.
 
 Deux limites assumées de cette première version : le signal entier est chargé en

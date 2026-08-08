@@ -21,7 +21,18 @@ import UniformTypeIdentifiers
     /// La vue suit-elle la lecture ?
     var follow = true
     /// Position du curseur dans la vue (en points, depuis le coin haut-gauche).
-    var hover: CGPoint?
+    var hover: CGPoint? {
+        didSet { if hover == nil { snap = nil } }
+    }
+    /// Raie sur laquelle le curseur s'est aimanté.
+    var snap: SnapTarget?
+
+    /// Passage joué en boucle.
+    var loop: ClosedRange<Double>? { didSet { pushLoop() } }
+    var loopEnabled = true { didSet { pushLoop() } }
+
+    /// Grille métrique estimée au chargement, ajustable ensuite.
+    var tempo: TempoGrid?
 
     /// Avancement de l'analyse (0…1), `nil` quand rien n'est en cours.
     var progress: Double?
@@ -74,18 +85,25 @@ import UniformTypeIdentifiers
                                                   settings: settings) { p in
                 DispatchQueue.main.async { self?.progress = p }
             }
+            // Le tempo se lit dans la matrice : rien à relire du fichier.
+            let grid = TempoEstimator.estimate(spectrogram)
             let elapsed = Date().timeIntervalSince(started)
 
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.adopt(source: loaded, spectrogram: spectrogram, elapsed: elapsed)
+                self.adopt(source: loaded, spectrogram: spectrogram,
+                           tempo: grid, elapsed: elapsed)
             }
         }
     }
 
-    private func adopt(source: AudioSource, spectrogram: Spectrogram, elapsed: TimeInterval) {
+    private func adopt(source: AudioSource, spectrogram: Spectrogram,
+                       tempo: TempoGrid?, elapsed: TimeInterval) {
         self.source = source
         self.spectrogram = spectrogram
+        self.tempo = tempo
+        loop = nil
+        snap = nil
         progress = nil
         player.load(url: source.url)
         renderer?.layout = spectrogram.layout
@@ -118,9 +136,20 @@ import UniformTypeIdentifiers
             let t = player.currentTime
             if abs(t - playhead) > 1e-4 { playhead = t }
             if follow { scrollToPlayhead() }
-            if t >= duration - 0.005 { player.pause() }
+            if player.loop == nil, t >= duration - 0.005 { player.pause() }
         }
         if resized { clampViewport() }
+        updateSnap()
+    }
+
+    private func updateSnap() {
+        guard let hover, spectrogram.columnCount > 0 else {
+            if snap != nil { snap = nil }
+            return
+        }
+        let found = Snapping.nearest(to: hover, in: spectrogram, viewport: viewport,
+                                     display: display, viewSize: viewSize)
+        if found != snap { snap = found }
     }
 
     private func scrollToPlayhead() {
@@ -148,6 +177,74 @@ import UniformTypeIdentifiers
         player.seek(to: playhead)
     }
 
+    // MARK: Boucle
+
+    private func pushLoop() {
+        player.setLoop(loopEnabled ? loop : nil)
+    }
+
+    /// Définit la boucle à partir de deux instants, dans n'importe quel ordre.
+    func setLoop(from a: Double, to b: Double) {
+        let lo = min(max(min(a, b), 0), duration)
+        let hi = min(max(max(a, b), 0), duration)
+        loop = hi - lo > 0.05 ? lo...hi : nil
+    }
+
+    /// Pose une borne au passage de la tête de lecture, en gardant l'autre.
+    func setLoopStart(at time: Double) {
+        setLoop(from: time, to: loop.map { max($0.upperBound, time + 0.2) } ?? min(time + 4, duration))
+    }
+
+    func setLoopEnd(at time: Double) {
+        setLoop(from: loop.map { min($0.lowerBound, time - 0.2) } ?? max(time - 4, 0), to: time)
+    }
+
+    /// Cale la boucle sur les mesures qui l'encadrent — c'est presque toujours ce
+    /// qu'on veut quand on travaille un passage.
+    func snapLoopToBars() {
+        guard let loop, let tempo, tempo.barSeconds > 0 else { return }
+        let first = (tempo.beat(at: loop.lowerBound) / Double(tempo.beatsPerBar)).rounded(.down)
+        let last = (tempo.beat(at: loop.upperBound) / Double(tempo.beatsPerBar)).rounded(.up)
+        setLoop(from: tempo.time(ofBeat: first * Double(tempo.beatsPerBar)),
+                to: tempo.time(ofBeat: last * Double(tempo.beatsPerBar)))
+    }
+
+    // MARK: Tempo
+
+    func scaleTempo(by factor: Double) {
+        guard var grid = tempo else { return }
+        grid.bpm = min(max(grid.bpm * factor, 20), 400)
+        grid.confidence = 0        // ce n'est plus l'estimation, c'est un choix
+        tempo = grid
+    }
+
+    func nudgeTempo(by delta: Double) {
+        guard var grid = tempo else { return }
+        grid.bpm = min(max(grid.bpm + delta, 20), 400)
+        tempo = grid
+    }
+
+    /// Pose le premier temps à l'endroit de la tête de lecture.
+    func setDownbeatAtPlayhead() {
+        guard var grid = tempo else {
+            tempo = TempoGrid(bpm: 120, origin: playhead)
+            return
+        }
+        grid.origin = playhead
+        tempo = grid
+    }
+
+    var beatsPerBar: Int {
+        get { tempo?.beatsPerBar ?? 4 }
+        set {
+            guard var grid = tempo else { return }
+            grid.beatsPerBar = max(1, newValue)
+            tempo = grid
+        }
+    }
+
+    // MARK: Lecture
+
     func togglePlayback() {
         if player.isPlaying {
             player.pause()
@@ -165,6 +262,16 @@ import UniformTypeIdentifiers
 
     func time(atPoint x: Double) -> Double {
         (viewport.column(atPoint: x) + 0.5) * spectrogram.secondsPerColumn
+    }
+
+    /// Abscisse d'un instant dans la vue, en points.
+    func point(ofTime t: Double) -> Double {
+        viewport.point(ofColumn: spectrogram.column(atTime: t))
+    }
+
+    /// Ordonnée d'une fréquence dans la vue, en points depuis le haut.
+    func point(ofFrequency f: Double) -> Double {
+        viewport.point(ofBin: spectrogram.layout.bin(of: f), height: Double(viewSize.height))
     }
 
     static func format(_ seconds: Double) -> String {

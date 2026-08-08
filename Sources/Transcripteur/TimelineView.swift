@@ -2,15 +2,20 @@ import AppKit
 import MetalKit
 import SwiftUI
 
+/// Hauteur de la réglette du haut, où se dessine et s'attrape la boucle.
+let rulerHeight = 20.0
+
 // MARK: - Vue Metal et gestes
 
-/// La vue qui reçoit tout : molette, pincement, clic. Les coordonnées sont
-/// converties une bonne fois en « points depuis le coin haut-gauche », comme dans
-/// `Viewport`, pour ne pas avoir à se souvenir ailleurs que les vues AppKit ont
-/// l'origine en bas.
+/// La vue qui reçoit tout : molette, pincement, clic, clavier. Les coordonnées
+/// sont converties une bonne fois en « points depuis le coin haut-gauche », comme
+/// dans `Viewport`, pour ne pas avoir à se souvenir ailleurs que les vues AppKit
+/// ont l'origine en bas.
 final class TimelineMetalView: MTKView {
     var model: AppModel?
     private var tracking: NSTrackingArea?
+    /// Instant où a commencé un tracé de boucle, s'il y en a un en cours.
+    private var loopAnchor: Double?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -29,6 +34,8 @@ final class TimelineMetalView: MTKView {
         return CGPoint(x: p.x, y: bounds.height - p.y)
     }
 
+    // MARK: Navigation
+
     override func scrollWheel(with event: NSEvent) {
         guard let model else { return }
         let p = location(event)
@@ -37,8 +44,12 @@ final class TimelineMetalView: MTKView {
         let precise = event.hasPreciseScrollingDeltas
         let dx = event.scrollingDeltaX * (precise ? 1 : 8)
         let dy = event.scrollingDeltaY * (precise ? 1 : 8)
+        let flags = event.modifierFlags
 
-        if event.modifierFlags.contains(.option) || event.modifierFlags.contains(.command) {
+        if flags.contains(.shift) {
+            model.viewport.zoomFrequency(factor: exp(dy * 0.006), anchorY: p.y,
+                                         height: Double(bounds.height))
+        } else if flags.contains(.option) || flags.contains(.command) {
             model.viewport.zoomTime(factor: exp(dy * 0.006), anchorX: p.x)
         } else {
             model.viewport.startColumn -= dx * model.viewport.columnsPerPoint
@@ -61,15 +72,39 @@ final class TimelineMetalView: MTKView {
         model.clampViewport()
     }
 
+    // MARK: Souris
+
+    /// Un glisser dans la réglette du haut — ou avec ⇧ n'importe où — trace la
+    /// boucle ; partout ailleurs, il déplace la tête de lecture.
+    private func drawsLoop(_ event: NSEvent, at p: CGPoint) -> Bool {
+        p.y <= rulerHeight || event.modifierFlags.contains(.shift)
+    }
+
     override func mouseDown(with event: NSEvent) {
         guard let model else { return }
+        let p = location(event)
         model.follow = false
-        model.seek(to: model.time(atPoint: location(event).x))
+        if drawsLoop(event, at: p) {
+            loopAnchor = model.time(atPoint: Double(p.x))
+            if event.clickCount >= 2 { model.loop = nil; loopAnchor = nil }
+        } else {
+            model.seek(to: model.time(atPoint: Double(p.x)))
+        }
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard let model else { return }
-        model.seek(to: model.time(atPoint: location(event).x))
+        let p = location(event)
+        model.hover = p
+        if let anchor = loopAnchor {
+            model.setLoop(from: anchor, to: model.time(atPoint: Double(p.x)))
+        } else {
+            model.seek(to: model.time(atPoint: Double(p.x)))
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        loopAnchor = nil
     }
 
     override func mouseMoved(with event: NSEvent) {
@@ -80,17 +115,24 @@ final class TimelineMetalView: MTKView {
         model?.hover = nil
     }
 
+    // MARK: Clavier
+
     override func keyDown(with event: NSEvent) {
         guard let model else { return super.keyDown(with: event) }
+        let shift = event.modifierFlags.contains(.shift)
         switch event.charactersIgnoringModifiers {
-        case " ":
-            model.togglePlayback()
+        case " ": model.togglePlayback()
+        case "[": model.setLoopStart(at: model.playhead)
+        case "]": model.setLoopEnd(at: model.playhead)
+        case "l", "L": model.loopEnabled.toggle()
+        case "b", "B": model.snapLoopToBars()
+        case "t", "T": model.setDownbeatAtPlayhead()
         case String(UnicodeScalar(NSLeftArrowFunctionKey)!):
-            model.seek(to: model.playhead - (event.modifierFlags.contains(.shift) ? 5 : 1))
+            model.seek(to: model.playhead - (shift ? 5 : 1))
         case String(UnicodeScalar(NSRightArrowFunctionKey)!):
-            model.seek(to: model.playhead + (event.modifierFlags.contains(.shift) ? 5 : 1))
-        default:
-            super.keyDown(with: event)
+            model.seek(to: model.playhead + (shift ? 5 : 1))
+        case "\u{1b}": model.loop = nil
+        default: super.keyDown(with: event)
         }
     }
 }
@@ -146,7 +188,7 @@ struct SpectrogramSurface: NSViewRepresentable {
 
 // MARK: - Repères dessinés par-dessus
 
-/// Grille des octaves, échelle de temps, tête de lecture et curseur. Tout est en
+/// Grille métrique, octaves, boucle, tête de lecture, aimantation. Tout est en
 /// SwiftUI : ça se redessine tout seul quand la fenêtre visible bouge, et ça évite
 /// de mêler du texte au shader.
 struct TimelineOverlay: View {
@@ -155,22 +197,83 @@ struct TimelineOverlay: View {
     var body: some View {
         Canvas { context, size in
             guard model.spectrogram.columnCount > 0 else { return }
+            drawTempoGrid(&context, size)
             drawOctaves(&context, size)
-            drawTimeRuler(&context, size)
+            drawLoop(&context, size)
+            drawRuler(&context, size)
             drawPlayhead(&context, size)
-            drawHover(&context, size)
+            drawSnap(&context, size)
         }
         .allowsHitTesting(false)
     }
 
+    private func vertical(_ context: inout GraphicsContext, x: Double, from y0: Double,
+                          to y1: Double, color: Color, width: Double = 0.5) {
+        var line = Path()
+        line.move(to: CGPoint(x: x, y: y0))
+        line.addLine(to: CGPoint(x: x, y: y1))
+        context.stroke(line, with: .color(color), lineWidth: width)
+    }
+
+    // MARK: Grille métrique
+
+    /// Mesures, temps, ou subdivisions : la densité suit le zoom, de sorte qu'on
+    /// ne voie jamais une bouillie de traits ni une grille absente.
+    private func drawTempoGrid(_ context: inout GraphicsContext, _ size: CGSize) {
+        guard model.display.showGrid, let tempo = model.tempo, tempo.bpm > 0 else { return }
+        let pointsPerBeat = tempo.beatSeconds
+            / model.spectrogram.secondsPerColumn / model.viewport.columnsPerPoint
+        guard pointsPerBeat > 0.5 else { return }
+
+        let beatsPerBar = Double(max(tempo.beatsPerBar, 1))
+        // Pas le plus fin qui reste lisible : subdivisions, temps, ou mesures.
+        let subdivision: Double
+        if pointsPerBeat >= 120 { subdivision = 0.25 }
+        else if pointsPerBeat >= 60 { subdivision = 0.5 }
+        else if pointsPerBeat >= 9 { subdivision = 1 }
+        else if pointsPerBeat * beatsPerBar >= 7 { subdivision = beatsPerBar }
+        else { return }
+
+        let first = (tempo.beat(at: model.time(atPoint: 0)) / subdivision).rounded(.down) * subdivision
+        let last = tempo.beat(at: model.time(atPoint: Double(size.width)))
+        var beat = first
+        while beat <= last {
+            defer { beat += subdivision }
+            let time = tempo.time(ofBeat: beat)
+            guard time >= 0 else { continue }
+            let x = model.point(ofTime: time)
+            let isBar = abs(beat.truncatingRemainder(dividingBy: beatsPerBar)) < 1e-6
+            let isBeat = abs(beat.rounded() - beat) < 1e-6
+            let color: Color = isBar ? .white.opacity(0.4)
+                : isBeat ? .white.opacity(0.18) : .white.opacity(0.08)
+            vertical(&context, x: x, from: rulerHeight, to: Double(size.height),
+                     color: color, width: isBar ? 1 : 0.5)
+        }
+
+        // Numéros de mesure, tant qu'ils ne se marchent pas dessus.
+        let pointsPerBar = pointsPerBeat * beatsPerBar
+        guard pointsPerBar >= 44 else { return }
+        var bar = (tempo.beat(at: model.time(atPoint: 0)) / beatsPerBar).rounded(.down)
+        while tempo.time(ofBeat: bar * beatsPerBar) <= model.time(atPoint: Double(size.width)) {
+            defer { bar += 1 }
+            let time = tempo.time(ofBeat: bar * beatsPerBar)
+            guard time >= 0 else { continue }
+            context.draw(Text("\(Int(bar) + 1)")
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.55)),
+                         at: CGPoint(x: model.point(ofTime: time) + 11, y: rulerHeight + 9))
+        }
+    }
+
+    // MARK: Octaves
+
     private func drawOctaves(_ context: inout GraphicsContext, _ size: CGSize) {
-        let layout = model.spectrogram.layout
         guard model.display.showGrid else { return }
+        let layout = model.spectrogram.layout
         for marker in Pitch.octaveMarkers(from: layout.minFrequency, to: layout.maxFrequency,
                                           referenceA: model.display.referenceA) {
-            let bin = layout.bin(of: marker.frequency)
-            let y = model.viewport.point(ofBin: bin, height: Double(size.height))
-            guard y > 12, y < Double(size.height) else { continue }
+            let y = model.point(ofFrequency: marker.frequency)
+            guard y > rulerHeight + 6, y < Double(size.height) else { continue }
             var line = Path()
             line.move(to: CGPoint(x: 0, y: y))
             line.addLine(to: CGPoint(x: size.width, y: y))
@@ -181,56 +284,124 @@ struct TimelineOverlay: View {
         }
     }
 
-    private func drawTimeRuler(_ context: inout GraphicsContext, _ size: CGSize) {
+    // MARK: Boucle
+
+    private func drawLoop(_ context: inout GraphicsContext, _ size: CGSize) {
+        guard let loop = model.loop else { return }
+        let x0 = model.point(ofTime: loop.lowerBound)
+        let x1 = model.point(ofTime: loop.upperBound)
+        let active = model.loopEnabled
+
+        // Ce qui est hors de la boucle s'assombrit : on voit d'un coup d'œil ce
+        // qui va être joué, sans avoir à lire deux traits.
+        let outside = Color.black.opacity(active ? 0.42 : 0.18)
+        context.fill(Path(CGRect(x: 0, y: rulerHeight, width: max(x0, 0),
+                                 height: Double(size.height) - rulerHeight)), with: .color(outside))
+        context.fill(Path(CGRect(x: min(x1, Double(size.width)), y: rulerHeight,
+                                 width: max(Double(size.width) - x1, 0),
+                                 height: Double(size.height) - rulerHeight)), with: .color(outside))
+
+        let edge = Color.yellow.opacity(active ? 0.9 : 0.4)
+        for x in [x0, x1] {
+            vertical(&context, x: x, from: 0, to: Double(size.height), color: edge, width: 1)
+        }
+        context.fill(Path(CGRect(x: x0, y: 0, width: max(x1 - x0, 0), height: rulerHeight)),
+                     with: .color(.yellow.opacity(active ? 0.3 : 0.12)))
+
+        // Longueur du passage, en secondes et — si la grille est là — en mesures.
+        var label = AppModel.format(loop.upperBound - loop.lowerBound)
+        if let tempo = model.tempo, tempo.barSeconds > 0 {
+            let bars = (loop.upperBound - loop.lowerBound) / tempo.barSeconds
+            label += String(format: "  ·  %.2g mesures", bars)
+        }
+        guard x1 - x0 > 90 else { return }
+        context.draw(Text(label).font(.system(size: 9, design: .rounded))
+                        .foregroundStyle(.black.opacity(0.8)),
+                     at: CGPoint(x: (x0 + x1) / 2, y: rulerHeight / 2))
+    }
+
+    // MARK: Réglette et tête de lecture
+
+    private func drawRuler(_ context: inout GraphicsContext, _ size: CGSize) {
+        context.fill(Path(CGRect(x: 0, y: 0, width: size.width, height: rulerHeight)),
+                     with: .color(.black.opacity(0.45)))
+
         let seconds = model.spectrogram.secondsPerColumn * model.viewport.columnsPerPoint
-        // Pas de grille « rond » le plus proche de 90 points.
-        let raw = seconds * 90
         let candidates: [Double] = [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300]
-        let step = candidates.first { $0 >= raw } ?? 600
+        let step = candidates.first { $0 >= seconds * 90 } ?? 600
         var t = (model.time(atPoint: 0) / step).rounded(.down) * step
         let end = model.time(atPoint: Double(size.width))
         while t <= end {
             defer { t += step }
             guard t >= 0 else { continue }
-            let x = model.viewport.point(ofColumn: model.spectrogram.column(atTime: t))
-            var line = Path()
-            line.move(to: CGPoint(x: x, y: 0))
-            line.addLine(to: CGPoint(x: x, y: 14))
-            context.stroke(line, with: .color(.white.opacity(0.3)), lineWidth: 0.5)
-            context.draw(Text(AppModel.format(t)).font(.system(size: 9, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.55)),
-                         at: CGPoint(x: x + 26, y: 8))
+            let x = model.point(ofTime: t)
+            vertical(&context, x: x, from: 0, to: rulerHeight, color: .white.opacity(0.3))
+            context.draw(Text(AppModel.format(t))
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.6)),
+                         at: CGPoint(x: x + 26, y: rulerHeight / 2))
         }
     }
 
     private func drawPlayhead(_ context: inout GraphicsContext, _ size: CGSize) {
-        let x = model.viewport.point(ofColumn: model.spectrogram.column(atTime: model.playhead))
+        let x = model.point(ofTime: model.playhead)
         guard x >= 0, x <= Double(size.width) else { return }
-        var line = Path()
-        line.move(to: CGPoint(x: x, y: 0))
-        line.addLine(to: CGPoint(x: x, y: size.height))
-        context.stroke(line, with: .color(.white.opacity(0.85)), lineWidth: 1)
+        vertical(&context, x: x, from: 0, to: Double(size.height),
+                 color: .white.opacity(0.85), width: 1)
     }
 
-    private func drawHover(_ context: inout GraphicsContext, _ size: CGSize) {
-        guard let p = model.hover else { return }
-        let frequency = model.frequency(atPoint: Double(p.y))
-        let name = Pitch.noteName(for: frequency, referenceA: model.display.referenceA)
-        let text = String(format: "%@   %.1f Hz   %@", name, frequency,
-                          AppModel.format(model.time(atPoint: Double(p.x))))
-        var line = Path()
-        line.move(to: CGPoint(x: 0, y: p.y))
-        line.addLine(to: CGPoint(x: size.width, y: p.y))
-        context.stroke(line, with: .color(.white.opacity(0.25)), lineWidth: 0.5)
+    // MARK: Aimantation
+
+    /// Le curseur ne dit pas ce qu'il y a « sous le pixel » mais quelle raie est la
+    /// plus proche — comme un graphique en courbe qui accroche le point de donnée
+    /// voisin. Les régions rendues noires par les réglages n'attirent rien.
+    private func drawSnap(_ context: inout GraphicsContext, _ size: CGSize) {
+        guard let hover = model.hover else { return }
+        let text: String
+        let anchor: CGPoint
+
+        if let snap = model.snap {
+            let x = model.point(ofTime: snap.time)
+            let y = model.point(ofFrequency: snap.frequency)
+            anchor = CGPoint(x: x, y: y)
+
+            var link = Path()
+            link.move(to: hover)
+            link.addLine(to: anchor)
+            context.stroke(link, with: .color(.white.opacity(0.35)), lineWidth: 0.5)
+
+            var line = Path()
+            line.move(to: CGPoint(x: 0, y: y))
+            line.addLine(to: CGPoint(x: size.width, y: y))
+            context.stroke(line, with: .color(.white.opacity(0.3)),
+                           style: StrokeStyle(lineWidth: 0.5, dash: [2, 3]))
+
+            let ring = CGRect(x: x - 4.5, y: y - 4.5, width: 9, height: 9)
+            context.stroke(Path(ellipseIn: ring), with: .color(.white), lineWidth: 1.5)
+
+            text = String(format: "%@   %.1f Hz   %@",
+                          Pitch.noteName(for: snap.frequency, referenceA: model.display.referenceA),
+                          snap.frequency, AppModel.format(snap.time))
+        } else {
+            // Rien d'assez clair alentour : on retombe sur la lecture brute.
+            let frequency = model.frequency(atPoint: Double(hover.y))
+            anchor = hover
+            var line = Path()
+            line.move(to: CGPoint(x: 0, y: hover.y))
+            line.addLine(to: CGPoint(x: size.width, y: hover.y))
+            context.stroke(line, with: .color(.white.opacity(0.18)), lineWidth: 0.5)
+            text = String(format: "%.1f Hz   %@", frequency,
+                          AppModel.format(model.time(atPoint: Double(hover.x))))
+        }
 
         let resolved = context.resolve(Text(text).font(.system(size: 11, design: .rounded))
                                         .foregroundStyle(.white))
         let measured = resolved.measure(in: size)
-        let box = CGRect(x: min(p.x + 12, size.width - measured.width - 14),
-                         y: max(p.y - measured.height - 12, 4),
+        let box = CGRect(x: min(max(anchor.x + 12, 4), size.width - measured.width - 14),
+                         y: max(anchor.y - measured.height - 14, rulerHeight + 4),
                          width: measured.width + 10, height: measured.height + 6)
         context.fill(Path(roundedRect: box, cornerRadius: 5),
-                     with: .color(.black.opacity(0.55)))
+                     with: .color(.black.opacity(0.6)))
         context.draw(resolved, at: CGPoint(x: box.midX, y: box.midY))
     }
 }

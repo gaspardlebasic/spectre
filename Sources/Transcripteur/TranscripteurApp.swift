@@ -87,6 +87,29 @@ struct TranscripteurApp: App {
                 Toggle("Suivre la lecture", isOn: Binding(get: { model.follow },
                                                           set: { model.follow = $0 }))
             }
+            CommandMenu("Boucle") {
+                Button("Début ici") { model.setLoopStart(at: model.playhead) }
+                    .keyboardShortcut("[", modifiers: [])
+                Button("Fin ici") { model.setLoopEnd(at: model.playhead) }
+                    .keyboardShortcut("]", modifiers: [])
+                Button("Caler sur les mesures") { model.snapLoopToBars() }
+                    .keyboardShortcut("b", modifiers: [])
+                    .disabled(model.loop == nil || model.tempo == nil)
+                Divider()
+                Toggle("Boucler", isOn: Binding(get: { model.loopEnabled },
+                                                set: { model.loopEnabled = $0 }))
+                    .keyboardShortcut("l", modifiers: [])
+                Button("Effacer la boucle") { model.loop = nil }
+                    .keyboardShortcut(.escape, modifiers: [])
+                    .disabled(model.loop == nil)
+            }
+            CommandMenu("Tempo") {
+                Button("Poser le premier temps ici") { model.setDownbeatAtPlayhead() }
+                    .keyboardShortcut("t", modifiers: [])
+                Divider()
+                Button("Moitié") { model.scaleTempo(by: 0.5) }.disabled(model.tempo == nil)
+                Button("Double") { model.scaleTempo(by: 2) }.disabled(model.tempo == nil)
+            }
         }
     }
 }
@@ -139,47 +162,123 @@ struct ContentView: View {
     }
 
     private var controls: some View {
-        HStack(spacing: 14) {
-            Button {
-                model.togglePlayback()
-            } label: {
-                Image(systemName: model.player.isPlaying ? "pause.fill" : "play.fill")
-                    .frame(width: 18)
+        VStack(spacing: 6) {
+            HStack(spacing: 14) {
+                Button {
+                    model.togglePlayback()
+                } label: {
+                    Image(systemName: model.player.isPlaying ? "pause.fill" : "play.fill")
+                        .frame(width: 18)
+                }
+                .disabled(model.duration == 0)
+                .help("Espace")
+
+                Text(AppModel.format(model.playhead))
+                    .font(.system(size: 11, design: .monospaced))
+                    .frame(width: 62, alignment: .leading)
+
+                slider("Vitesse", value: $model.player.speed, range: 0.25...1.5,
+                       format: { String(format: "×%.2f", $0) })
+                slider("Ton", value: $model.player.transpose, range: -12...12,
+                       format: { String(format: "%+.0f dt", $0) })
+
+                Divider().frame(height: 16)
+                loopControls
+
+                Spacer(minLength: 8)
             }
-            .disabled(model.duration == 0)
-            .help("Espace")
+            HStack(spacing: 14) {
+                tempoControls
 
-            Text(AppModel.format(model.playhead))
-                .font(.system(size: 11, design: .monospaced))
-                .frame(width: 62, alignment: .leading)
+                Divider().frame(height: 16)
 
-            slider("Vitesse", value: $model.player.speed, range: 0.25...1.5,
-                   format: { String(format: "×%.2f", $0) })
-            slider("Ton", value: $model.player.transpose, range: -12...12,
-                   format: { String(format: "%+.0f dt", $0) })
-            slider("Contraste", value: $model.display.floorDb, range: -120...(-40),
-                   format: { String(format: "%.0f dB", $0) })
+                slider("Contraste", value: $model.display.floorDb, range: -120...(-40),
+                       format: { String(format: "%.0f dB", $0) })
 
-            Picker("", selection: $model.display.colorMap) {
-                ForEach(ColorMap.allCases) { Text($0.label).tag($0) }
+                Picker("", selection: $model.display.colorMap) {
+                    ForEach(ColorMap.allCases) { Text($0.label).tag($0) }
+                }
+                .labelsHidden()
+                .frame(width: 178)
+
+                Toggle("Suivre", isOn: $model.follow)
+                    .toggleStyle(.checkbox)
+
+                Spacer(minLength: 8)
+
+                Text(model.status ?? "")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.head)
             }
-            .labelsHidden()
-            .frame(width: 190)
-
-            Toggle("Suivre", isOn: $model.follow)
-                .toggleStyle(.checkbox)
-
-            Spacer(minLength: 8)
-
-            Text(model.status ?? "")
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.head)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.bar)
+    }
+
+    private var loopControls: some View {
+        HStack(spacing: 6) {
+            Toggle(isOn: $model.loopEnabled) {
+                Image(systemName: "repeat")
+            }
+            .toggleStyle(.button)
+            .disabled(model.loop == nil)
+            .help("Boucler (L)")
+
+            if let loop = model.loop {
+                Text("\(AppModel.format(loop.lowerBound)) → \(AppModel.format(loop.upperBound))")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Button("Mesures") { model.snapLoopToBars() }
+                    .disabled(model.tempo == nil)
+                    .help("Caler la boucle sur les mesures (B)")
+                Button {
+                    model.loop = nil
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .help("Effacer la boucle (échap)")
+            } else {
+                Text("glisser dans la réglette")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .controlSize(.small)
+    }
+
+    private var tempoControls: some View {
+        HStack(spacing: 6) {
+            if let tempo = model.tempo {
+                // Une estimation peu franche est annoncée comme telle : mieux vaut
+                // un « à peu près » visible qu'une grille faussement assurée.
+                Text(tempo.confidence > 0 && tempo.confidence < 2.2 ? "≈" : " ")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange)
+                Text(String(format: "%.1f BPM", tempo.bpm))
+                    .font(.system(size: 11, design: .monospaced))
+                    .frame(width: 74, alignment: .leading)
+                Stepper("") { model.nudgeTempo(by: 0.1) } onDecrement: { model.nudgeTempo(by: -0.1) }
+                    .labelsHidden()
+                Button("÷2") { model.scaleTempo(by: 0.5) }
+                Button("×2") { model.scaleTempo(by: 2) }
+                Picker("", selection: Binding(get: { model.beatsPerBar },
+                                              set: { model.beatsPerBar = $0 })) {
+                    ForEach([2, 3, 4, 5, 6, 7], id: \.self) { Text("\($0)/4").tag($0) }
+                }
+                .labelsHidden()
+                .frame(width: 66)
+                Button("1 ici") { model.setDownbeatAtPlayhead() }
+                    .help("Poser le premier temps à la tête de lecture (T)")
+            } else {
+                Text("tempo indéterminé")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .controlSize(.small)
     }
 
     private func slider(_ title: String, value: Binding<Double>,

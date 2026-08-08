@@ -149,6 +149,122 @@ let quiet = spectrogram.averageSpectrum(from: 6.6, to: 7.4).max() ?? 0
 check("le silence reste silencieux", quiet < -120,
       String(format: "%.0f dB, 2 s après la dernière note", quiet))
 
+// --- Tempo ------------------------------------------------------------------
+// Un click-track : attaques nettes, tempo connu, accent sur le premier temps.
+print("\n=== Tempo ===")
+let bpm = 132.0
+let beat = 60 / bpm
+let firstClick = 0.37
+let beatsPerBar = 4
+
+func clickTrack(duration: Double) -> [Float] {
+    let n = Int(duration * sampleRate)
+    var x = [Float](repeating: 0, count: n)
+    var seed: UInt64 = 12345
+    func noise() -> Float {          // générateur déterministe : test reproductible
+        seed = seed &* 6364136223846793005 &+ 1442695040888963407
+        return Float(Int32(truncatingIfNeeded: seed >> 33)) / Float(Int32.max)
+    }
+    var index = 0
+    var time = firstClick
+    while time < duration {
+        let accent: Float = index % beatsPerBar == 0 ? 1.0 : 0.55
+        let start = Int(time * sampleRate)
+        let length = Int(0.04 * sampleRate)
+        for k in 0..<length where start + k < n {
+            x[start + k] += accent * noise() * exp(-Float(k) / Float(length) * 5)
+        }
+        index += 1
+        time += beat
+    }
+    return x
+}
+
+let clicks = OfflineAnalysis.run(samples: clickTrack(duration: 24),
+                                 sampleRate: sampleRate, settings: settings)
+if let grid = TempoEstimator.estimate(clicks, beatsPerBar: beatsPerBar) {
+    check("tempo retrouvé", abs(grid.bpm - bpm) < 1,
+          String(format: "%.2f BPM pour %.0f", grid.bpm, bpm))
+
+    // Phase : l'origine doit tomber sur un temps, à une fraction de temps près.
+    let offset = (grid.origin - firstClick).truncatingRemainder(dividingBy: grid.beatSeconds)
+    let phaseError = min(abs(offset), grid.beatSeconds - abs(offset))
+    check("temps bien placés", phaseError < 0.04,
+          String(format: "%.0f ms d'écart au click", phaseError * 1000))
+
+    // Temps fort : l'origine doit tomber sur un *premier* temps, pas n'importe lequel.
+    let barOffset = (grid.origin - firstClick).truncatingRemainder(dividingBy: grid.barSeconds)
+    let barError = min(abs(barOffset), grid.barSeconds - abs(barOffset))
+    check("premier temps sur l'accent", barError < 0.04,
+          String(format: "%.0f ms d'écart à la mesure", barError * 1000))
+
+    check("estimation annoncée comme sûre", grid.confidence > 2.2,
+          String(format: "confiance %.1f", grid.confidence))
+} else {
+    check("tempo retrouvé", false, "aucune estimation")
+}
+
+// --- Magnétisme -------------------------------------------------------------
+print("\n=== Magnétisme du curseur ===")
+var layout = BinLayout()
+layout.binCount = 200
+layout.minFrequency = 27.5
+layout.maxFrequency = 27.5 * pow(2, 200.0 / 36)
+layout.binsPerOctave = 36
+layout.sampleRate = 48000
+
+let ridgeBin = 120
+let faintBin = 96
+var matrix = [Float](repeating: -200, count: 400 * layout.binCount)
+for c in 0..<400 {
+    // Une raie franche, et une raie pâle plus proche du curseur d'essai.
+    matrix[c * layout.binCount + ridgeBin] = -30
+    matrix[c * layout.binCount + ridgeBin - 1] = -40
+    matrix[c * layout.binCount + ridgeBin + 1] = -38
+    matrix[c * layout.binCount + faintBin] = -88
+    matrix[c * layout.binCount + faintBin - 1] = -94
+    matrix[c * layout.binCount + faintBin + 1] = -94
+}
+let scene = Spectrogram(layout: layout, columnCount: 400,
+                        secondsPerColumn: 0.01, values: matrix)
+
+let size = CGSize(width: 600, height: 400)
+var view = Viewport.fitting(columns: 400, bins: layout.binCount,
+                            size: (Double(size.width), Double(size.height)))
+var settingsDisplay = DisplaySettings()
+
+// Curseur posé entre les deux raies, plus près de la pâle.
+let ridgeY = view.point(ofBin: Double(ridgeBin) + 0.5, height: Double(size.height))
+let faintY = view.point(ofBin: Double(faintBin) + 0.5, height: Double(size.height))
+let cursor = CGPoint(x: 300, y: (ridgeY + faintY) / 2 + (faintY - ridgeY) * 0.12)
+
+if let target = Snapping.nearest(to: cursor, in: scene, viewport: view,
+                                 display: settingsDisplay, viewSize: size) {
+    let expected = layout.frequency(atBin: Double(ridgeBin))
+    let cents = 1200 * log2(target.frequency / expected)
+    check("la raie franche l'emporte sur la raie pâle plus proche", abs(cents) < 20,
+          String(format: "%.1f Hz (%+.0f cents de la raie visée)", target.frequency, cents))
+} else {
+    check("la raie franche l'emporte sur la raie pâle plus proche", false, "rien accroché")
+}
+
+// Le seuil de noir de l'utilisateur commande : au-dessus des raies, plus rien
+// n'attire — c'est la même formule que celle du shader qui décide.
+settingsDisplay.floorDb = -20
+settingsDisplay.ceilingDb = 0
+let inTheDark = Snapping.nearest(to: cursor, in: scene, viewport: view,
+                                 display: settingsDisplay, viewSize: size)
+check("une région rendue noire n'attire rien", inTheDark == nil,
+      inTheDark == nil ? "rien accroché, comme attendu"
+                       : String(format: "%.1f Hz accrochés à tort", inTheDark!.frequency))
+
+// Loin de toute raie, on ne s'aimante pas sur quelque chose d'invisible.
+settingsDisplay = DisplaySettings()
+let farAway = Snapping.nearest(to: CGPoint(x: 300, y: 20), in: scene, viewport: view,
+                               display: settingsDisplay, viewSize: size)
+check("hors de portée, pas d'aimantation", farAway == nil,
+      farAway == nil ? "rien accroché" : "accroché à tort")
+
 print("")
 if failures == 0 {
     print("Tout est bon.")

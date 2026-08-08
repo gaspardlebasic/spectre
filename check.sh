@@ -10,7 +10,8 @@ SRC=Sources/Transcripteur
 
 echo "=== Analyse ==="
 swiftc -O "$SRC/Analyzer.swift" "$SRC/Spectrogram.swift" "$SRC/OfflineAnalysis.swift" \
-       "$SRC/Pitch.swift" Tools/AnalysisCheck/main.swift \
+       "$SRC/Pitch.swift" "$SRC/Tempo.swift" "$SRC/Snapping.swift" "$SRC/Viewport.swift" \
+       "$SRC/DisplaySettings.swift" Tools/AnalysisCheck/main.swift \
        -o "$OUT/analysischeck"
 "$OUT/analysischeck"
 
