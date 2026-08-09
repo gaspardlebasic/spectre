@@ -686,10 +686,17 @@ import UniformTypeIdentifiers
         }
     }
 
-    func scaleTempo(by factor: Double) {
-        guard var grid = tempo else { return }
-        grid.bpm = min(max(grid.bpm * factor, 20), 400)
-        grid.confidence = 0        // ce n'est plus l'estimation, c'est un choix
+    /// Tempo saisi à la main. Ce n'est plus une estimation mais un choix, d'où la
+    /// confiance remise à zéro : le « ≈ » qui prévient d'une grille incertaine n'a
+    /// plus lieu d'être quand c'est l'utilisatrice qui l'a dictée.
+    func setTempo(_ value: Double) {
+        guard value.isFinite else { return }
+        guard var grid = tempo else {
+            tempo = TempoGrid(bpm: min(max(value, 20), 400), origin: playhead)
+            return
+        }
+        grid.bpm = min(max(value, 20), 400)
+        grid.confidence = 0
         tempo = grid
     }
 

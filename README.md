@@ -1,4 +1,4 @@
-# Transcripteur
+# Spectre
 
 Aide à la transcription de musique à l'oreille sur macOS : on ouvre un fichier, on
 voit sa décomposition spectrale sur toute sa durée, on navigue dedans au trackpad,
@@ -11,16 +11,38 @@ en mémoire. C'est ce qui autorise trois choses qu'une analyse au fil de l'eau
 interdit : le parallélisme, la compensation du retard, et l'accès instantané à
 n'importe quel instant du morceau.
 
-## Construire et lancer
+## Installer
+
+Une application prête à l'emploi est publiée dans les
+[releases](../../releases). Elle n'est **pas signée par un identifiant Apple**,
+donc macOS la met en quarantaine au téléchargement et refuse de l'ouvrir. Deux
+gestes possibles après l'avoir glissée dans `/Applications` :
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Spectre.app
+```
+
+ou bien un clic droit sur l'application puis « Ouvrir », et confirmer une fois.
+
+Le même blocage frappe les **fichiers audio téléchargés**, qui portent eux aussi
+la marque de quarantaine : macOS refuse de les confier à une application qu'il ne
+sait pas authentifier. Le message désigne alors le fichier audio, ce qui est
+trompeur — c'est l'application qui est en cause.
+
+```bash
+xattr -d com.apple.quarantine ~/Downloads/*.wav
+```
+
+## Construire soi-même
 
 ```bash
 ./build.sh
 ```
 
-Puis ouvrir `build/Transcripteur.app`, ou lui donner directement un fichier :
+Puis ouvrir `build/Spectre.app`, ou lui donner directement un fichier :
 
 ```bash
-open -a "$PWD/build/Transcripteur.app" ~/Musique/morceau.m4a
+open -a "$PWD/build/Spectre.app" ~/Musique/morceau.m4a
 ```
 
 Xcode n'est pas nécessaire : le script compile avec SwiftPM, assemble le bundle
@@ -270,7 +292,7 @@ L'écriture attend une seconde de calme, et la position de lecture est exclue de
 ce déclenchement — elle change à chaque image pendant la lecture, ce n'est pas une
 raison pour toucher au disque chaque seconde. Elle est écrite avec le reste, et à
 la fermeture de l'application. Les sessions vivent dans
-`~/Library/Application Support/Transcripteur/sessions/`; un fichier illisible n'a
+`~/Library/Application Support/Spectre/sessions/`; un fichier illisible n'a
 jamais d'autre conséquence que de repartir des réglages courants.
 
 ## Les noms de notes
@@ -397,6 +419,39 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
 | `NotePalette.swift` | Couleurs de notes en Oklch (cycle des quintes) |
 | `Pitch.swift` | Noms de notes, diapason, repères d'octaves |
 | `AppModel.swift` | État observable |
+| `Fourier.swift` | STFT et son inverse, aux conventions exactes de Demucs |
+| `Stems.swift` | Pistes, rangement, sommes de pistes |
+| `Separation.swift` | Contrat du moteur, calcul en tâche de fond |
+| `DemucsEngine.swift` | Découpage en tranches, ONNX Runtime, recollement |
+| `SeparationCommand.swift` | Séparation depuis le terminal |
+
+## Séparation de pistes
+
+Quatre bascules dans la barre — batterie, basse, voix, reste — toutes allumées au
+départ, ce qui est le morceau tel qu'il est. On **retire** ce dont on ne veut pas :
+sans la voix pour travailler l'accompagnement, sans la batterie pour entendre
+l'harmonie. Ce qui reste est joué ensemble, et le spectrogramme est recalculé
+dessus — c'est là le vrai gain, un spectrogramme de basse seule n'ayant presque
+plus de partielles qui se croisent, si bien que l'aimantation du curseur tombe
+enfin sur la bonne raie.
+
+Le calcul se fait en tâche de fond, une fois par morceau, à environ un quart de sa
+durée. On continue à travailler pendant.
+
+Le moteur est **Demucs v4** (`htdemucs`) exécuté par ONNX Runtime, sans Python ni
+PyTorch à l'exécution. `./modele.sh` fabrique le réseau : il reprend le
+[fork de Mixxx](https://github.com/dhunstack/demucs) qui réécrit la STFT en
+tenseurs réels — ONNX ne sait pas représenter les complexes — puis y applique
+`Tools/Fourier/spectre-externe.patch`, qui sort les transformées du graphe pour
+les confier à Accelerate. On y gagne 128 Mo de tables figées et un quart du temps
+de calcul.
+
+**Licence des poids.** Le code de Demucs est sous MIT, mais
+[son auteur précise](https://github.com/facebookresearch/demucs/issues/327) que
+les poids ne le sont pas : « fournis à des fins scientifiques uniquement », parce
+qu'entraînés sur MUSDB18. Ils sont ici embarqués dans l'application par commodité ;
+qui préfère les obtenir de la source lance `./modele.sh`, qui les télécharge chez
+Meta et les convertit sur place.
 
 ## Ce qui n'est pas encore là
 
@@ -405,9 +460,7 @@ Par ordre d'utilité décroissante, à mon avis :
 1. **Le spectre d'une sélection projeté sur un clavier**, avec suppression des
    harmoniques (déconvolution NNLS contre un dictionnaire de peignes) pour que le
    piano n'allume pas toute la série harmonique à chaque note.
-2. **Filtrage** : passe-bande dessiné par-dessus le spectrogramme, puis séparation
-   de sources (Demucs converti en Core ML) pour isoler la basse.
-3. **Vue piano-roll** : bandes de demi-tons plutôt que pixels de fréquence, grille
+2. **Vue piano-roll** : bandes de demi-tons plutôt que pixels de fréquence, grille
    de mesures, et par-dessus les notes détectées, éditables à la souris.
 4. **Panneau de réglages** (fenêtre d'analyse, lignes par octave, diapason) et
    sauvegarde de session à côté du fichier.

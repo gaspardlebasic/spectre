@@ -133,9 +133,6 @@ struct SpectreApp: App {
                     .keyboardShortcut("t", modifiers: [])
                 Divider()
                 Button("Recalculer la grille") { model.recomputeTempo() }
-                Divider()
-                Button("Moitié") { model.scaleTempo(by: 0.5) }.disabled(model.tempo == nil)
-                Button("Double") { model.scaleTempo(by: 2) }.disabled(model.tempo == nil)
             }
         }
     }
@@ -334,18 +331,26 @@ struct ContentView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.orange)
                     .help("L'estimation n'est pas franche sur ce morceau : la grille est à vérifier.")
-                Text(String(format: "%.1f BPM", tempo.bpm))
+                // Le tempo se tape. L'estimation se trompe le plus souvent d'un
+                // facteur deux, et l'écrire est alors plus direct que de chercher
+                // le bon bouton — d'autant qu'on connaît souvent le tempo d'avance.
+                TextField("", value: Binding(get: { model.tempo?.bpm ?? 120 },
+                                             set: { model.setTempo($0) }),
+                          format: .number.precision(.fractionLength(0...1)))
                     .font(.system(size: 11, design: .monospaced))
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 46)
+                    .help("""
+                          Tempo estimé à l'ouverture d'après les attaques du morceau.
+                          Cliquer pour le saisir : l'estimation se trompe surtout d'un facteur deux, qu'on corrige d'un chiffre.
+                          """)
+                Text("BPM")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
                     .fixedSize()
-                    .frame(width: 74, alignment: .leading)
-                    .help("Tempo estimé à l'ouverture à partir des attaques du morceau.")
                 Stepper("") { model.nudgeTempo(by: 0.1) } onDecrement: { model.nudgeTempo(by: -0.1) }
                     .labelsHidden()
                     .help("Ajuster de 0,1 BPM — de quoi rattraper une grille qui dérive sur la longueur.")
-                Button("÷2") { model.scaleTempo(by: 0.5) }
-                    .help("Moitié du tempo : l'erreur la plus courante de l'estimation.")
-                Button("×2") { model.scaleTempo(by: 2) }
-                    .help("Double du tempo : l'autre erreur courante.")
                 Picker("", selection: Binding(get: { model.beatsPerBar },
                                               set: { model.beatsPerBar = $0 })) {
                     ForEach([2, 3, 4, 5, 6, 7], id: \.self) { Text("\($0)/4").tag($0) }
