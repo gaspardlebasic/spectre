@@ -46,7 +46,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
 
+/// Point d'entrée. Avant d'ouvrir une fenêtre, on regarde si la ligne de commande
+/// demande autre chose — séparer un morceau sans interface, par exemple.
 @main
+struct Entry {
+    static func main() {
+        let arguments = CommandLine.arguments
+        if let flag = arguments.firstIndex(of: "--separer"), flag + 1 < arguments.count {
+            let destination = arguments.firstIndex(of: "--vers").flatMap {
+                $0 + 1 < arguments.count ? arguments[$0 + 1] : nil
+            }
+            exit(SeparationCommand.run(path: arguments[flag + 1], into: destination))
+        }
+        TranscripteurApp.main()
+    }
+}
+
 struct TranscripteurApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var model = AppModel()
@@ -389,6 +404,15 @@ struct ContentView: View {
                 ProgressView(value: progress)
                     .frame(width: 64)
                     .help("Séparation en cours. L'application reste utilisable.")
+                // Le chiffre à côté de la barre : sur un calcul de plusieurs
+                // minutes, une barre seule ne dit pas si elle avance encore.
+                // Largeur fixe et chiffres à chasse fixe, sans quoi le voisinage
+                // tressauterait à chaque pour cent.
+                Text("\(Int((progress * 100).rounded())) %")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .frame(width: 34, alignment: .leading)
             } else if model.isSeparated {
                 Button {
                     model.forgetStems()
