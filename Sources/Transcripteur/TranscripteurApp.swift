@@ -388,25 +388,21 @@ struct ContentView: View {
     /// doit pouvoir continuer à travailler sur le mixage pendant ce temps.
     private var stemControls: some View {
         Group {
-            // Des bascules plutôt qu'un sélecteur : on veut pouvoir écouter la
-            // basse *et* la batterie ensemble. La forme d'onde, elle, ne se combine
-            // avec rien — c'est le morceau entier, elle remet donc tout à zéro.
-            Toggle(isOn: Binding(get: { model.selection.isEmpty },
-                                 set: { if $0 { model.selectMix() } })) {
-                Image(systemName: Stem.mix.symbol).frame(width: 17)
-            }
-            .toggleStyle(.button)
-            .help(Stem.mix.help)
-
+            // Quatre bascules, toutes allumées au départ : la sélection dit ce
+            // qu'on **garde**. C'est le geste courant — retirer la voix pour
+            // travailler l'accompagnement, la batterie pour entendre l'harmonie —
+            // et c'est le décochage qui déclenche le calcul.
             ForEach(Stem.separated) { stem in
                 Toggle(isOn: Binding(get: { model.selection.contains(stem) },
                                      set: { _ in model.toggle(stem) })) {
                     Image(systemName: stem.symbol).frame(width: 17)
                 }
                 .toggleStyle(.button)
-                .help(stem.help + "\nPlusieurs pistes ensemble donnent leur somme.")
+                // La dernière piste cochée ne se décoche pas : il ne resterait rien
+                // à écouter. Le bouton inerte le dit mieux qu'un clic sans effet.
+                .disabled(model.spectrogram.columnCount == 0 || model.selection == [stem])
+                .help(stem.help + "\nDécocher retire cette piste ; ce qui reste est joué ensemble.")
             }
-            .disabled(model.spectrogram.columnCount == 0)
 
             if let progress = model.separating {
                 ProgressView(value: progress)

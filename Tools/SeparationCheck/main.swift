@@ -85,6 +85,12 @@ check(Stem.allCases.allSatisfy { !$0.symbol.isEmpty && !$0.label.isEmpty },
       "chaque voie a un intitulé et un symbole")
 check(StemStore.url(.mix, for: fingerprint, variant: variante) == nil,
       "le mixage n'est pas une piste à ranger")
+check(Stem.label(for: Set(Stem.separated)) == "Mixage",
+      "tout garder, c'est le mixage", Stem.label(for: Set(Stem.separated)))
+check(Stem.label(for: [.drums, .bass, .other]) == "sans Voix",
+      "retirer une piste se dit par soustraction", Stem.label(for: [.drums, .bass, .other]))
+check(Stem.label(for: [.bass, .drums]) == "Batterie + Basse",
+      "en garder peu se dit par énumération", Stem.label(for: [.bass, .drums]))
 
 // MARK: - Écriture et relecture
 

@@ -51,11 +51,20 @@ enum Stem: String, CaseIterable, Codable, Identifiable {
     /// directement la sortie du réseau.
     static let separated: [Stem] = [.drums, .bass, .other, .vocals]
 
-    /// Comment nommer un ensemble de pistes — pour la ligne d'état.
+    /// Comment nommer un ensemble de pistes gardées — pour la ligne d'état.
+    ///
+    /// La sélection étant soustractive, on la dit comme on l'a faite : « sans Voix »
+    /// plutôt que « Basse + Batterie + Reste ». On n'énumère ce qui reste que
+    /// lorsqu'il en reste moins qu'on n'en a retiré.
     static func label(for stems: Set<Stem>) -> String {
-        let wanted = separated.filter(stems.contains)
-        guard !wanted.isEmpty else { return Stem.mix.label }
-        return wanted.map(\.label).joined(separator: " + ")
+        let kept = separated.filter(stems.contains)
+        let dropped = separated.filter { !stems.contains($0) }
+        if dropped.isEmpty { return Stem.mix.label }
+        if kept.isEmpty { return "silence" }
+        if dropped.count < kept.count {
+            return "sans " + dropped.map(\.label).joined(separator: " ni ")
+        }
+        return kept.map(\.label).joined(separator: " + ")
     }
 }
 

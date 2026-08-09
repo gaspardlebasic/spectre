@@ -120,7 +120,7 @@ import UniformTypeIdentifiers
         // Le nouveau morceau repart du mixage : les pistes du précédent n'ont rien
         // à faire à l'écran, et un calcul encore en cours sur lui n'a plus d'objet.
         mixSpectrogram = spectrogram
-        selection = []
+        selection = Self.everything
         stemCache.removeAll()
         job?.cancel()
         job = nil
@@ -424,13 +424,21 @@ import UniformTypeIdentifiers
 
     // MARK: - Pistes séparées
 
-    /// Pistes choisies dans le sélecteur. **L'ensemble vide veut dire le mixage** :
-    /// c'est ce qu'on écoute quand on ne demande rien de particulier.
+    /// Pistes **gardées**. Toutes cochées au départ, ce qui est le morceau tel
+    /// qu'il est ; on retire ce dont on ne veut pas — la voix pour travailler
+    /// l'accompagnement, la batterie pour entendre l'harmonie.
     ///
     /// C'est un **souhait** : tant que la séparation n'est pas faite, l'affichage
     /// reste sur le mixage et la barre porte l'avancement. On ne fait pas attendre
     /// devant un écran vide ce qui prend des minutes.
-    private(set) var selection: Set<Stem> = []
+    private(set) var selection: Set<Stem> = AppModel.everything
+
+    /// Tout garder, c'est ne rien retirer.
+    static let everything = Set(Stem.separated)
+    /// Vrai quand rien n'est retiré : le morceau d'origine suffit alors, et il est
+    /// plus fidèle que la somme de ses parts — la séparation ne conserve pas
+    /// exactement le signal.
+    var isWholeMix: Bool { selection == Self.everything }
     /// Avancement de la séparation, puis de l'analyse de la piste (0…1).
     private(set) var separating: Double?
     private(set) var separationError: String?
@@ -455,8 +463,8 @@ import UniformTypeIdentifiers
             job?.cancel(); job = nil
             separating = nil
             stemCache.removeAll()
-            selection = []
-            show([])
+            selection = Self.everything
+            show(Self.everything)
         }
     }
 
@@ -467,28 +475,30 @@ import UniformTypeIdentifiers
 
     var hasModel: Bool { StemStore.has(separationModel) }
 
-    /// Le bouton « forme d'onde » : il ne se combine avec rien, il remet tout à zéro.
-    func selectMix() { apply([]) }
-
-    /// Ajoute ou retire une piste de la sélection.
+    /// Garde ou retire une piste.
     ///
-    /// Plusieurs pistes ensemble, c'est leur **somme** — basse et batterie donnent la
-    /// section rythmique. Retirer la dernière ramène au mixage : une sélection vide
-    /// n'aurait rien à montrer ni à jouer.
+    /// Ce qui reste coché est **sommé** : retirer la voix laisse basse, batterie et
+    /// reste, c'est-à-dire l'accompagnement. Décocher la dernière n'aurait rien à
+    /// montrer ni à jouer, et n'est donc pas permis.
     func toggle(_ stem: Stem) {
-        guard stem != .mix else { return selectMix() }
+        guard stem != .mix else { return }
         var next = selection
         if next.contains(stem) { next.remove(stem) } else { next.insert(stem) }
+        guard !next.isEmpty else { return }
         apply(next)
     }
 
+    /// Remet toutes les pistes, donc le morceau tel qu'il est.
+    func restoreWholeMix() { apply(Self.everything) }
+
     private func apply(_ wanted: Set<Stem>) {
-        guard wanted != selection, source != nil else { return }
+        guard wanted != selection, !wanted.isEmpty, source != nil else { return }
         separationError = nil
 
-        if wanted.isEmpty {
-            selection = []
-            show([])
+        // Rien de retiré : le fichier d'origine fait l'affaire, sans calcul.
+        if wanted == Self.everything {
+            selection = wanted
+            show(wanted)
             return
         }
         guard let fingerprint = source?.fingerprint else { return }
@@ -529,7 +539,7 @@ import UniformTypeIdentifiers
                          self.show(self.selection)
                      case .failure(let error):
                          self.separating = nil
-                         self.selection = []
+                         self.selection = AppModel.everything
                          self.separationError = error.localizedDescription
                          self.status = error.localizedDescription
                      }
@@ -547,7 +557,7 @@ import UniformTypeIdentifiers
         // séparation est le geste normal — on continue à travailler — et ce n'est
         // pas une raison pour perdre de vue ce qui tourne.
         let stillWorking = job != nil
-        if wanted.isEmpty {
+        if wanted == Self.everything {
             if !stillWorking { separating = nil }
             adopt(spectrogram: mixSpectrogram, playing: source.url)
             return
@@ -574,9 +584,9 @@ import UniformTypeIdentifiers
                   let loaded = try? AudioSource.load(file) else {
                 DispatchQueue.main.async {
                     self?.separating = nil
-                    self?.selection = []
+                    self?.selection = AppModel.everything
                     self?.separationError = "« \(name) » illisible."
-                    self?.show([])
+                    self?.show(AppModel.everything)
                 }
                 return
             }
@@ -620,8 +630,8 @@ import UniformTypeIdentifiers
         separating = nil
         stemCache.removeAll()
         StemStore.removeStems(for: fingerprint, variant: separationModel)
-        selection = []
-        show([])
+        selection = Self.everything
+        show(Self.everything)
         status = "Pistes effacées."
     }
 
