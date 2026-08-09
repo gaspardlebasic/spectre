@@ -117,6 +117,16 @@ import UniformTypeIdentifiers
         flushSession()                     // le morceau précédent garde ses réglages
         self.source = source
         self.spectrogram = spectrogram
+        // Le nouveau morceau repart du mixage : les pistes du précédent n'ont rien
+        // à faire à l'écran, et un calcul encore en cours sur lui n'a plus d'objet.
+        mixSpectrogram = spectrogram
+        stem = .mix
+        stemCache.removeAll()
+        job?.cancel()
+        job = nil
+        separating = nil
+        separationError = nil
+        askingForModel = false
         snap = nil
         progress = nil
         player.load(url: source.url)
@@ -411,6 +421,208 @@ import UniformTypeIdentifiers
         viewport.clamp(columns: spectrogram.columnCount,
                        bins: spectrogram.binCount,
                        size: (Double(viewSize.width), Double(viewSize.height)))
+    }
+
+    // MARK: - Pistes séparées
+
+    /// Piste choisie dans le sélecteur. C'est un **souhait** : tant que la
+    /// séparation n'est pas faite, l'affichage reste sur le mixage et la vignette
+    /// choisie porte l'avancement. On ne fait pas attendre devant un écran vide ce
+    /// qui prend des minutes.
+    private(set) var stem: Stem = .mix
+    /// Avancement de la séparation, puis de l'analyse de la piste (0…1).
+    private(set) var separating: Double?
+    /// Avancement de l'installation du modèle.
+    private(set) var installing: Double?
+    /// Vrai quand l'utilisateur a demandé une piste sans que le modèle soit là.
+    var askingForModel = false
+    private(set) var separationError: String?
+
+    @ObservationIgnored private var mixSpectrogram = Spectrogram.empty
+    /// Les spectrogrammes des pistes déjà regardées, gardés en mémoire : y revenir
+    /// doit être instantané, alors que les recalculer coûterait chaque fois
+    /// plusieurs secondes.
+    @ObservationIgnored private var stemCache: [Stem: Spectrogram] = [:]
+    @ObservationIgnored private var job: SeparationJob?
+    @ObservationIgnored private let installer = ModelInstaller()
+
+    var isSeparated: Bool {
+        guard let fingerprint = source?.fingerprint else { return false }
+        return StemStore.isSeparated(fingerprint)
+    }
+
+    var hasModel: Bool { StemStore.hasModel }
+
+    /// Réponse au sélecteur.
+    func select(_ wanted: Stem) {
+        guard wanted != stem, source != nil else { return }
+        separationError = nil
+
+        if wanted == .mix {
+            stem = .mix
+            show(.mix)
+            return
+        }
+        guard let fingerprint = source?.fingerprint else { return }
+        if StemStore.isSeparated(fingerprint) {
+            stem = wanted
+            show(wanted)
+            return
+        }
+        // Rien de séparé et pas de modèle : on ne bouge pas le sélecteur, on
+        // explique. Déplacer la sélection vers une piste qu'on ne peut pas montrer
+        // serait mentir sur l'état des choses.
+        guard StemStore.hasModel else {
+            askingForModel = true
+            return
+        }
+        stem = wanted
+        separate()
+    }
+
+    private func separate() {
+        guard let source, let fingerprint = source.fingerprint, separating == nil else { return }
+        job?.cancel()
+        let work = SeparationJob()
+        job = work
+        separating = 0
+        status = "Séparation des pistes…"
+        work.run(fileAt: source.url, fingerprint: fingerprint,
+                 progress: { [weak self] p in self?.separating = p * 0.8 },
+                 completion: { [weak self] result in
+                     guard let self, self.job === work else { return }
+                     self.job = nil
+                     switch result {
+                     case .success:
+                         self.show(self.stem)
+                     case .failure(let error):
+                         self.separating = nil
+                         self.stem = .mix
+                         self.separationError = error.localizedDescription
+                         self.status = error.localizedDescription
+                     }
+                 })
+    }
+
+    /// Charge et analyse une piste, puis la met à l'écran et dans le lecteur.
+    ///
+    /// L'analyse est refaite sur la piste plutôt que reprise du mixage : c'est tout
+    /// l'intérêt de l'opération, un spectrogramme où ne restent que les partielles
+    /// d'un seul instrument.
+    private func show(_ wanted: Stem) {
+        guard let source else { return }
+        // Un calcul encore en cours garde sa barre : revenir au mixage pendant la
+        // séparation est le geste normal — on continue à travailler — et ce n'est
+        // pas une raison pour perdre de vue ce qui tourne.
+        let stillWorking = job != nil
+        if wanted == .mix {
+            if !stillWorking { separating = nil }
+            adopt(spectrogram: mixSpectrogram, playing: source.url)
+            return
+        }
+        if let ready = stemCache[wanted] {
+            if !stillWorking { separating = nil }
+            adopt(spectrogram: ready, playing: StemStore.url(wanted, for: source.fingerprint ?? ""))
+            return
+        }
+        guard let fingerprint = source.fingerprint,
+              let file = StemStore.url(wanted, for: fingerprint) else { return }
+
+        separating = separating ?? 0.8
+        status = "Analyse de « \(wanted.label) »…"
+        let settings = analysis
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let loaded = try? AudioSource.load(file) else {
+                DispatchQueue.main.async {
+                    self?.separating = nil
+                    self?.stem = .mix
+                    self?.separationError = "Piste « \(wanted.label) » illisible."
+                }
+                return
+            }
+            let matrix = OfflineAnalysis.run(samples: loaded.mono,
+                                             sampleRate: loaded.sampleRate,
+                                             settings: settings) { p in
+                DispatchQueue.main.async { self?.separating = 0.8 + p * 0.2 }
+            }
+            DispatchQueue.main.async {
+                guard let self, self.stem == wanted else { return }
+                self.stemCache[wanted] = matrix
+                self.separating = nil
+                self.status = "Piste « \(wanted.label) »"
+                self.adopt(spectrogram: matrix, playing: file)
+            }
+        }
+    }
+
+    /// Bascule l'image et le son sans rien perdre de ce qui est en cours : la
+    /// fenêtre visible, la boucle et la position de lecture survivent au changement
+    /// de piste, sans quoi comparer deux pistes serait insupportable.
+    private func adopt(spectrogram matrix: Spectrogram, playing file: URL?) {
+        spectrogram = matrix
+        renderer?.layout = matrix.layout
+        renderer?.upload(matrix)
+        snap = nil
+        guard let file else { return }
+        let wasPlaying = player.isPlaying
+        let at = playhead
+        player.load(url: file)
+        player.setLoop(loopEnabled ? loop : nil)
+        if wasPlaying { player.play(from: at) } else { player.seek(to: at) }
+    }
+
+    // MARK: Installation du modèle
+
+    func installModel() {
+        guard let remote = StemStore.modelSource else { return }
+        installing = 0
+        installer.start(from: remote,
+                        progress: { [weak self] p in self?.installing = p },
+                        completion: { [weak self] result in
+                            self?.installing = nil
+                            switch result {
+                            case .success:
+                                self?.askingForModel = false
+                                self?.status = "Modèle installé."
+                            case .failure(let error):
+                                self?.separationError = error.localizedDescription
+                            }
+                        })
+    }
+
+    /// Désigner le fichier à la main — le chemin tant qu'aucune adresse de
+    /// téléchargement n'est publiée, et de toute façon celui qui sert à essayer un
+    /// modèle avant de le publier.
+    func chooseModelFile() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "onnx")].compactMap { $0 }
+        panel.allowsOtherFileTypes = true
+        panel.prompt = "Installer"
+        panel.message = "Choisir le modèle Demucs converti (.onnx)"
+        guard panel.runModal() == .OK, let file = panel.url else { return }
+        do {
+            try ModelInstaller.install(from: file)
+            askingForModel = false
+            status = "Modèle installé."
+        } catch {
+            separationError = error.localizedDescription
+        }
+    }
+
+    func dismissModelPrompt() { askingForModel = false }
+
+    /// Efface les pistes de ce morceau — de quoi refaire la séparation si le
+    /// résultat déçoit, sans aller fouiller dans Application Support.
+    func forgetStems() {
+        guard let fingerprint = source?.fingerprint else { return }
+        job?.cancel()
+        job = nil
+        separating = nil
+        stemCache.removeAll()
+        StemStore.removeStems(for: fingerprint)
+        stem = .mix
+        show(.mix)
+        status = "Pistes effacées."
     }
 
     // MARK: Actions

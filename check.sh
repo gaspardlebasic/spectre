@@ -24,6 +24,14 @@ swiftc -O "$SRC/Analyzer.swift" "$SRC/Spectrogram.swift" "$SRC/Viewport.swift" \
 "$OUT/rendercheck" "$OUT/rendu.png"
 
 echo
+echo "=== Séparation ==="
+swiftc -O "$SRC/Stems.swift" "$SRC/Separation.swift" "$SRC/AudioFile.swift" \
+       "$SRC/SessionStore.swift" "$SRC/DisplaySettings.swift" "$SRC/Tempo.swift" \
+       "$SRC/Analyzer.swift" "$SRC/Spectrogram.swift" "$SRC/Viewport.swift" \
+       Tools/SeparationCheck/main.swift -o "$OUT/separationcheck"
+"$OUT/separationcheck"
+
+echo
 echo "=== Lecture ==="
 swiftc -O "$SRC/Detent.swift" Tools/PlaybackCheck/main.swift -o "$OUT/playbackcheck"
 "$OUT/playbackcheck"

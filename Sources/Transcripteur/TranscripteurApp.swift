@@ -155,6 +155,27 @@ struct ContentView: View {
             }
             controls
         }
+        // Le modèle ne s'installe pas tout seul à la première ouverture : il pèse
+        // des centaines de mégaoctets, et une application de transcription doit
+        // rester utilisable sans lui. On ne le propose donc qu'au moment où on
+        // demande une piste, c'est-à-dire au seul moment où il sert.
+        .alert("Installer le modèle de séparation ?",
+               isPresented: $model.askingForModel) {
+            if StemStore.modelSource != nil {
+                Button("Télécharger") { model.installModel() }
+            }
+            Button("Choisir un fichier…") { model.chooseModelFile() }
+            Button("Plus tard", role: .cancel) { model.dismissModelPrompt() }
+        } message: {
+            Text("""
+                 Isoler la batterie, la basse, le chant ou le reste demande un modèle \
+                 d'environ 336 Mo, à installer une seule fois. Il sert ensuite à tous \
+                 les morceaux.
+
+                 La séparation d'un morceau prend alors quelques minutes, en tâche de \
+                 fond, sans empêcher de travailler.
+                 """)
+        }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             guard let provider = providers.first else { return false }
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
@@ -204,6 +225,8 @@ struct ContentView: View {
                 Spacer(minLength: 0)
             }
             HStack(alignment: .bottom, spacing: 14) {
+                section("Pistes") { stemControls }
+                separator
                 section("Affichage") { displayControls }
                 Spacer(minLength: 8)
                 Text(model.status ?? "")
@@ -355,6 +378,49 @@ struct ContentView: View {
                 }
                 .help("Chercher une grille dans ce morceau.")
                 .disabled(model.spectrogram.columnCount == 0)
+            }
+        }
+        .controlSize(.small)
+    }
+
+    /// Le sélecteur de piste, et l'avancement quand un calcul est en cours.
+    ///
+    /// L'avancement est volontairement discret — une barre fine à côté du
+    /// sélecteur, pas un voile sur l'image : la séparation dure des minutes et on
+    /// doit pouvoir continuer à travailler sur le mixage pendant ce temps.
+    private var stemControls: some View {
+        Group {
+            Picker("", selection: Binding(get: { model.stem },
+                                          set: { model.select($0) })) {
+                ForEach(Stem.allCases) { stem in
+                    Image(systemName: stem.symbol).tag(stem)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(width: 196)
+            .disabled(model.spectrogram.columnCount == 0)
+            .help("""
+                  Mixage, batterie, basse, voix, reste.
+                  Choisir une piste change ce qu'on entend et ce qu'on voit : le spectrogramme d'un seul instrument a bien moins de raies qui se croisent, et le curseur s'aimante enfin sur la bonne.
+                  La séparation se calcule une fois par morceau, en tâche de fond.
+                  """)
+
+            if let progress = model.separating {
+                ProgressView(value: progress)
+                    .frame(width: 64)
+                    .help("Séparation en cours. L'application reste utilisable.")
+            } else if let progress = model.installing {
+                ProgressView(value: progress)
+                    .frame(width: 64)
+                    .help("Téléchargement du modèle.")
+            } else if model.isSeparated {
+                Button {
+                    model.forgetStems()
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .help("Effacer les pistes de ce morceau et repartir du mixage.")
             }
         }
         .controlSize(.small)
