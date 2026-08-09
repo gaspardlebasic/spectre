@@ -13,6 +13,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Transcripteur"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+# L'icône est versionnée telle quelle ; `./logo.sh` la refabrique au besoin.
+cp Resources/Transcripteur.icns "$APP/Contents/Resources/Transcripteur.icns"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 codesign --force --sign - --timestamp=none "$APP" >/dev/null 2>&1 \

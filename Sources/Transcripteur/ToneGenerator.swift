@@ -30,7 +30,11 @@ final class ToneGenerator {
 
     /// Niveau de la sinusoïde. Assez pour s'entendre par-dessus rien, assez peu
     /// pour ne pas couvrir la musique quand on écoute les deux.
-    private let level = 0.16
+    ///
+    /// Une sinusoïde pure s'entend bien plus fort qu'un signal musical de même
+    /// amplitude — toute son énergie tient dans une seule bande critique. D'où ce
+    /// niveau volontairement bas : 0,08, soit 6 dB sous le réglage d'origine.
+    private let level = 0.08
 
     /// État du thread audio, touché nulle part ailleurs.
     private var oscillator: ToneOscillator

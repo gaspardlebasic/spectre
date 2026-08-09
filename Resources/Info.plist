@@ -8,6 +8,8 @@
 	<string>Transcripteur</string>
 	<key>CFBundleExecutable</key>
 	<string>Transcripteur</string>
+	<key>CFBundleIconFile</key>
+	<string>Transcripteur</string>
 	<key>CFBundleIdentifier</key>
 	<string>local.transcripteur</string>
 	<key>CFBundleInfoDictionaryVersion</key>

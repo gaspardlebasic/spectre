@@ -14,6 +14,7 @@ let rulerHeight = 20.0
 final class TimelineMetalView: MTKView {
     var model: AppModel?
     private var tracking: NSTrackingArea?
+    private var clock: CADisplayLink?
     /// Ce que le glisser en cours est en train de faire à la boucle.
     private enum LoopDrag {
         case creating(anchor: Double)
@@ -25,6 +26,27 @@ final class TimelineMetalView: MTKView {
     private let edgeGrab = 7.0
 
     override var acceptsFirstResponder: Bool { true }
+
+    /// Le rendu est cadencé à la main plutôt que laissé à `MTKView`.
+    ///
+    /// La boucle interne de `MTKView` ne programme son dessin que dans le mode
+    /// **par défaut** de la boucle d'exécution. Or macOS bascule en
+    /// `NSEventTrackingRunLoopMode` pendant un geste au trackpad : le
+    /// spectrogramme se figeait donc tant que les doigts bougeaient, alors que les
+    /// repères SwiftUI, repeints par une autre voie, suivaient. Une horloge
+    /// d'affichage inscrite dans les modes communs dessine dans les deux.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        clock?.invalidate()
+        guard window != nil else { clock = nil; return }
+        let link = displayLink(target: self, selector: #selector(step))
+        link.add(to: .main, forMode: .common)
+        clock = link
+    }
+
+    @objc private func step() { draw() }
+
+    deinit { clock?.invalidate() }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -203,8 +225,7 @@ struct SpectrogramSurface: NSViewRepresentable {
         view.model = model
         view.colorPixelFormat = .bgra8Unorm
         view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-        view.preferredFramesPerSecond = 120
-        view.isPaused = false
+        view.isPaused = true
         view.enableSetNeedsDisplay = false
         if let device, let renderer = SpectrogramRenderer(device: device) {
             context.coordinator.renderer = renderer
