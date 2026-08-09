@@ -71,33 +71,37 @@ enum StemStore {
     // MARK: Le modèle
 
     static let modelName = "htdemucs_ft"
-    /// Taille annoncée à l'utilisateur avant de lancer le téléchargement.
-    static let modelBytes: Int64 = 336 * 1024 * 1024
 
-    static var modelURL: URL? {
+    /// Le réseau chargé d'une piste, embarqué dans l'application.
+    ///
+    /// `htdemucs_ft` n'est pas *un* modèle mais un **sac de quatre réseaux**, un par
+    /// piste. Sa matrice de pondération est l'identité : le réseau numéro *i* ne
+    /// fournit que la source numéro *i*, ses trois autres sorties sont jetées. C'est
+    /// très exactement ce qui le rend quatre fois plus lent que `htdemucs` — et
+    /// meilleur, chacun n'ayant eu qu'un seul instrument à apprendre.
+    ///
+    /// Les fichiers sont copiés dans le paquet à la construction et **ne sont pas
+    /// versionnés** : les poids de Demucs ne sont pas couverts par la licence MIT du
+    /// code — son auteur les dit « fournis à des fins scientifiques uniquement »,
+    /// parce qu'ils sont entraînés sur MUSDB18. Les rediffuser n'irait pas ; les
+    /// convertir pour son propre usage, si. C'est `modele.sh` qui les fabrique.
+    ///
+    /// Application Support est consulté ensuite, ce qui permet d'essayer un autre
+    /// jeu de poids sans reconstruire l'application.
+    static func modelFile(for stem: Stem) -> URL? {
+        guard stem != .mix else { return nil }
+        let name = "\(modelName)-\(stem.rawValue)"
+        if let embedded = Bundle.main.url(forResource: name, withExtension: "onnx") {
+            return embedded
+        }
         guard let root else { return nil }
-        let folder = root.appendingPathComponent("modeles", isDirectory: true)
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        return folder.appendingPathComponent("\(modelName).onnx")
+        let loose = root.appendingPathComponent("modeles/\(name).onnx")
+        return FileManager.default.fileExists(atPath: loose.path) ? loose : nil
     }
 
-    static var hasModel: Bool {
-        guard let modelURL else { return false }
-        return FileManager.default.fileExists(atPath: modelURL.path)
-    }
-
-    /// Adresse d'où télécharger le modèle converti.
-    ///
-    /// **Encore à renseigner.** Il n'existe pas d'export ONNX officiel de Demucs, et
-    /// les dépôts qu'on trouve appartiennent à une constellation de sites fabriqués
-    /// pour le référencement : y brancher l'application reviendrait à faire tourner
-    /// des poids d'origine inconnue. La conversion se fait depuis les poids officiels
-    /// de Meta, une fois, hors ligne ; c'est le fichier produit qu'il faut publier
-    /// quelque part, et c'est cette adresse-là qui va ici.
-    ///
-    /// Tant qu'elle est nulle, l'application propose de désigner le fichier à la
-    /// main — ce qui est de toute façon le chemin pour l'essayer avant publication.
-    static let modelSource: URL? = nil
+    /// Le sac n'est utilisable qu'entier : trois réseaux sur quatre ne font pas
+    /// une séparation, ils font une piste manquante.
+    static var hasModel: Bool { Stem.separated.allSatisfy { modelFile(for: $0) != nil } }
 
     // MARK: Les pistes
 

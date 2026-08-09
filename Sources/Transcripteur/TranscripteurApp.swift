@@ -155,27 +155,6 @@ struct ContentView: View {
             }
             controls
         }
-        // Le modèle ne s'installe pas tout seul à la première ouverture : il pèse
-        // des centaines de mégaoctets, et une application de transcription doit
-        // rester utilisable sans lui. On ne le propose donc qu'au moment où on
-        // demande une piste, c'est-à-dire au seul moment où il sert.
-        .alert("Installer le modèle de séparation ?",
-               isPresented: $model.askingForModel) {
-            if StemStore.modelSource != nil {
-                Button("Télécharger") { model.installModel() }
-            }
-            Button("Choisir un fichier…") { model.chooseModelFile() }
-            Button("Plus tard", role: .cancel) { model.dismissModelPrompt() }
-        } message: {
-            Text("""
-                 Isoler la batterie, la basse, le chant ou le reste demande un modèle \
-                 d'environ 336 Mo, à installer une seule fois. Il sert ensuite à tous \
-                 les morceaux.
-
-                 La séparation d'un morceau prend alors quelques minutes, en tâche de \
-                 fond, sans empêcher de travailler.
-                 """)
-        }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             guard let provider = providers.first else { return false }
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
@@ -410,10 +389,6 @@ struct ContentView: View {
                 ProgressView(value: progress)
                     .frame(width: 64)
                     .help("Séparation en cours. L'application reste utilisable.")
-            } else if let progress = model.installing {
-                ProgressView(value: progress)
-                    .frame(width: 64)
-                    .help("Téléchargement du modèle.")
             } else if model.isSeparated {
                 Button {
                     model.forgetStems()

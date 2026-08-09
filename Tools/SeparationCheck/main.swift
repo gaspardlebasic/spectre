@@ -160,24 +160,6 @@ while !done { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
 check(!StemStore.isSeparated(fingerprint),
       "une panne ne laisse pas un jeu de pistes incomplet")
 
-// MARK: - Sans modèle
-
-print()
-print("=== Sans modèle ===")
-do {
-    _ = try DemucsSeparator().separate(fileAt: sourceFile, progress: { _ in },
-                                       isCancelled: { false })
-    check(false, "sans modèle, le moteur refuse")
-} catch {
-    // Tant que le modèle n'est pas installé, c'est `modelMissing` qui doit sortir :
-    // c'est ce cas précis que l'interface traduit en proposition d'installation.
-    let expected = StemStore.hasModel ? "moteur non branché" : "modèle absent"
-    let isMissing = (error as? SeparationFailure).map {
-        if case .modelMissing = $0 { return true } else { return false }
-    } ?? false
-    check(StemStore.hasModel || isMissing, "sans modèle, le moteur refuse clairement", expected)
-}
-
 print()
 print(failures == 0 ? "Tout est bon." : "\(failures) vérification(s) en échec.")
 exit(failures == 0 ? 0 : 1)

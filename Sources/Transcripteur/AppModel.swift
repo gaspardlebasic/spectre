@@ -126,7 +126,6 @@ import UniformTypeIdentifiers
         job = nil
         separating = nil
         separationError = nil
-        askingForModel = false
         snap = nil
         progress = nil
         player.load(url: source.url)
@@ -432,10 +431,6 @@ import UniformTypeIdentifiers
     private(set) var stem: Stem = .mix
     /// Avancement de la séparation, puis de l'analyse de la piste (0…1).
     private(set) var separating: Double?
-    /// Avancement de l'installation du modèle.
-    private(set) var installing: Double?
-    /// Vrai quand l'utilisateur a demandé une piste sans que le modèle soit là.
-    var askingForModel = false
     private(set) var separationError: String?
 
     @ObservationIgnored private var mixSpectrogram = Spectrogram.empty
@@ -444,7 +439,6 @@ import UniformTypeIdentifiers
     /// plusieurs secondes.
     @ObservationIgnored private var stemCache: [Stem: Spectrogram] = [:]
     @ObservationIgnored private var job: SeparationJob?
-    @ObservationIgnored private let installer = ModelInstaller()
 
     var isSeparated: Bool {
         guard let fingerprint = source?.fingerprint else { return false }
@@ -469,11 +463,13 @@ import UniformTypeIdentifiers
             show(wanted)
             return
         }
-        // Rien de séparé et pas de modèle : on ne bouge pas le sélecteur, on
-        // explique. Déplacer la sélection vers une piste qu'on ne peut pas montrer
-        // serait mentir sur l'état des choses.
+        // Le modèle est embarqué dans l'application : son absence n'est pas un
+        // problème d'utilisation mais de construction, et se dit comme tel. On ne
+        // bouge pas le sélecteur — le déplacer vers une piste qu'on ne peut pas
+        // montrer serait mentir sur l'état des choses.
         guard StemStore.hasModel else {
-            askingForModel = true
+            separationError = "Modèle absent de l'application : lancer ./modele.sh puis ./build.sh."
+            status = separationError
             return
         }
         stem = wanted
@@ -488,6 +484,7 @@ import UniformTypeIdentifiers
         separating = 0
         status = "Séparation des pistes…"
         work.run(fileAt: source.url, fingerprint: fingerprint,
+                 separator: DemucsSeparator(),
                  progress: { [weak self] p in self?.separating = p * 0.8 },
                  completion: { [weak self] result in
                      guard let self, self.job === work else { return }
@@ -570,46 +567,6 @@ import UniformTypeIdentifiers
         player.setLoop(loopEnabled ? loop : nil)
         if wasPlaying { player.play(from: at) } else { player.seek(to: at) }
     }
-
-    // MARK: Installation du modèle
-
-    func installModel() {
-        guard let remote = StemStore.modelSource else { return }
-        installing = 0
-        installer.start(from: remote,
-                        progress: { [weak self] p in self?.installing = p },
-                        completion: { [weak self] result in
-                            self?.installing = nil
-                            switch result {
-                            case .success:
-                                self?.askingForModel = false
-                                self?.status = "Modèle installé."
-                            case .failure(let error):
-                                self?.separationError = error.localizedDescription
-                            }
-                        })
-    }
-
-    /// Désigner le fichier à la main — le chemin tant qu'aucune adresse de
-    /// téléchargement n'est publiée, et de toute façon celui qui sert à essayer un
-    /// modèle avant de le publier.
-    func chooseModelFile() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "onnx")].compactMap { $0 }
-        panel.allowsOtherFileTypes = true
-        panel.prompt = "Installer"
-        panel.message = "Choisir le modèle Demucs converti (.onnx)"
-        guard panel.runModal() == .OK, let file = panel.url else { return }
-        do {
-            try ModelInstaller.install(from: file)
-            askingForModel = false
-            status = "Modèle installé."
-        } catch {
-            separationError = error.localizedDescription
-        }
-    }
-
-    func dismissModelPrompt() { askingForModel = false }
 
     /// Efface les pistes de ce morceau — de quoi refaire la séparation si le
     /// résultat déçoit, sans aller fouiller dans Application Support.
