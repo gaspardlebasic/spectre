@@ -3,15 +3,15 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>Transcripteur</string>
+	<string>Spectre</string>
 	<key>CFBundleDisplayName</key>
-	<string>Transcripteur</string>
+	<string>Spectre</string>
 	<key>CFBundleExecutable</key>
-	<string>Transcripteur</string>
+	<string>Spectre</string>
 	<key>CFBundleIconFile</key>
-	<string>Transcripteur</string>
+	<string>Spectre</string>
 	<key>CFBundleIdentifier</key>
-	<string>local.transcripteur</string>
+	<string>local.spectre</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundlePackageType</key>

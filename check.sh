@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 
 OUT="build/check"
 mkdir -p "$OUT"
-SRC=Sources/Transcripteur
+SRC=Sources/Spectre
 
 echo "=== Analyse ==="
 swiftc -O "$SRC/Analyzer.swift" "$SRC/Spectrogram.swift" "$SRC/OfflineAnalysis.swift" \

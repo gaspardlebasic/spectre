@@ -53,11 +53,8 @@ enum SessionStore {
     }
 
     private static var directory: URL? {
-        guard let support = try? FileManager.default.url(for: .applicationSupportDirectory,
-                                                         in: .userDomainMask,
-                                                         appropriateFor: nil,
-                                                         create: true) else { return nil }
-        let folder = support.appendingPathComponent("Transcripteur/sessions", isDirectory: true)
+        guard let root = Storage.root else { return nil }
+        let folder = root.appendingPathComponent("sessions", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder
     }
@@ -77,5 +74,31 @@ enum SessionStore {
               let data = try? JSONEncoder().encode(session)
         else { return }
         try? data.write(to: url, options: .atomic)
+    }
+}
+
+/// Où l'application range ce qu'elle garde d'un morceau à l'autre.
+enum Storage {
+    static var root: URL? {
+        guard let support = try? FileManager.default.url(for: .applicationSupportDirectory,
+                                                         in: .userDomainMask,
+                                                         appropriateFor: nil, create: true)
+        else { return nil }
+        let folder = support.appendingPathComponent("Spectre", isDirectory: true)
+        adoptFormerName(at: support, into: folder)
+        return folder
+    }
+
+    /// L'application s'est appelée Transcripteur. Ses sessions et ses pistes — des
+    /// heures de calcul — sont rangées sous l'ancien nom : on reprend le dossier tel
+    /// quel plutôt que de faire tout recommencer.
+    ///
+    /// Ne fait rien dès que le nouveau dossier existe, donc au plus une fois.
+    private static func adoptFormerName(at support: URL, into folder: URL) {
+        let manager = FileManager.default
+        guard !manager.fileExists(atPath: folder.path) else { return }
+        let former = support.appendingPathComponent("Transcripteur", isDirectory: true)
+        guard manager.fileExists(atPath: former.path) else { return }
+        try? manager.moveItem(at: former, to: folder)
     }
 }

@@ -4,10 +4,10 @@ import UniformTypeIdentifiers
 
 /// Trace de diagnostic : le journal unifié masque les chaînes interpolées.
 func trace(_ message: String) {
-    guard ProcessInfo.processInfo.environment["TRANSCRIPTEUR_TRACE"] != nil else { return }
+    guard ProcessInfo.processInfo.environment["SPECTRE_TRACE"] != nil else { return }
     let line = "\(Date()) \(message)\n"
     if let data = line.data(using: .utf8) {
-        let path = "/tmp/transcripteur.log"
+        let path = "/tmp/spectre.log"
         if let handle = FileHandle(forWritingAtPath: path) {
             handle.seekToEndOfFile(); handle.write(data); try? handle.close()
         } else {
@@ -58,16 +58,16 @@ struct Entry {
             }
             exit(SeparationCommand.run(path: arguments[flag + 1], into: destination))
         }
-        TranscripteurApp.main()
+        SpectreApp.main()
     }
 }
 
-struct TranscripteurApp: App {
+struct SpectreApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var model = AppModel()
 
     var body: some Scene {
-        Window("Transcripteur", id: "principale") {
+        Window("Spectre", id: "principale") {
             ContentView(model: model)
                 .frame(minWidth: 860, minHeight: 460)
                 // La barre de titre nomme le morceau ouvert, pas le programme :
@@ -82,7 +82,7 @@ struct TranscripteurApp: App {
                         AppDelegate.pending = nil
                         model.open(url)
                     }
-                    // Lancement en ligne de commande : `Transcripteur fichier.wav`.
+                    // Lancement en ligne de commande : `Spectre fichier.wav`.
                     if let path = CommandLine.arguments.dropFirst().first(where: {
                         FileManager.default.fileExists(atPath: $0)
                     }) {

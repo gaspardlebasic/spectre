@@ -1,6 +1,6 @@
 import Foundation
 
-/// Séparation depuis le terminal : `Transcripteur --separer morceau.wav`.
+/// Séparation depuis le terminal : `Spectre --separer morceau.wav`.
 ///
 /// Sert d'abord à éprouver le moteur — c'est le seul moyen de parcourir le vrai
 /// chemin, modèle embarqué compris, sans ouvrir de fenêtre ni cliquer. Accessoirement

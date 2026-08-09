@@ -213,7 +213,7 @@ final class SpectrogramRenderer: NSObject, MTKViewDelegate {
             desc.colorAttachments[0].pixelFormat = .bgra8Unorm
             pipeline = try device.makeRenderPipelineState(descriptor: desc)
         } catch {
-            NSLog("Transcripteur : compilation du shader impossible — \(error)")
+            NSLog("Spectre : compilation du shader impossible — \(error)")
             return nil
         }
         buildNoteColorTable(saturation: display.noteSaturation)
@@ -244,7 +244,7 @@ final class SpectrogramRenderer: NSObject, MTKViewDelegate {
         desc.usage = [.shaderRead]
         desc.storageMode = .managed
         guard let texture = device.makeTexture(descriptor: desc) else {
-            NSLog("Transcripteur : texture de \(sliceCount) tuiles impossible à allouer.")
+            NSLog("Spectre : texture de \(sliceCount) tuiles impossible à allouer.")
             return
         }
 

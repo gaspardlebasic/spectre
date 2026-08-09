@@ -58,7 +58,7 @@ import UniformTypeIdentifiers
         }
     }
 
-    var title: String { source?.name ?? "Transcripteur" }
+    var title: String { source?.name ?? "Spectre" }
     var fileURL: URL? { source?.url }
     var duration: Double { source?.duration ?? 0 }
 

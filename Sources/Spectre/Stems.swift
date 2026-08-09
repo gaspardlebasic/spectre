@@ -76,13 +76,7 @@ enum Stem: String, CaseIterable, Codable, Identifiable {
 /// un modèle pèse des centaines de mégaoctets et n'a pas sa place dans du code
 /// versionné.
 enum StemStore {
-    private static var root: URL? {
-        guard let support = try? FileManager.default.url(for: .applicationSupportDirectory,
-                                                         in: .userDomainMask,
-                                                         appropriateFor: nil, create: true)
-        else { return nil }
-        return support.appendingPathComponent("Transcripteur", isDirectory: true)
-    }
+    private static var root: URL? { Storage.root }
 
     // MARK: Le modèle
 

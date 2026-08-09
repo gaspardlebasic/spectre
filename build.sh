@@ -1,20 +1,20 @@
 #!/bin/bash
-# Compile Transcripteur et assemble le bundle .app.
+# Compile Spectre et assemble le bundle .app.
 set -euo pipefail
 
 cd "$(dirname "$0")"
 CONFIG="${1:-release}"
 
 swift build -c "$CONFIG"
-BIN="$(swift build -c "$CONFIG" --show-bin-path)/Transcripteur"
+BIN="$(swift build -c "$CONFIG" --show-bin-path)/Spectre"
 
-APP="build/Transcripteur.app"
+APP="build/Spectre.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/Transcripteur"
+cp "$BIN" "$APP/Contents/MacOS/Spectre"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 # L'icône est versionnée telle quelle ; `./logo.sh` la refabrique au besoin.
-cp Resources/Transcripteur.icns "$APP/Contents/Resources/Transcripteur.icns"
+cp Resources/Spectre.icns "$APP/Contents/Resources/Spectre.icns"
 
 # Le modèle de séparation voyage dans le paquet, mais pas dans le dépôt : les poids
 # de Demucs ne sont pas couverts par la licence MIT du code, et `./modele.sh` les

@@ -11,6 +11,6 @@ mkdir -p "$OUT"
 swiftc -O Tools/Logo/main.swift -o "$OUT/logo"
 "$OUT/logo" "$OUT"
 
-iconutil -c icns "$OUT/Transcripteur.iconset" -o Resources/Transcripteur.icns
-echo "→ Resources/Transcripteur.icns"
-echo "→ $OUT/icone-1024.png, $OUT/motif-1024.png"
+iconutil -c icns "$OUT/Spectre.iconset" -o Resources/Spectre.icns
+echo "→ Resources/Spectre.icns"
+echo "→ $OUT/icone-1024.png"

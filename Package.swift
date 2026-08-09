@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "Transcripteur",
+    name: "Spectre",
     platforms: [.macOS(.v14)],
     dependencies: [
         // Moteur d'inférence de la séparation de pistes. La tranche macOS arm64 est
@@ -13,12 +13,12 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "Transcripteur",
+            name: "Spectre",
             dependencies: [
                 .product(name: "onnxruntime",
                          package: "onnxruntime-swift-package-manager"),
             ],
-            path: "Sources/Transcripteur",
+            path: "Sources/Spectre",
             swiftSettings: [.unsafeFlags(["-Ounchecked"], .when(configuration: .release))]
         )
     ]

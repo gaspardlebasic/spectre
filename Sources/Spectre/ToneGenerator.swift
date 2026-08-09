@@ -106,7 +106,7 @@ final class ToneGenerator {
         do {
             try engine.start()
         } catch {
-            NSLog("Transcripteur : sinusoïde d'écoute indisponible — \(error)")
+            NSLog("Spectre : sinusoïde d'écoute indisponible — \(error)")
         }
     }
 }
