@@ -22,3 +22,8 @@ swiftc -O "$SRC/Analyzer.swift" "$SRC/Spectrogram.swift" "$SRC/Viewport.swift" \
        "$SRC/DisplaySettings.swift" Tools/RenderCheck/main.swift \
        -o "$OUT/rendercheck"
 "$OUT/rendercheck" "$OUT/rendu.png"
+
+echo
+echo "=== Lecture ==="
+swiftc -O "$SRC/Detent.swift" Tools/PlaybackCheck/main.swift -o "$OUT/playbackcheck"
+"$OUT/playbackcheck"

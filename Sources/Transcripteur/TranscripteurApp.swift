@@ -185,9 +185,13 @@ struct ContentView: View {
                     .frame(width: 62, alignment: .leading)
 
                 slider("Vitesse", value: $model.player.speed, range: 0.25...1.5,
-                       format: { String(format: "×%.2f", $0) })
+                       reset: 1, format: { String(format: "×%.2f", $0) })
                 slider("Ton", value: $model.player.transpose, range: -12...12,
-                       format: { String(format: "%+.0f dt", $0) })
+                       reset: 0, format: {
+                           // Un demi-ton entier s'écrit sans décimale ; une valeur
+                           // intermédiaire, elle, doit se voir.
+                           String(format: abs($0 - $0.rounded()) < 0.005 ? "%+.0f dt" : "%+.1f dt", $0)
+                       })
 
                 Divider().frame(height: 16)
                 loopControls
@@ -311,16 +315,26 @@ struct ContentView: View {
         .controlSize(.small)
     }
 
+    /// Un curseur, son intitulé et sa valeur. Double-cliquer sur l'un ou l'autre
+    /// texte ramène le réglage à sa valeur neutre — un curseur continu ne la
+    /// retrouve jamais tout seul.
     private func slider(_ title: String, value: Binding<Double>,
                         range: ClosedRange<Double>,
+                        reset: Double? = nil,
                         format: @escaping (Double) -> String) -> some View {
-        HStack(spacing: 5) {
+        let restore = {
+            if let reset { value.wrappedValue = reset }
+        }
+        return HStack(spacing: 5) {
             Text(title).font(.system(size: 10)).foregroundStyle(.secondary)
+                .onTapGesture(count: 2, perform: restore)
             Slider(value: value, in: range).frame(width: 88)
             Text(format(value.wrappedValue))
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .frame(width: 46, alignment: .leading)
+                .onTapGesture(count: 2, perform: restore)
         }
+        .help(reset == nil ? "" : "Double-clic sur le texte pour revenir à la normale")
     }
 }

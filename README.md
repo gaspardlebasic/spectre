@@ -146,6 +146,26 @@ touche au trackpad. En fin de fichier, quand il n'y a plus rien à découvrir, l
 destination se confond avec la position courante et il ne se passe simplement
 rien.
 
+## Vitesse et transposition
+
+`AVAudioUnitTimePitch` est l'unité fournie par le système : correcte jusqu'à la
+moitié de la vitesse, métallique en dessous.
+
+À **×1,00 et +0 demi-ton, elle est retirée du chemin du signal** plutôt que
+laissée en service. Un vocodeur de phase auquel on demande de ne rien changer
+continue de découper et recoller le son pour un résultat censé être identique :
+travail inutile, et surtout irrégulier — c'est le pire cas pour une échéance
+temps réel. Court-circuitée, elle laisse passer les échantillons du fichier tels
+quels, ce que `check.sh` vérifie en rendant la chaîne hors ligne et en la
+comparant à la source (écart maximal 6·10⁻⁸, soit l'arrondi du flottant).
+
+Encore faut-il pouvoir *revenir* à ×1,00. Un curseur continu ne retrouve jamais sa
+valeur neutre : il s'arrête à ×0,996, que l'affichage arrondit en « ×1.00 » — on
+se croit revenu à la normale sans l'être. Les deux curseurs ont donc un **cran** :
+à l'approche de la vitesse normale, ou d'un demi-ton entier, on y tombe
+exactement. Et un **double-clic sur l'intitulé ou sur la valeur** ramène le
+réglage à sa valeur neutre d'un geste.
+
 ## N'entendre que ce qu'on regarde
 
 La bande passante de la lecture suit la portion visible de l'axe des fréquences :
@@ -301,6 +321,10 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
 - **Tempo** — un click-track de synthèse à 132 BPM, accentué sur le premier temps,
   passe par toute la chaîne : le tempo doit ressortir à moins d'un BPM près, les
   temps tomber sur les clicks, et le premier temps sur l'accent.
+- **Lecture** — les crans des curseurs, et surtout la transparence du cas neutre :
+  à ×1,00 et +0, la chaîne complète rendue hors ligne redonne le fichier au
+  flottant près. Ce harnais dit que les échantillons sont les bons ; il ne peut
+  rien dire de leur ponctualité, le rendu hors ligne n'ayant pas d'échéance.
 - **Contraste automatique** — sur une matrice dont les raies perdent 9 dB par
   octave, la pente est retrouvée, une note grave et une note aiguë obtiennent la
   même clarté, le fond reste noir, et une bande forte mais immobile ne fausse
@@ -343,6 +367,7 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
 | `Tempo.swift` | Flux spectral, autocorrélation, phase des temps et des mesures |
 | `Snapping.swift` | Aimantation du curseur sur les raies |
 | `LoopEditing.swift` | Tracer, déplacer, étendre la boucle |
+| `Detent.swift` | Crans des curseurs de lecture |
 | `AutoContrast.swift` | Noir, clair et pente déduits du contenu |
 | `SessionStore.swift` | Empreinte d'un fichier, réglages conservés |
 | `ToneOscillator.swift` | Sinusoïde : glissando, fondus, continuité de phase |

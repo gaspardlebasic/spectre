@@ -32,15 +32,50 @@ import Observation
     private(set) var duration: Double = 0
     var message: String?
 
-    /// Vitesse de lecture (1 = normale), hauteur inchangée.
-    var speed: Double = 1 {
-        didSet { timePitch.rate = Float(min(max(speed, 1.0 / 32), 4)) }
+    private var storedSpeed: Double = 1
+    private var storedTranspose: Double = 0
+
+    /// Vitesse de lecture (1 = normale), hauteur inchangée. La valeur est crantée
+    /// à l'écriture : ce que l'affichage montre est ce qui est réellement appliqué.
+    var speed: Double {
+        get { storedSpeed }
+        set {
+            let snapped = Detent.speed(newValue)
+            guard snapped != storedSpeed else { return }
+            storedSpeed = snapped
+            applyTimePitch()
+        }
     }
 
     /// Transposition, en demi-tons (fractionnaire : sert aussi à recaler un
     /// enregistrement désaccordé).
-    var transpose: Double = 0 {
-        didSet { timePitch.pitch = Float(min(max(transpose, -24), 24) * 100) }
+    var transpose: Double {
+        get { storedTranspose }
+        set {
+            let snapped = Detent.transpose(newValue)
+            guard snapped != storedTranspose else { return }
+            storedTranspose = snapped
+            applyTimePitch()
+        }
+    }
+
+    /// Ni ralenti ni transposé : le fichier tel quel.
+    var isNeutral: Bool { storedSpeed == 1 && storedTranspose == 0 }
+
+    /// Applique vitesse et hauteur, et **retire l'unité du chemin du signal**
+    /// quand il n'y a rien à faire.
+    ///
+    /// À ×1 et +0, un vocodeur de phase laissé en service continue de découper et
+    /// recoller le signal pour un résultat censé être identique — travail inutile,
+    /// et surtout irrégulier : c'est le pire cas pour une échéance temps réel.
+    /// Court-circuitée, l'unité laisse passer les échantillons du fichier tels
+    /// quels, ce que `check.sh` vérifie au bit près.
+    private func applyTimePitch() {
+        let rate = min(max(storedSpeed, 1.0 / 32), 4)
+        let cents = min(max(storedTranspose, -24), 24) * 100
+        timePitch.rate = Float(rate)
+        timePitch.pitch = Float(cents)
+        timePitch.auAudioUnit.shouldBypassEffect = isNeutral
     }
 
     var volume: Double = 1 {
@@ -55,6 +90,9 @@ import Observation
             parameters.filterType = i < 2 ? .highPass : .lowPass
             parameters.bypass = true
         }
+        // Sans cet appel, l'état neutre — le plus courant, et celui du démarrage —
+        // laisserait l'unité en service jusqu'à ce qu'on touche un curseur.
+        applyTimePitch()
     }
 
     /// Restreint la lecture à une bande de fréquences, ou la laisse entière.
