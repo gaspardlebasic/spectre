@@ -100,6 +100,14 @@ struct TranscripteurApp: App {
                     .keyboardShortcut(.escape, modifiers: [])
                     .disabled(model.loop == nil)
             }
+            CommandMenu("Affichage") {
+                Button("Contraste automatique") { model.applyAutoContrast() }
+                    .keyboardShortcut("k", modifiers: [])
+                Button("Contraste automatique sur tout le morceau") {
+                    model.applyAutoContrast(wholePiece: true)
+                }
+                .keyboardShortcut("k", modifiers: [.shift])
+            }
             CommandMenu("Tempo") {
                 Button("Poser le premier temps ici") { model.setDownbeatAtPlayhead() }
                     .keyboardShortcut("t", modifiers: [])
@@ -193,6 +201,10 @@ struct ContentView: View {
 
                 slider("Contraste", value: $model.display.floorDb, range: -120...(-40),
                        format: { String(format: "%.0f dB", $0) })
+                Button("Auto") { model.applyAutoContrast() }
+                    .controlSize(.small)
+                    .disabled(model.spectrogram.columnCount == 0)
+                    .help("Régler noir, clair et pente sur ce qui est à l'écran")
 
                 Picker("", selection: $model.display.colorMap) {
                     ForEach(ColorMap.allCases) { Text($0.label).tag($0) }

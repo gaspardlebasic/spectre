@@ -240,6 +240,38 @@ Les touches noires sont nommées **par le bas** (Mi♭) par défaut, un commutat
 ♭/♯ dans la barre permettant l'autre écriture. Aucune des deux n'est plus juste :
 c'est la tonalité qui tranche, et l'application ne la connaît pas.
 
+La bulle de survol donne la note et l'écart en cents, sans le numéro d'octave —
+il se lit déjà sur les repères, et l'ajouter ne fait qu'encombrer ce qu'on vient
+lire.
+
+## Le contraste automatique
+
+Le noir à −95 dB, le clair à −25 et la pente de 3 dB par octave sont un compromis
+pour un signal quelconque. Un enregistrement réel s'en écarte des deux façons
+possibles : son niveau n'est pas celui-là, et surtout **sa pente ne l'est pas**.
+Un clavecin perd une dizaine de dB par octave, un mix pop bien moins ; avec une
+pente unique, ou bien les basses sont blanches et écrasées, ou bien les aigus
+sont noirs.
+
+Le réglage se déduit donc de la matrice, en deux temps. Pour chaque ligne, deux
+niveaux : celui du fond (médiane dans le temps) et celui d'une raie franche
+(95ᵉ centile). La pente est ajustée par régression sur les niveaux de raies, de
+sorte qu'après elle une note grave et une note aiguë de même importance musicale
+aient la même clarté. Puis, une fois la pente appliquée, le noir se pose un peu
+au-dessus du fond et le clair un peu au-dessus des raies.
+
+Une ligne ne compte dans la régression que si sa raie dépasse **son propre fond**
+d'au moins 8 dB. C'est le bon critère, et pas un seuil absolu : au-dessus de la
+coupure d'un mp3, ou dans une bande qu'aucun instrument n'occupe, le 95ᵉ centile
+vaut le bruit et ferait pencher la droite pour rien. Sur la fugue, ce seul
+changement fait passer la pente estimée de −0,3 à 3 dB par octave.
+
+Le réglage est appliqué à l'ouverture d'un fichier inconnu, et le bouton **Auto**
+le refait à la demande **sur ce qui est à l'écran** — une seule règle, qui donne
+le morceau entier au cadrage d'ensemble et la seule région regardée quand on a
+zoomé sur la basse. Il n'est délibérément pas continu : un contraste qui bouge
+pendant qu'on défile interdit de comparer deux moments, et l'image respire.
+
 ## La palette « notes »
 
 C'est la palette par défaut : c'est la seule qui dise *quoi* est joué et pas
@@ -269,6 +301,10 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
 - **Tempo** — un click-track de synthèse à 132 BPM, accentué sur le premier temps,
   passe par toute la chaîne : le tempo doit ressortir à moins d'un BPM près, les
   temps tomber sur les clicks, et le premier temps sur l'accent.
+- **Contraste automatique** — sur une matrice dont les raies perdent 9 dB par
+  octave, la pente est retrouvée, une note grave et une note aiguë obtiennent la
+  même clarté, le fond reste noir, et une bande forte mais immobile ne fausse
+  rien.
 - **Noms de notes** — les touches noires changent d'écriture, les blanches non.
 - **Manipulation de la boucle** — un tracé à l'envers donne la même boucle, un
   geste trop court n'en donne aucune, déplacer conserve la durée et n'aimante que
@@ -307,6 +343,7 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
 | `Tempo.swift` | Flux spectral, autocorrélation, phase des temps et des mesures |
 | `Snapping.swift` | Aimantation du curseur sur les raies |
 | `LoopEditing.swift` | Tracer, déplacer, étendre la boucle |
+| `AutoContrast.swift` | Noir, clair et pente déduits du contenu |
 | `SessionStore.swift` | Empreinte d'un fichier, réglages conservés |
 | `ToneOscillator.swift` | Sinusoïde : glissando, fondus, continuité de phase |
 | `ToneGenerator.swift` | Branchement du moteur audio, consignes du thread audio |

@@ -379,6 +379,77 @@ check("une borne ne traverse pas sa voisine",
       String(format: "arrêtée à %.0f ms de l'autre bord",
              (crossed.upperBound - crossed.lowerBound) * 1000))
 
+// --- Contraste automatique --------------------------------------------------
+// Une matrice fabriquée dont on connaît la pente : des raies qui perdent 9 dB par
+// octave sur un fond plat. Le réglage doit retrouver cette pente, et surtout
+// rendre une note grave et une note aiguë également claires — c'est tout l'objet.
+print("\n=== Contraste automatique ===")
+var slopeLayout = BinLayout()
+slopeLayout.binCount = 200
+slopeLayout.minFrequency = 27.5
+slopeLayout.binsPerOctave = 36
+slopeLayout.maxFrequency = 27.5 * pow(2, 200.0 / 36)
+slopeLayout.sampleRate = 48000
+
+let trueSlope = -9.0                      // dB par octave
+let backgroundDb: Float = -100
+func raieLevel(_ bin: Int) -> Float { Float(-30 + trueSlope * Double(bin) / 36) }
+
+func slopeScene(withDeadBand: Bool) -> Spectrogram {
+    var values = [Float](repeating: backgroundDb, count: 600 * slopeLayout.binCount)
+    for c in 0..<600 {
+        for bin in Swift.stride(from: 0, to: 180, by: 12) where c < 180 {
+            values[c * slopeLayout.binCount + bin] = raieLevel(bin)
+        }
+        if withDeadBand {
+            // Une bande forte mais immobile — un souffle, un artefact de codec :
+            // elle ne doit pas peser sur la pente, puisqu'il ne s'y passe rien.
+            for bin in 180..<200 { values[c * slopeLayout.binCount + bin] = -35 }
+        }
+    }
+    return Spectrogram(layout: slopeLayout, columnCount: 600,
+                       secondsPerColumn: 0.01, values: values)
+}
+
+let plain = DisplaySettings()
+if let tuned = AutoContrast.settings(basedOn: plain, in: slopeScene(withDeadBand: false)) {
+    check("la pente du morceau est retrouvée",
+          abs(tuned.tiltDbPerOctave + trueSlope) < 1,
+          String(format: "%.1f dB/octave pour compenser %.0f", tuned.tiltDbPerOctave, trueSlope))
+
+    // Le point de la manœuvre : la même note, quatre octaves plus bas, aussi claire.
+    let lowBin = 12, highBin = 156
+    let lowIntensity = Snapping.intensity(db: raieLevel(lowBin), bin: Double(lowBin),
+                                          layout: slopeLayout, display: tuned)
+    let highIntensity = Snapping.intensity(db: raieLevel(highBin), bin: Double(highBin),
+                                           layout: slopeLayout, display: tuned)
+    check("graves et aigus ressortent pareillement",
+          abs(lowIntensity - highIntensity) < 0.06,
+          String(format: "clarté %.2f à %.0f Hz, %.2f à %.0f Hz",
+                 lowIntensity, slopeLayout.frequency(atBin: Double(lowBin)),
+                 highIntensity, slopeLayout.frequency(atBin: Double(highBin))))
+    check("les raies sont franchement visibles", lowIntensity > 0.55,
+          String(format: "clarté %.2f", lowIntensity))
+
+    let backgroundIntensity = Snapping.intensity(db: backgroundDb, bin: 100,
+                                                 layout: slopeLayout, display: tuned)
+    check("le fond reste noir", backgroundIntensity == 0,
+          String(format: "clarté %.3f", backgroundIntensity))
+
+    if let withDead = AutoContrast.settings(basedOn: plain, in: slopeScene(withDeadBand: true)) {
+        check("une bande forte mais immobile ne fausse pas la pente",
+              abs(withDead.tiltDbPerOctave - tuned.tiltDbPerOctave) < 0.5,
+              String(format: "%.1f contre %.1f dB/octave",
+                     withDead.tiltDbPerOctave, tuned.tiltDbPerOctave))
+    }
+} else {
+    check("la pente du morceau est retrouvée", false, "aucun réglage proposé")
+}
+
+check("une matrice vide ne propose rien",
+      AutoContrast.settings(basedOn: plain, in: Spectrogram.empty) == nil,
+      "aucun réglage, et rien ne casse")
+
 // --- Réglages conservés -----------------------------------------------------
 print("\n=== Réglages conservés ===")
 var session = FileSession()

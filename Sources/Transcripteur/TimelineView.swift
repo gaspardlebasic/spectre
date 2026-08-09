@@ -430,7 +430,7 @@ struct TimelineOverlay: View {
 
             text = String(format: "%@   %.1f Hz   %@",
                           Pitch.noteName(for: snap.frequency, referenceA: model.display.referenceA,
-                                         flats: model.display.useFlats),
+                                         flats: model.display.useFlats, withOctave: false),
                           snap.frequency, AppModel.format(snap.time))
         } else {
             // Rien d'assez clair alentour : on retombe sur la lecture brute.

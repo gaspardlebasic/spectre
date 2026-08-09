@@ -22,10 +22,11 @@ enum Pitch {
         referenceA * pow(2, (midi - 69) / 12)
     }
 
-    /// Nom de note français, numéro d'octave (notation scientifique) et écart en
-    /// cents, ex. « La4 +3¢ ».
+    /// Nom de note français, écart en cents, et si on le demande le numéro
+    /// d'octave — ex. « La4 +3¢ » ou « La +3¢ ». Au survol on s'en passe : ce qu'on
+    /// cherche est la note, et le chiffre se lit déjà sur les repères d'octaves.
     static func noteName(for frequency: Double, referenceA: Double = standardA,
-                         flats: Bool = true) -> String {
+                         flats: Bool = true, withOctave: Bool = true) -> String {
         guard frequency > 0 else { return "—" }
         let m = midi(from: frequency, referenceA: referenceA)
         let rounded = Int(m.rounded())
@@ -33,7 +34,8 @@ enum Pitch {
         let name = names(flats: flats)[((rounded % 12) + 12) % 12]
         let octave = rounded / 12 - 1
         let sign = cents >= 0 ? "+" : "−"
-        return "\(name)\(octave) \(sign)\(abs(cents))¢"
+        return withOctave ? "\(name)\(octave) \(sign)\(abs(cents))¢"
+                          : "\(name) \(sign)\(abs(cents))¢"
     }
 
     /// Fréquences des Do contenues dans l'intervalle donné.

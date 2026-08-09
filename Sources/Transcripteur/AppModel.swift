@@ -142,6 +142,9 @@ import UniformTypeIdentifiers
             playhead = 0
             needsFit = true
             fitIfNeeded()
+            // Rien de connu non plus sur l'allure de l'enregistrement : on la
+            // mesure plutôt que d'imposer un compromis.
+            applyAutoContrast(wholePiece: true)
         }
         savedSession = currentSession()
         staleSince = nil
@@ -230,6 +233,36 @@ import UniformTypeIdentifiers
         guard spectrogram.columnCount > 0 else { return }
         player.setBand(viewport.visibleBand(in: spectrogram.layout,
                                             height: Double(viewSize.height)))
+    }
+
+    // MARK: Contraste
+
+    /// Colonnes et lignes actuellement à l'écran.
+    private var visibleColumns: Range<Int> {
+        let first = Int(viewport.startColumn.rounded(.down))
+        let last = Int(viewport.endColumn(width: Double(viewSize.width)).rounded(.up))
+        let all = 0..<spectrogram.columnCount
+        return (max(first, 0)..<max(last, 1)).clamped(to: all)
+    }
+
+    private var visibleBins: Range<Int> {
+        let bottom = Int(viewport.bottomBin.rounded(.down))
+        let top = Int(viewport.topBin(height: Double(viewSize.height)).rounded(.up))
+        let all = 0..<spectrogram.binCount
+        return (max(bottom, 0)..<max(top, 1)).clamped(to: all)
+    }
+
+    /// Règle noir, clair et pente sur ce qu'on a sous les yeux.
+    ///
+    /// Une seule règle plutôt que deux boutons : au cadrage d'ensemble, « ce qu'on
+    /// a sous les yeux » est le morceau entier, et le réglage vaut pour lui.
+    func applyAutoContrast(wholePiece: Bool = false) {
+        guard spectrogram.columnCount > 0 else { return }
+        let found = AutoContrast.settings(basedOn: display, in: spectrogram,
+                                          columns: wholePiece ? nil : visibleColumns,
+                                          bins: wholePiece ? nil : visibleBins)
+        guard let found else { return }
+        display = found
     }
 
     // MARK: Grille
