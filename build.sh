@@ -25,15 +25,16 @@ cp Resources/Transcripteur.icns "$APP/Contents/Resources/Transcripteur.icns"
 # se ranger à côté d'eux, puisque ONNX Runtime résout ce renvoi relativement au
 # modèle. Les sauvegardes en simple précision, elles, restent à quai.
 MODELS=()
-for m in Resources/htdemucs_ft-*.onnx; do
+for m in Resources/htdemucs*.onnx; do
   case "$m" in *-fp32.onnx) continue;; esac
   [ -f "$m" ] && MODELS+=("$m")
 done
-if [ ${#MODELS[@]} -eq 4 ]; then
+# Quatre réseaux affinés plus le réseau simple : cinq en tout.
+if [ ${#MODELS[@]} -ge 4 ]; then
   cp "${MODELS[@]}" "$APP/Contents/Resources/"
-  [ -f Resources/htdemucs_ft-fourier.bin ] \
-    && cp Resources/htdemucs_ft-fourier.bin "$APP/Contents/Resources/"
-  echo "→ modèle de séparation embarqué ($(du -ch "$APP/Contents/Resources/htdemucs_ft-"* | tail -1 | cut -f1))"
+  [ -f Resources/htdemucs-fourier.bin ] \
+    && cp Resources/htdemucs-fourier.bin "$APP/Contents/Resources/"
+  echo "→ modèle de séparation embarqué ($(du -ch "$APP/Contents/Resources/htdemucs"* | tail -1 | cut -f1))"
 else
   echo "Note : pas de modèle de séparation — lancer ./modele.sh pour l'ajouter."
 fi

@@ -153,7 +153,7 @@ def verify(reference, candidate, samples):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=pathlib.Path)
-    parser.add_argument("--prefix", default="htdemucs_ft")
+    parser.add_argument("--prefix", default="htdemucs")
     parser.add_argument("--demi-precision", dest="demi_precision", action="store_true",
                         help="convertit en demi-précision (déconseillé : voir l'en-tête)")
     parser.add_argument("--verifier", action="store_true",
@@ -161,10 +161,13 @@ def main():
     parser.add_argument("--samples", type=int, default=343980)
     args = parser.parse_args()
 
-    sources = sorted(args.directory.glob(f"{args.prefix}-*.onnx"))
+    # `htdemucs*` attrape les deux variantes : `htdemucs.onnx` et les quatre
+    # `htdemucs_ft-*.onnx`. Leurs tables de Fourier sont les mêmes — même taille de
+    # fenêtre — donc une seule copie sert aux cinq.
+    sources = sorted(args.directory.glob(f"{args.prefix}*.onnx"))
     sources = [p for p in sources if not p.name.endswith("-fp32.onnx")]
     if not sources:
-        print(f"Aucun modèle {args.prefix}-*.onnx dans {args.directory}", file=sys.stderr)
+        print(f"Aucun modèle {args.prefix}*.onnx dans {args.directory}", file=sys.stderr)
         return 1
 
     originals = []

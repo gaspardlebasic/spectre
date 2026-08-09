@@ -440,12 +440,30 @@ import UniformTypeIdentifiers
     @ObservationIgnored private var stemCache: [Stem: Spectrogram] = [:]
     @ObservationIgnored private var job: SeparationJob?
 
-    var isSeparated: Bool {
-        guard let fingerprint = source?.fingerprint else { return false }
-        return StemStore.isSeparated(fingerprint)
+    /// Variante employée. Le choix est global, pas propre à un morceau, et survit
+    /// au lancement : c'est un arbitrage entre vitesse et finesse qu'on fait une
+    /// fois pour sa façon de travailler.
+    var separationModel: SeparationModel = SeparationModel(
+        rawValue: UserDefaults.standard.string(forKey: "modeleSeparation") ?? "") ?? .fine {
+        didSet {
+            guard separationModel != oldValue else { return }
+            UserDefaults.standard.set(separationModel.rawValue, forKey: "modeleSeparation")
+            // Les pistes de l'autre variante restent sur le disque, mais ce n'est
+            // plus elles qu'on regarde : on repart du mixage.
+            job?.cancel(); job = nil
+            separating = nil
+            stemCache.removeAll()
+            stem = .mix
+            show(.mix)
+        }
     }
 
-    var hasModel: Bool { StemStore.hasModel }
+    var isSeparated: Bool {
+        guard let fingerprint = source?.fingerprint else { return false }
+        return StemStore.isSeparated(fingerprint, variant: separationModel)
+    }
+
+    var hasModel: Bool { StemStore.has(separationModel) }
 
     /// Réponse au sélecteur.
     func select(_ wanted: Stem) {
@@ -458,7 +476,7 @@ import UniformTypeIdentifiers
             return
         }
         guard let fingerprint = source?.fingerprint else { return }
-        if StemStore.isSeparated(fingerprint) {
+        if StemStore.isSeparated(fingerprint, variant: separationModel) {
             stem = wanted
             show(wanted)
             return
@@ -467,7 +485,7 @@ import UniformTypeIdentifiers
         // problème d'utilisation mais de construction, et se dit comme tel. On ne
         // bouge pas le sélecteur — le déplacer vers une piste qu'on ne peut pas
         // montrer serait mentir sur l'état des choses.
-        guard StemStore.hasModel else {
+        guard StemStore.has(separationModel) else {
             separationError = "Modèle absent de l'application : lancer ./modele.sh puis ./build.sh."
             status = separationError
             return
@@ -484,7 +502,8 @@ import UniformTypeIdentifiers
         separating = 0
         status = "Séparation des pistes…"
         work.run(fileAt: source.url, fingerprint: fingerprint,
-                 separator: DemucsSeparator(),
+                 variant: separationModel,
+                 separator: DemucsSeparator(variant: separationModel),
                  progress: { [weak self] p in self?.separating = p * 0.8 },
                  completion: { [weak self] result in
                      guard let self, self.job === work else { return }
@@ -519,11 +538,14 @@ import UniformTypeIdentifiers
         }
         if let ready = stemCache[wanted] {
             if !stillWorking { separating = nil }
-            adopt(spectrogram: ready, playing: StemStore.url(wanted, for: source.fingerprint ?? ""))
+            adopt(spectrogram: ready,
+                  playing: StemStore.url(wanted, for: source.fingerprint ?? "",
+                                        variant: separationModel))
             return
         }
         guard let fingerprint = source.fingerprint,
-              let file = StemStore.url(wanted, for: fingerprint) else { return }
+              let file = StemStore.url(wanted, for: fingerprint,
+                                       variant: separationModel) else { return }
 
         separating = separating ?? 0.8
         status = "Analyse de « \(wanted.label) »…"
@@ -576,7 +598,7 @@ import UniformTypeIdentifiers
         job = nil
         separating = nil
         stemCache.removeAll()
-        StemStore.removeStems(for: fingerprint)
+        StemStore.removeStems(for: fingerprint, variant: separationModel)
         stem = .mix
         show(.mix)
         status = "Pistes effacées."

@@ -56,7 +56,11 @@ struct Entry {
             let destination = arguments.firstIndex(of: "--vers").flatMap {
                 $0 + 1 < arguments.count ? arguments[$0 + 1] : nil
             }
-            exit(SeparationCommand.run(path: arguments[flag + 1], into: destination))
+            let variant = arguments.firstIndex(of: "--modele").flatMap {
+                $0 + 1 < arguments.count ? SeparationModel(rawValue: arguments[$0 + 1]) : nil
+            } ?? .fine
+            exit(SeparationCommand.run(path: arguments[flag + 1], into: destination,
+                                       variant: variant))
         }
         TranscripteurApp.main()
     }
@@ -421,6 +425,20 @@ struct ContentView: View {
                 }
                 .help("Effacer les pistes de ce morceau et repartir du mixage.")
             }
+
+            Picker("", selection: $model.separationModel) {
+                ForEach(SeparationModel.allCases) { Text($0.label).tag($0) }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(width: 116)
+            .disabled(model.separating != nil)
+            .help("""
+                  Quelle variante de Demucs sépare le morceau.
+                  Rapide : un seul réseau rend les quatre pistes.
+                  Affiné : un réseau par instrument, quatre fois plus long, un peu plus net.
+                  Les pistes des deux variantes coexistent, on peut donc comparer sans tout recalculer.
+                  """)
         }
         .controlSize(.small)
     }

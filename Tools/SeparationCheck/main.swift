@@ -67,7 +67,8 @@ let sourceFile = sandbox.appendingPathComponent("essai.caf")
 try! StemStore.write([signal], sampleRate: rate, to: sourceFile)
 
 let fingerprint = "verification-\(getpid())"
-defer { StemStore.removeStems(for: fingerprint); try? FileManager.default.removeItem(at: sandbox) }
+let variante = SeparationModel.fine
+defer { StemStore.removeStems(for: fingerprint, variant: variante); try? FileManager.default.removeItem(at: sandbox) }
 
 // MARK: - L'ordre des pistes
 
@@ -76,9 +77,13 @@ check(Stem.separated == [.drums, .bass, .other, .vocals],
       "l'ordre des pistes est celui du modèle",
       Stem.separated.map(\.rawValue).joined(separator: ", "))
 check(Stem.allCases.count == 5, "cinq voies dans le sélecteur")
+check(SeparationModel.allCases.map(\.passes) == [1, 4],
+      "un parcours pour le modèle rapide, quatre pour l'affiné")
+check(Set(SeparationModel.allCases.map { StemStore.folder(for: fingerprint, variant: $0) }).count == 2,
+      "les deux variantes rangent leurs pistes séparément")
 check(Stem.allCases.allSatisfy { !$0.symbol.isEmpty && !$0.label.isEmpty },
       "chaque voie a un intitulé et un symbole")
-check(StemStore.url(.mix, for: fingerprint) == nil,
+check(StemStore.url(.mix, for: fingerprint, variant: variante) == nil,
       "le mixage n'est pas une piste à ranger")
 
 // MARK: - Écriture et relecture
@@ -98,7 +103,7 @@ print("=== Séparation ===")
 var seen: [Double] = []
 var done = false
 let job = SeparationJob()
-job.run(fileAt: sourceFile, fingerprint: fingerprint, separator: BandSeparator(),
+job.run(fileAt: sourceFile, fingerprint: fingerprint, variant: variante, separator: BandSeparator(),
         progress: { seen.append($0) },
         completion: { result in
             check((try? result.get()) != nil, "la séparation aboutit")
@@ -106,12 +111,12 @@ job.run(fileAt: sourceFile, fingerprint: fingerprint, separator: BandSeparator()
         })
 while !done { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
 
-check(StemStore.isSeparated(fingerprint), "les quatre pistes sont sur le disque")
+check(StemStore.isSeparated(fingerprint, variant: variante), "les quatre pistes sont sur le disque")
 check(seen.count > 4 && seen == seen.sorted(), "l'avancement progresse sans reculer",
       "\(seen.count) relevés")
 check(seen.allSatisfy { $0 >= 0 && $0 <= 1 }, "l'avancement reste entre 0 et 1")
 
-if let bass = StemStore.url(.bass, for: fingerprint),
+if let bass = StemStore.url(.bass, for: fingerprint, variant: variante),
    let loaded = try? AudioSource.load(bass) {
     // La piste rangée doit être relisible telle quelle par le reste de
     // l'application : c'est `AudioSource.load` qui alimente l'analyse.
@@ -126,11 +131,11 @@ if let bass = StemStore.url(.bass, for: fingerprint),
 
 print()
 print("=== Annulation ===")
-StemStore.removeStems(for: fingerprint)
+StemStore.removeStems(for: fingerprint, variant: variante)
 let cancellable = SeparationJob()
 var cancelledOutcome: Error?
 done = false
-cancellable.run(fileAt: sourceFile, fingerprint: fingerprint,
+cancellable.run(fileAt: sourceFile, fingerprint: fingerprint, variant: variante,
                 separator: BandSeparator(steps: 400),
                 progress: { _ in },
                 completion: { result in
@@ -141,15 +146,15 @@ RunLoop.main.run(until: Date().addingTimeInterval(0.05))
 cancellable.cancel()
 while !done { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
 check(cancelledOutcome != nil, "l'annulation interrompt le calcul")
-check(!StemStore.isSeparated(fingerprint), "elle ne laisse aucune piste derrière elle")
+check(!StemStore.isSeparated(fingerprint, variant: variante), "elle ne laisse aucune piste derrière elle")
 
 // MARK: - Échec en cours de route
 
 print()
 print("=== Panne ===")
-StemStore.removeStems(for: fingerprint)
+StemStore.removeStems(for: fingerprint, variant: variante)
 done = false
-SeparationJob().run(fileAt: sourceFile, fingerprint: fingerprint,
+SeparationJob().run(fileAt: sourceFile, fingerprint: fingerprint, variant: variante,
                     separator: BandSeparator(failAt: 20),
                     progress: { _ in },
                     completion: { result in
@@ -157,7 +162,7 @@ SeparationJob().run(fileAt: sourceFile, fingerprint: fingerprint,
                         done = true
                     })
 while !done { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
-check(!StemStore.isSeparated(fingerprint),
+check(!StemStore.isSeparated(fingerprint, variant: variante),
       "une panne ne laisse pas un jeu de pistes incomplet")
 
 print()

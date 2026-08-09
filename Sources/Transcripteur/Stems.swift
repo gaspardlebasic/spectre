@@ -52,6 +52,47 @@ enum Stem: String, CaseIterable, Codable, Identifiable {
     static let separated: [Stem] = [.drums, .bass, .other, .vocals]
 }
 
+/// Les deux variantes de Demucs v4 embarquées.
+///
+/// Elles séparent les mêmes quatre pistes et ne diffèrent que par la façon dont le
+/// travail est réparti : un réseau qui rend tout d'un coup, ou quatre réseaux
+/// spécialisés. D'où un rapport de un à quatre sur le temps de calcul.
+enum SeparationModel: String, CaseIterable, Codable, Identifiable {
+    /// Un seul réseau, qui rend les quatre pistes en un passage.
+    case simple = "htdemucs"
+    /// Le sac de quatre réseaux affinés, chacun n'ayant appris qu'un instrument.
+    /// Sa matrice de pondération est l'identité : le réseau numéro *i* ne fournit
+    /// que la source numéro *i*, ses trois autres sorties sont jetées. C'est très
+    /// exactement ce qui le rend quatre fois plus lent — et meilleur.
+    case fine = "htdemucs_ft"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .simple: "Rapide"
+        case .fine: "Affiné"
+        }
+    }
+
+    /// Nombre de parcours du morceau qu'exige cette variante.
+    var passes: Int {
+        switch self {
+        case .simple: 1
+        case .fine: Stem.separated.count
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .simple:
+            "htdemucs : un seul réseau rend les quatre pistes. Environ quatre fois plus rapide, un peu moins net."
+        case .fine:
+            "htdemucs_ft : un réseau affiné par instrument. Le meilleur résultat, au prix de quatre parcours du morceau."
+        }
+    }
+}
+
 // MARK: - Rangement
 
 /// Où vivent le modèle et les pistes produites.
@@ -70,15 +111,7 @@ enum StemStore {
 
     // MARK: Le modèle
 
-    static let modelName = "htdemucs_ft"
-
-    /// Le réseau chargé d'une piste, embarqué dans l'application.
-    ///
-    /// `htdemucs_ft` n'est pas *un* modèle mais un **sac de quatre réseaux**, un par
-    /// piste. Sa matrice de pondération est l'identité : le réseau numéro *i* ne
-    /// fournit que la source numéro *i*, ses trois autres sorties sont jetées. C'est
-    /// très exactement ce qui le rend quatre fois plus lent que `htdemucs` — et
-    /// meilleur, chacun n'ayant eu qu'un seul instrument à apprendre.
+    /// Le réseau chargé d'une piste, pour une variante donnée.
     ///
     /// Les fichiers sont copiés dans le paquet à la construction et **ne sont pas
     /// versionnés** : les poids de Demucs ne sont pas couverts par la licence MIT du
@@ -88,9 +121,17 @@ enum StemStore {
     ///
     /// Application Support est consulté ensuite, ce qui permet d'essayer un autre
     /// jeu de poids sans reconstruire l'application.
-    static func modelFile(for stem: Stem) -> URL? {
+    static func modelFile(for stem: Stem, using variant: SeparationModel) -> URL? {
         guard stem != .mix else { return nil }
-        let name = "\(modelName)-\(stem.rawValue)"
+        switch variant {
+        case .simple:
+            return locate("htdemucs")
+        case .fine:
+            return locate("htdemucs_ft-\(stem.rawValue)")
+        }
+    }
+
+    private static func locate(_ name: String) -> URL? {
         if let embedded = Bundle.main.url(forResource: name, withExtension: "onnx") {
             return embedded
         }
@@ -99,34 +140,43 @@ enum StemStore {
         return FileManager.default.fileExists(atPath: loose.path) ? loose : nil
     }
 
-    /// Le sac n'est utilisable qu'entier : trois réseaux sur quatre ne font pas
-    /// une séparation, ils font une piste manquante.
-    static var hasModel: Bool { Stem.separated.allSatisfy { modelFile(for: $0) != nil } }
+    /// Un sac n'est utilisable qu'entier : trois réseaux sur quatre ne font pas une
+    /// séparation, ils font une piste manquante.
+    static func has(_ variant: SeparationModel) -> Bool {
+        Stem.separated.allSatisfy { modelFile(for: $0, using: variant) != nil }
+    }
+
+    static var installedModels: [SeparationModel] { SeparationModel.allCases.filter(has) }
 
     // MARK: Les pistes
 
-    static func folder(for fingerprint: String) -> URL? {
+    /// Les pistes sont rangées **par variante** : les deux modèles peuvent ainsi
+    /// coexister sur un même morceau, ce qui est la seule façon de les comparer
+    /// sans tout recalculer à chaque bascule.
+    static func folder(for fingerprint: String, variant: SeparationModel) -> URL? {
         guard let root else { return nil }
-        let folder = root.appendingPathComponent("pistes/\(fingerprint)", isDirectory: true)
+        let folder = root.appendingPathComponent("pistes/\(fingerprint)/\(variant.rawValue)",
+                                                 isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder
     }
 
-    static func url(_ stem: Stem, for fingerprint: String) -> URL? {
+    static func url(_ stem: Stem, for fingerprint: String, variant: SeparationModel) -> URL? {
         guard stem != .mix else { return nil }
-        return folder(for: fingerprint)?.appendingPathComponent("\(stem.rawValue).caf")
+        return folder(for: fingerprint, variant: variant)?
+            .appendingPathComponent("\(stem.rawValue).caf")
     }
 
     /// Les quatre pistes de ce morceau sont-elles déjà sur le disque ?
-    static func isSeparated(_ fingerprint: String) -> Bool {
+    static func isSeparated(_ fingerprint: String, variant: SeparationModel) -> Bool {
         Stem.separated.allSatisfy { stem in
-            guard let url = url(stem, for: fingerprint) else { return false }
+            guard let url = url(stem, for: fingerprint, variant: variant) else { return false }
             return FileManager.default.fileExists(atPath: url.path)
         }
     }
 
-    static func removeStems(for fingerprint: String) {
-        guard let folder = folder(for: fingerprint) else { return }
+    static func removeStems(for fingerprint: String, variant: SeparationModel) {
+        guard let folder = folder(for: fingerprint, variant: variant) else { return }
         try? FileManager.default.removeItem(at: folder)
     }
 

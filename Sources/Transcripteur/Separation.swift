@@ -99,6 +99,7 @@ final class SeparationJob {
     ///   - completion: sur le fil principal.
     func run(fileAt url: URL,
              fingerprint: String,
+             variant: SeparationModel,
              separator: StemSeparator,
              progress: @escaping (Double) -> Void,
              completion: @escaping (Result<Void, Error>) -> Void) {
@@ -114,7 +115,8 @@ final class SeparationJob {
 
                 let rate = (try? AVAudioFile(forReading: url).processingFormat.sampleRate) ?? 44100
                 for (stem, channels) in stems {
-                    guard let destination = StemStore.url(stem, for: fingerprint) else { continue }
+                    guard let destination = StemStore.url(stem, for: fingerprint, variant: variant)
+                    else { continue }
                     try StemStore.write(channels, sampleRate: rate, to: destination)
                 }
                 outcome = .success(())
@@ -123,7 +125,7 @@ final class SeparationJob {
                 // incomplet, que l'application prendrait ensuite pour un travail
                 // fait. On préfère ne rien garder.
                 if !(error is SeparationFailure) || isCancelled {
-                    StemStore.removeStems(for: fingerprint)
+                    StemStore.removeStems(for: fingerprint, variant: variant)
                 }
                 outcome = .failure(error)
             }
