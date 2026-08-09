@@ -200,6 +200,15 @@ struct ContentView: View {
                 .labelsHidden()
                 .frame(width: 178)
 
+                Picker("", selection: $model.display.useFlats) {
+                    Text("♭").tag(true)
+                    Text("♯").tag(false)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: 62)
+                .help("Nommer les touches noires par le bas ou par le haut")
+
                 Spacer(minLength: 8)
 
                 Text(model.status ?? "")

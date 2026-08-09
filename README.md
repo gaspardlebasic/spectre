@@ -87,6 +87,7 @@ regarde le morceau en entier.
 | Clic, glisser | Placer la tête de lecture, **et entendre la raie désignée** |
 | Glisser dans la réglette, ⇧ + glisser | Tracer la boucle, aimantée sur la grille |
 | ⌘ pendant le tracé | Poser les bornes où l'on veut |
+| Glisser la zone jaune | Déplacer la boucle ; par un bord, l'étendre |
 | Espace | Lire / mettre en pause |
 | ← → (⇧ pour 5 s) | Reculer, avancer |
 | `[` `]` | Poser le début, la fin de la boucle |
@@ -166,6 +167,14 @@ Un glisser dans la réglette du haut trace la boucle ; ce qui est en dehors
 s'assombrit, de sorte qu'on voit d'un coup d'œil ce qui va être joué. `B` la cale
 sur les mesures qui l'encadrent, ce qui est presque toujours ce qu'on veut.
 
+Une fois posée, la boucle se rattrape : par le corps pour la déplacer en bloc,
+par un bord pour l'étendre — le curseur change de forme pour l'annoncer. Déplacer
+conserve la durée et n'aimante que le début, sans quoi le passage qu'on vient de
+choisir se déformerait ; arrivée au bout du fichier, la boucle s'arrête plutôt
+que de se raccourcir. Une borne tirée trop loin ne traverse pas sa voisine : elle
+s'arrête à 50 ms, parce qu'effacer la boucle pour un geste un peu large serait
+une punition disproportionnée.
+
 Les bornes s'aimantent sur la grille, et **⌘ pendant le geste les libère**, comme
 dans les séquenceurs. Le pas d'aimantation est celui de la grille *dessinée* :
 mesures, temps ou subdivisions selon le zoom, si bien que ce sur quoi les bornes
@@ -199,6 +208,38 @@ classiques en trois clics, et ↻ relance l'estimation — avec la signature cho
 ce qui en fait autre chose qu'un simple retour en arrière : à 3/4, la recherche du
 premier temps ne cherche pas au même endroit qu'à 4/4.
 
+## Les réglages suivent le morceau
+
+Transcrire prend plusieurs séances. Recaler le premier temps, régler le contraste,
+poser une boucle sur le passage difficile : rien de tout cela n'a de sens si c'est
+à refaire au prochain lancement. Chaque fichier a donc sa session — affichage,
+grille, boucle, vitesse, transposition, cadrage et position de lecture — relue à
+l'ouverture. Ce que vous avez réglé l'emporte alors sur ce que l'analyse propose,
+et la barre d'état l'annonce.
+
+Un fichier inconnu, lui, hérite des réglages d'affichage du morceau précédent :
+le contraste que vous aimez vous suit d'un morceau à l'autre, mais une grille
+métrique ne se transporte pas.
+
+L'identité d'un morceau est son **empreinte** — taille, premier et dernier bloc —
+et non son chemin : rangé ailleurs ou renommé, il retrouve ses réglages. Deux
+copies identiques les partagent, ce qui est le comportement souhaitable puisque
+c'est la même musique. Hacher le fichier entier serait plus sûr encore, mais
+ferait payer une seconde de lecture à chaque ouverture pour un gain théorique.
+
+L'écriture attend une seconde de calme, et la position de lecture est exclue de
+ce déclenchement — elle change à chaque image pendant la lecture, ce n'est pas une
+raison pour toucher au disque chaque seconde. Elle est écrite avec le reste, et à
+la fermeture de l'application. Les sessions vivent dans
+`~/Library/Application Support/Transcripteur/sessions/`; un fichier illisible n'a
+jamais d'autre conséquence que de repartir des réglages courants.
+
+## Les noms de notes
+
+Les touches noires sont nommées **par le bas** (Mi♭) par défaut, un commutateur
+♭/♯ dans la barre permettant l'autre écriture. Aucune des deux n'est plus juste :
+c'est la tonalité qui tranche, et l'application ne la connaît pas.
+
 ## La palette « notes »
 
 C'est la palette par défaut : c'est la seule qui dise *quoi* est joué et pas
@@ -228,6 +269,13 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
 - **Tempo** — un click-track de synthèse à 132 BPM, accentué sur le premier temps,
   passe par toute la chaîne : le tempo doit ressortir à moins d'un BPM près, les
   temps tomber sur les clicks, et le premier temps sur l'accent.
+- **Noms de notes** — les touches noires changent d'écriture, les blanches non.
+- **Manipulation de la boucle** — un tracé à l'envers donne la même boucle, un
+  geste trop court n'en donne aucune, déplacer conserve la durée et n'aimante que
+  le début, la boucle s'arrête au bout du fichier, et une borne ne traverse pas
+  sa voisine.
+- **Réglages conservés** — aller-retour fidèle, position de lecture exclue de la
+  comparaison, et une empreinte qui suit le contenu et non le chemin.
 - **Bande écoutée** — tout le spectre visible ne demande aucun filtrage, un zoom
   de deux octaves donne une bande de deux octaves, et déplacer la vue déplace la
   bande d'autant.
@@ -258,6 +306,8 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
 | `Viewport.swift` | Fenêtre visible, zoom ancré (temps et fréquences), recadrage |
 | `Tempo.swift` | Flux spectral, autocorrélation, phase des temps et des mesures |
 | `Snapping.swift` | Aimantation du curseur sur les raies |
+| `LoopEditing.swift` | Tracer, déplacer, étendre la boucle |
+| `SessionStore.swift` | Empreinte d'un fichier, réglages conservés |
 | `ToneOscillator.swift` | Sinusoïde : glissando, fondus, continuité de phase |
 | `ToneGenerator.swift` | Branchement du moteur audio, consignes du thread audio |
 | `Renderer.swift` | Tuiles Metal + shader (fenêtre, palettes, max par pixel) |

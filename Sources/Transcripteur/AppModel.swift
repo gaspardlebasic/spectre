@@ -45,6 +45,18 @@ import UniformTypeIdentifiers
     @ObservationIgnored weak var renderer: SpectrogramRenderer?
     /// Évite de recadrer une deuxième fois si la vue change de taille après coup.
     @ObservationIgnored private var needsFit = false
+    /// Dernière session écrite sur le disque, et depuis quand elle est périmée.
+    @ObservationIgnored private var savedSession: FileSession?
+    @ObservationIgnored private var staleSince: CFTimeInterval?
+
+    init() {
+        // Quitter l'application ne doit pas coûter les réglages en cours : la
+        // position de lecture, elle, n'est écrite qu'à ce moment-là.
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification,
+                                               object: nil, queue: .main) { [weak self] _ in
+            self?.flushSession()
+        }
+    }
 
     var title: String { source?.name ?? "Transcripteur" }
     var duration: Double { source?.duration ?? 0 }
@@ -101,20 +113,80 @@ import UniformTypeIdentifiers
 
     private func adopt(source: AudioSource, spectrogram: Spectrogram,
                        tempo: TempoGrid?, elapsed: TimeInterval) {
+        flushSession()                     // le morceau précédent garde ses réglages
         self.source = source
         self.spectrogram = spectrogram
-        self.tempo = tempo
-        loop = nil
         snap = nil
         progress = nil
         player.load(url: source.url)
         renderer?.layout = spectrogram.layout
         renderer?.upload(spectrogram)
-        needsFit = true
-        fitIfNeeded()
-        let speed = source.duration / max(elapsed, 0.001)
-        status = String(format: "%@ — %@, analysé en %.1f s (×%.0f temps réel)",
-                        source.name, Self.format(source.duration), elapsed, speed)
+
+        let saved = source.fingerprint.flatMap { SessionStore.load($0) }
+        if let saved {
+            // Ce que l'utilisatrice a réglé l'emporte sur ce que l'analyse propose.
+            display = saved.display
+            self.tempo = saved.tempo ?? tempo
+            loop = saved.loop
+            player.speed = saved.speed
+            player.transpose = saved.transpose
+            viewport = saved.viewport
+            needsFit = false
+            clampViewport()
+            seek(to: saved.playhead)
+        } else {
+            // Rien de connu : la grille vient de l'analyse, le cadrage montre tout,
+            // et les réglages d'affichage restent ceux du morceau précédent.
+            self.tempo = tempo
+            loop = nil
+            playhead = 0
+            needsFit = true
+            fitIfNeeded()
+        }
+        savedSession = currentSession()
+        staleSince = nil
+
+        let ratio = source.duration / max(elapsed, 0.001)
+        status = String(format: "%@ — %@, analysé en %.1f s (×%.0f temps réel)%@",
+                        source.name, Self.format(source.duration), elapsed, ratio,
+                        saved != nil ? " · réglages retrouvés" : "")
+    }
+
+    // MARK: Réglages conservés
+
+    private func currentSession() -> FileSession {
+        FileSession(display: display, tempo: tempo, loop: loop, playhead: playhead,
+                    speed: player.speed, transpose: player.transpose, viewport: viewport)
+    }
+
+    /// Écrit la session si elle a cessé de bouger depuis une seconde.
+    ///
+    /// La tête de lecture est exclue de la comparaison : elle change à chaque
+    /// image pendant la lecture, et sauvegarder chaque seconde pour cela seul
+    /// serait absurde. Elle est écrite avec le reste, et à la fermeture.
+    private func autosave() {
+        guard let fingerprint = source?.fingerprint else { return }
+        let current = currentSession()
+        guard current.withoutPlayhead != savedSession?.withoutPlayhead else {
+            staleSince = nil
+            return
+        }
+        let now = CACurrentMediaTime()
+        guard let since = staleSince else { staleSince = now; return }
+        guard now - since > 1 else { return }
+        SessionStore.save(current, for: fingerprint)
+        savedSession = current
+        staleSince = nil
+    }
+
+    /// Écrit sans attendre — changement de morceau, ou fermeture de l'application.
+    func flushSession() {
+        guard let fingerprint = source?.fingerprint else { return }
+        let current = currentSession()
+        guard current != savedSession else { return }
+        SessionStore.save(current, for: fingerprint)
+        savedSession = current
+        staleSince = nil
     }
 
     private func fitIfNeeded() {
@@ -144,6 +216,7 @@ import UniformTypeIdentifiers
         if resized { clampViewport() }
         updateSnap()
         updateBandFilter()
+        autosave()
     }
 
     /// N'entendre que ce qu'on regarde.
@@ -291,11 +364,25 @@ import UniformTypeIdentifiers
     /// Par défaut les bornes se posent sur la grille ; ⌘ pendant le geste les
     /// laisse libres, comme dans les séquenceurs.
     func setLoop(from a: Double, to b: Double, snapping: Bool = false) {
-        let first = snapping ? snapToGrid(a) : a
-        let second = snapping ? snapToGrid(b) : b
-        let lo = min(max(min(first, second), 0), duration)
-        let hi = min(max(max(first, second), 0), duration)
-        loop = hi - lo > 0.05 ? lo...hi : nil
+        loop = LoopEditing.made(from: a, to: b, duration: duration,
+                                snap: snapper(snapping))
+    }
+
+    /// Aimante ou laisse libre, selon le geste en cours.
+    private func snapper(_ snapping: Bool) -> (Double) -> Double {
+        snapping ? { [self] in snapToGrid($0) } : { $0 }
+    }
+
+    func dragLoop(edge: LoopEdge, to time: Double, snapping: Bool) {
+        guard let loop else { return }
+        self.loop = LoopEditing.resized(loop, edge: edge, to: time, duration: duration,
+                                        snap: snapper(snapping))
+    }
+
+    func moveLoop(startingAt time: Double, snapping: Bool) {
+        guard let loop else { return }
+        self.loop = LoopEditing.moved(loop, startingAt: time, duration: duration,
+                                      snap: snapper(snapping))
     }
 
     /// Pose une borne au passage de la tête de lecture, en gardant l'autre.

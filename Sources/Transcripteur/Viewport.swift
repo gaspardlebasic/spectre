@@ -7,7 +7,7 @@ import Foundation
 /// exprimé en points, pas en pixels : les gestes du trackpad arrivent en points et
 /// c'est seulement au moment de remplir les uniformes qu'on tient compte de la
 /// densité de l'écran.
-struct Viewport: Equatable {
+struct Viewport: Equatable, Codable {
     /// Colonne au bord gauche de la vue.
     var startColumn: Double = 0
     /// Colonnes couvertes par un point : au-dessus de 1, on dézoome.

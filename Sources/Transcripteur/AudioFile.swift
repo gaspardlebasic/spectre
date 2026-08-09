@@ -14,6 +14,9 @@ struct AudioSource {
     let frameCount: Int
     /// Somme des canaux, normalisée : c'est ce que voit l'analyseur.
     let mono: [Float]
+    /// Identifie le morceau indépendamment de l'endroit où il est rangé, pour
+    /// retrouver les réglages qu'on lui a donnés la dernière fois.
+    let fingerprint: String?
 
     var duration: Double { sampleRate > 0 ? Double(frameCount) / sampleRate : 0 }
     var name: String { url.deletingPathExtension().lastPathComponent }
@@ -82,6 +85,7 @@ struct AudioSource {
         return AudioSource(url: url,
                            sampleRate: format.sampleRate,
                            frameCount: mono.count,
-                           mono: mono)
+                           mono: mono,
+                           fingerprint: SessionStore.fingerprint(of: url))
     }
 }

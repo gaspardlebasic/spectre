@@ -14,8 +14,15 @@ let rulerHeight = 20.0
 final class TimelineMetalView: MTKView {
     var model: AppModel?
     private var tracking: NSTrackingArea?
-    /// Instant où a commencé un tracé de boucle, s'il y en a un en cours.
-    private var loopAnchor: Double?
+    /// Ce que le glisser en cours est en train de faire à la boucle.
+    private enum LoopDrag {
+        case creating(anchor: Double)
+        case moving(grab: Double)          // écart entre le clic et le début
+        case resizing(LoopEdge)
+    }
+    private var loopDrag: LoopDrag?
+    /// Tolérance, en points, pour attraper une borne plutôt que le corps.
+    private let edgeGrab = 7.0
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -82,13 +89,33 @@ final class TimelineMetalView: MTKView {
         p.y <= rulerHeight || event.modifierFlags.contains(.shift)
     }
 
+    /// Ce qu'un clic à cet endroit ferait à la boucle existante : rien, la
+    /// déplacer, ou tirer l'une de ses bornes.
+    private func grab(at p: CGPoint) -> LoopDrag? {
+        guard let model, let loop = model.loop, p.y <= rulerHeight else { return nil }
+        let x0 = model.point(ofTime: loop.lowerBound)
+        let x1 = model.point(ofTime: loop.upperBound)
+        if abs(Double(p.x) - x0) <= edgeGrab { return .resizing(.start) }
+        if abs(Double(p.x) - x1) <= edgeGrab { return .resizing(.end) }
+        if Double(p.x) > x0, Double(p.x) < x1 {
+            return .moving(grab: model.time(atPoint: Double(p.x)) - loop.lowerBound)
+        }
+        return nil
+    }
+
     override func mouseDown(with event: NSEvent) {
         guard let model else { return }
         let p = location(event)
         model.cancelTurn()
+        if event.clickCount >= 2, p.y <= rulerHeight {
+            model.loop = nil
+            loopDrag = nil
+            return
+        }
         if drawsLoop(event, at: p) {
-            loopAnchor = model.time(atPoint: Double(p.x))
-            if event.clickCount >= 2 { model.loop = nil; loopAnchor = nil }
+            // Une boucle déjà posée s'attrape : par le corps pour la déplacer, par
+            // un bord pour l'étendre. Ailleurs, le glisser en trace une nouvelle.
+            loopDrag = grab(at: p) ?? .creating(anchor: model.time(atPoint: Double(p.x)))
         } else {
             model.seek(to: model.time(atPoint: Double(p.x)))
             model.beginProbe(at: p)
@@ -99,26 +126,46 @@ final class TimelineMetalView: MTKView {
         guard let model else { return }
         let p = location(event)
         model.hover = p
-        if let anchor = loopAnchor {
-            // ⌘ enfoncé pendant le geste libère les bornes de la grille.
-            model.setLoop(from: anchor, to: model.time(atPoint: Double(p.x)),
-                          snapping: !event.modifierFlags.contains(.command))
-        } else {
-            model.seek(to: model.time(atPoint: Double(p.x)))
+        // ⌘ enfoncé pendant le geste libère les bornes de la grille.
+        let snapping = !event.modifierFlags.contains(.command)
+        let time = model.time(atPoint: Double(p.x))
+        switch loopDrag {
+        case .creating(let anchor):
+            model.setLoop(from: anchor, to: time, snapping: snapping)
+        case .moving(let grab):
+            model.moveLoop(startingAt: time - grab, snapping: snapping)
+        case .resizing(let edge):
+            model.dragLoop(edge: edge, to: time, snapping: snapping)
+        case nil:
+            model.seek(to: time)
         }
     }
 
     override func mouseUp(with event: NSEvent) {
-        loopAnchor = nil
+        loopDrag = nil
         model?.endProbe()
+        cursor(at: location(event))
     }
 
     override func mouseMoved(with event: NSEvent) {
-        model?.hover = location(event)
+        let p = location(event)
+        model?.hover = p
+        cursor(at: p)
+    }
+
+    /// Le curseur annonce ce qui va se passer : sans cela, rien ne laisse deviner
+    /// qu'une boucle posée se rattrape.
+    private func cursor(at p: CGPoint) {
+        switch grab(at: p) {
+        case .resizing: NSCursor.resizeLeftRight.set()
+        case .moving: NSCursor.openHand.set()
+        default: NSCursor.arrow.set()
+        }
     }
 
     override func mouseExited(with event: NSEvent) {
         model?.hover = nil
+        NSCursor.arrow.set()
     }
 
     // MARK: Clavier
@@ -382,7 +429,8 @@ struct TimelineOverlay: View {
             context.stroke(Path(ellipseIn: ring), with: .color(.white), lineWidth: 1.5)
 
             text = String(format: "%@   %.1f Hz   %@",
-                          Pitch.noteName(for: snap.frequency, referenceA: model.display.referenceA),
+                          Pitch.noteName(for: snap.frequency, referenceA: model.display.referenceA,
+                                         flats: model.display.useFlats),
                           snap.frequency, AppModel.format(snap.time))
         } else {
             // Rien d'assez clair alentour : on retombe sur la lecture brute.

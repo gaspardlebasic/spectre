@@ -324,6 +324,101 @@ let free = ruled.snap(3.31, unit: 0)
 check("un pas nul laisse la borne libre", free == 3.31,
       String(format: "%.3f s inchangés", free))
 
+// --- Noms de notes ----------------------------------------------------------
+print("\n=== Noms de notes ===")
+let blackKey = Pitch.frequency(ofMidi: 63)          // touche noire entre Ré et Mi
+check("les touches noires se nomment par le bas",
+      Pitch.noteName(for: blackKey, flats: true).hasPrefix("Mi♭"),
+      Pitch.noteName(for: blackKey, flats: true))
+check("et par le haut si on le demande",
+      Pitch.noteName(for: blackKey, flats: false).hasPrefix("Ré♯"),
+      Pitch.noteName(for: blackKey, flats: false))
+check("les touches blanches ne changent pas",
+      Pitch.noteName(for: 440, flats: true) == Pitch.noteName(for: 440, flats: false),
+      Pitch.noteName(for: 440, flats: true))
+check("les deux écritures désignent la même hauteur",
+      Pitch.flatNames.count == 12 && Pitch.sharpNames.count == 12,
+      "12 noms de chaque côté")
+
+// --- Manipulation de la boucle ----------------------------------------------
+// Une boucle posée s'attrape par le corps pour la déplacer, par un bord pour
+// l'étendre. Chaque geste a sa règle, et c'est là que les erreurs se logent.
+print("\n=== Manipulation de la boucle ===")
+let asIs: (Double) -> Double = { $0 }
+let onBeats: (Double) -> Double = { ruled.snap($0, unit: 1) }
+let piece = 60.0
+
+check("un tracé à l'envers donne la même boucle",
+      LoopEditing.made(from: 12, to: 4, duration: piece, snap: asIs) == 4...12,
+      "\(LoopEditing.made(from: 12, to: 4, duration: piece, snap: asIs)!)")
+check("un geste trop court n'est pas une boucle",
+      LoopEditing.made(from: 4, to: 4.02, duration: piece, snap: asIs) == nil,
+      "aucune boucle")
+
+let shifted = LoopEditing.moved(4...12, startingAt: 20.4, duration: piece, snap: onBeats)
+check("déplacer conserve la durée",
+      abs((shifted.upperBound - shifted.lowerBound) - 8) < 1e-9,
+      String(format: "%.3f s, comme avant", shifted.upperBound - shifted.lowerBound))
+check("seul le début s'aimante",
+      abs(ruled.beat(at: shifted.lowerBound) - ruled.beat(at: shifted.lowerBound).rounded()) < 1e-9,
+      String(format: "début à %.3f s (temps %.0f), fin à %.3f s",
+             shifted.lowerBound, ruled.beat(at: shifted.lowerBound), shifted.upperBound))
+
+let pushed = LoopEditing.moved(4...12, startingAt: 58, duration: piece, snap: asIs)
+check("arrivée au bout, la boucle s'arrête au lieu de se raccourcir",
+      pushed == 52...60,
+      String(format: "%.0f s…%.0f s", pushed.lowerBound, pushed.upperBound))
+
+let stretched = LoopEditing.resized(4...12, edge: .end, to: 30, duration: piece, snap: asIs)
+check("tirer la fin étend la boucle", stretched == 4...30,
+      String(format: "%.0f s…%.0f s", stretched.lowerBound, stretched.upperBound))
+
+let crossed = LoopEditing.resized(4...12, edge: .start, to: 40, duration: piece, snap: asIs)
+check("une borne ne traverse pas sa voisine",
+      abs(crossed.upperBound - crossed.lowerBound - LoopEditing.minimumLength) < 1e-9,
+      String(format: "arrêtée à %.0f ms de l'autre bord",
+             (crossed.upperBound - crossed.lowerBound) * 1000))
+
+// --- Réglages conservés -----------------------------------------------------
+print("\n=== Réglages conservés ===")
+var session = FileSession()
+session.display.floorDb = -73
+session.display.useFlats = false
+session.tempo = TempoGrid(bpm: 96.5, origin: 1.25, beatsPerBar: 3)
+session.loop = 12.5...20.25
+session.playhead = 41.5
+session.speed = 0.6
+session.viewport.startColumn = 1234
+
+let encoded = try! JSONEncoder().encode(session)
+let decoded = try! JSONDecoder().decode(FileSession.self, from: encoded)
+check("aller-retour fidèle", decoded == session,
+      "\(encoded.count) octets")
+check("la tête de lecture est exclue de la comparaison",
+      { var other = session; other.playhead = 3; return other.withoutPlayhead == session.withoutPlayhead }(),
+      "seule elle peut bouger sans déclencher d'écriture")
+
+// L'empreinte ignore le chemin : un morceau rangé ailleurs garde ses réglages.
+let temporary = FileManager.default.temporaryDirectory
+let contents = Data((0..<200_000).map { UInt8($0 % 251) })
+let a = temporary.appendingPathComponent("empreinte-a.bin")
+let b = temporary.appendingPathComponent("empreinte-b.bin")
+let c = temporary.appendingPathComponent("empreinte-c.bin")
+try! contents.write(to: a)
+try! contents.write(to: b)
+try! (contents.dropLast() + Data([9])).write(to: c)
+defer { for u in [a, b, c] { try? FileManager.default.removeItem(at: u) } }
+
+check("le même morceau rangé ailleurs a la même empreinte",
+      SessionStore.fingerprint(of: a) == SessionStore.fingerprint(of: b),
+      String(SessionStore.fingerprint(of: a)?.prefix(16) ?? "—"))
+check("un autre contenu a une autre empreinte",
+      SessionStore.fingerprint(of: a) != SessionStore.fingerprint(of: c),
+      String(SessionStore.fingerprint(of: c)?.prefix(16) ?? "—"))
+check("un fichier absent n'a pas d'empreinte",
+      SessionStore.fingerprint(of: temporary.appendingPathComponent("néant.bin")) == nil,
+      "aucune, et rien ne casse")
+
 // --- Sinusoïde d'écoute -----------------------------------------------------
 // Ce qui compte n'est pas qu'une sinusoïde sorte, mais qu'elle sorte *sans clic* :
 // une discontinuité d'amplitude ou de phase s'entend immédiatement, et le geste

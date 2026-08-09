@@ -32,6 +32,9 @@ struct DisplaySettings: Equatable, Codable {
     var colorMap: ColorMap = .notes
     var showGrid: Bool = true
 
+    /// Nommer les touches noires par le bas (Mi♭) plutôt que par le haut (Ré♯).
+    var useFlats: Bool = true
+
     /// Fréquence du La₃, qui détermine où tombent les bandes de la palette
     /// « notes », les noms de notes et les repères d'octaves.
     var referenceA: Double = 440

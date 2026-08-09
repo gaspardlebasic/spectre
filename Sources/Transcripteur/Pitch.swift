@@ -1,7 +1,14 @@
 import Foundation
 
 enum Pitch {
-    static let names = ["Do", "Do♯", "Ré", "Ré♯", "Mi", "Fa", "Fa♯", "Sol", "Sol♯", "La", "La♯", "Si"]
+    /// Les cinq touches noires, nommées par le haut ou par le bas. Aucune des deux
+    /// écritures n'est plus juste que l'autre — c'est la tonalité qui tranche, et
+    /// l'application ne la connaît pas — mais les bémols sont plus fréquents dans
+    /// la plupart des répertoires, d'où le choix par défaut.
+    static let sharpNames = ["Do", "Do♯", "Ré", "Ré♯", "Mi", "Fa", "Fa♯", "Sol", "Sol♯", "La", "La♯", "Si"]
+    static let flatNames = ["Do", "Ré♭", "Ré", "Mi♭", "Mi", "Fa", "Sol♭", "Sol", "La♭", "La", "Si♭", "Si"]
+
+    static func names(flats: Bool) -> [String] { flats ? flatNames : sharpNames }
 
     /// Diapason usuel, en hertz. Toutes les fonctions ci-dessous acceptent une
     /// autre référence : le La₃ ne vaut pas 440 Hz partout ni à toutes les époques.
@@ -17,12 +24,13 @@ enum Pitch {
 
     /// Nom de note français, numéro d'octave (notation scientifique) et écart en
     /// cents, ex. « La4 +3¢ ».
-    static func noteName(for frequency: Double, referenceA: Double = standardA) -> String {
+    static func noteName(for frequency: Double, referenceA: Double = standardA,
+                         flats: Bool = true) -> String {
         guard frequency > 0 else { return "—" }
         let m = midi(from: frequency, referenceA: referenceA)
         let rounded = Int(m.rounded())
         let cents = Int(((m - Double(rounded)) * 100).rounded())
-        let name = names[((rounded % 12) + 12) % 12]
+        let name = names(flats: flats)[((rounded % 12) + 12) % 12]
         let octave = rounded / 12 - 1
         let sign = cents >= 0 ? "+" : "−"
         return "\(name)\(octave) \(sign)\(abs(cents))¢"

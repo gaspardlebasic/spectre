@@ -1,7 +1,7 @@
 import Foundation
 
 /// Grille métrique : un tempo, un point de départ, une signature.
-struct TempoGrid: Equatable {
+struct TempoGrid: Equatable, Codable {
     var bpm: Double
     /// Instant du premier temps fort, en secondes.
     var origin: Double
