@@ -63,6 +63,10 @@ struct DemucsSeparator: StemSeparator {
         let total = Double(Self.groups(for: variant).count * starts.count)
         var done = 0.0
 
+        guard let fourier = DemucsFourier() else {
+            throw SeparationFailure.engine("transformée de Fourier indisponible")
+        }
+
         let environment: ORTEnv
         do {
             environment = try ORTEnv(loggingLevel: .warning)
@@ -86,7 +90,8 @@ struct DemucsSeparator: StemSeparator {
             for start in starts {
                 if isCancelled() { throw SeparationFailure.cancelled }
                 let count = min(Self.segment, length - start)
-                let voices = try Self.apply(session, to: mix, from: start, count: count)
+                let voices = try Self.apply(session, fourier: fourier,
+                                            to: mix, from: start, count: count)
 
                 // Fondu enchaîné : chaque tranche est pesée par une fenêtre
                 // triangulaire, et l'on divise à la fin par la somme des poids. Sans
@@ -133,8 +138,14 @@ struct DemucsSeparator: StemSeparator {
     // MARK: Une tranche
 
     /// Applique le réseau à une tranche et rend ses huit voies — quatre sources,
-    /// deux canaux — dans l'ordre où le modèle les produit.
-    private static func apply(_ session: ORTSession, to mix: [[Float]],
+    /// deux canaux.
+    ///
+    /// Le graphe ne fait plus les transformées : on lui donne le spectre en même
+    /// temps que la forme d'onde — dont sa branche temporelle a besoin — et il rend
+    /// le spectre masqué plus cette branche. La transformée inverse et le recollement
+    /// des deux branches se font ici.
+    private static func apply(_ session: ORTSession, fourier: DemucsFourier,
+                              to mix: [[Float]],
                               from start: Int, count: Int) throws -> [[Float]] {
         // La tranche est complétée par du silence quand on arrive au bout : le
         // réseau n'accepte qu'une taille, celle sur laquelle il a été figé.
@@ -148,24 +159,65 @@ struct DemucsSeparator: StemSeparator {
             }
         }
 
-        let data = NSMutableData(bytes: &flat, length: flat.count * MemoryLayout<Float>.size)
-        let input = try ORTValue(tensorData: data, elementType: .float,
-                                 shape: [1, NSNumber(value: channels), NSNumber(value: segment)])
-        let outputs = try session.run(withInputs: ["mix": input],
-                                      outputNames: ["stems"], runOptions: nil)
-        guard let stems = outputs["stems"] else {
-            throw SeparationFailure.engine("le réseau n'a rien rendu")
+        // Le spectre, rangé comme PyTorch : (canal, raie, trame, réel/imaginaire).
+        let bins = DemucsFourier.bins
+        let frames = DemucsFourier.frames(for: segment)
+        let plane = bins * frames
+        var spec = [Float](repeating: 0, count: channels * plane * 2)
+        for c in 0..<channels {
+            let (real, imaginary) = fourier.spectrogram(
+                of: Array(flat[c * segment..<(c + 1) * segment]))
+            let base = c * plane * 2
+            for k in 0..<plane {
+                spec[base + k * 2] = real[k]
+                spec[base + k * 2 + 1] = imaginary[k]
+            }
         }
 
-        let raw = try stems.tensorData() as Data
+        let mixData = NSMutableData(bytes: &flat, length: flat.count * MemoryLayout<Float>.size)
+        let specData = NSMutableData(bytes: &spec, length: spec.count * MemoryLayout<Float>.size)
+        let inputs = [
+            "mix": try ORTValue(tensorData: mixData, elementType: .float,
+                                shape: [1, NSNumber(value: channels), NSNumber(value: segment)]),
+            "spec": try ORTValue(tensorData: specData, elementType: .float,
+                                 shape: [1, NSNumber(value: channels), NSNumber(value: bins),
+                                         NSNumber(value: frames), 2]),
+        ]
+        let outputs = try session.run(withInputs: inputs,
+                                      outputNames: ["zout", "xt"], runOptions: nil)
+        guard let zout = outputs["zout"], let xt = outputs["xt"] else {
+            throw SeparationFailure.engine("le réseau n'a rien rendu")
+        }
+        let spectra = try zout.tensorData() as Data
+        let temporal = try xt.tensorData() as Data
+
         let voices = Stem.separated.count * channels
-        guard raw.count >= voices * segment * MemoryLayout<Float>.size else {
+        guard spectra.count >= voices * plane * 2 * MemoryLayout<Float>.size,
+              temporal.count >= voices * segment * MemoryLayout<Float>.size else {
             throw SeparationFailure.engine("sortie de taille inattendue")
         }
-        return raw.withUnsafeBytes { bytes -> [[Float]] in
-            let values = bytes.bindMemory(to: Float.self)
-            return (0..<voices).map { v in
-                Array(values[(v * segment)..<(v * segment + count)])
+
+        return spectra.withUnsafeBytes { zBytes -> [[Float]] in
+            temporal.withUnsafeBytes { tBytes -> [[Float]] in
+                let z = zBytes.bindMemory(to: Float.self)
+                let t = tBytes.bindMemory(to: Float.self)
+                var real = [Float](repeating: 0, count: plane)
+                var imaginary = [Float](repeating: 0, count: plane)
+                return (0..<voices).map { v in
+                    let base = v * plane * 2
+                    for k in 0..<plane {
+                        real[k] = z[base + k * 2]
+                        imaginary[k] = z[base + k * 2 + 1]
+                    }
+                    // Les deux branches se rejoignent ici, comme le faisait la
+                    // dernière ligne du réseau.
+                    let spectral = fourier.signal(real: real, imaginary: imaginary,
+                                                  length: segment)
+                    var voice = [Float](repeating: 0, count: count)
+                    let offset = v * segment
+                    for i in 0..<count { voice[i] = spectral[i] + t[offset + i] }
+                    return voice
+                }
             }
         }
     }

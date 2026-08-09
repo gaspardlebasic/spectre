@@ -24,6 +24,19 @@ swiftc -O "$SRC/Analyzer.swift" "$SRC/Spectrogram.swift" "$SRC/Viewport.swift" \
 "$OUT/rendercheck" "$OUT/rendu.png"
 
 echo
+echo "=== Fourier ==="
+# La référence vient de PyTorch : on ne la refait que si l'environnement existe.
+if [ -x build/modele/venv/bin/python ] && [ ! -f build/fourier/signal.f32 ]; then
+  build/modele/venv/bin/python Tools/Fourier/reference.py >/dev/null
+fi
+if [ -f build/fourier/signal.f32 ]; then
+  swiftc -O "$SRC/Fourier.swift" Tools/FourierCheck/main.swift -o "$OUT/fouriercheck"
+  "$OUT/fouriercheck"
+else
+  echo "  (référence absente — lancer Tools/Fourier/reference.py)"
+fi
+
+echo
 echo "=== Séparation ==="
 swiftc -O "$SRC/Stems.swift" "$SRC/Separation.swift" "$SRC/AudioFile.swift" \
        "$SRC/SessionStore.swift" "$SRC/DisplaySettings.swift" "$SRC/Tempo.swift" \

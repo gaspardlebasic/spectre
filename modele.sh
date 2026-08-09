@@ -52,8 +52,15 @@ if [ ! -d "$FORK/.git" ]; then
   git clone --quiet --branch allchanges --depth 20 \
     https://github.com/dhunstack/demucs.git "$FORK"
 else
-  git -C "$FORK" fetch --quiet origin allchanges && git -C "$FORK" checkout --quiet allchanges
+  git -C "$FORK" fetch --quiet origin allchanges
+  git -C "$FORK" checkout --quiet --force allchanges
 fi
+
+# Notre correctif : le réseau reçoit le spectre au lieu de le calculer, et rend le
+# spectre masqué plus la branche temporelle. Les transformées se font côté Swift,
+# avec Accelerate — ce qui retire du graphe 128 Mo de tables de Fourier et remplace
+# une multiplication matricielle en N² par une FFT en N log N.
+git -C "$FORK" apply "$PWD/Tools/Fourier/spectre-externe.patch"
 
 # Toujours vérifié, pas seulement à la création : l'environnement peut dater d'un
 # passage où il manquait une dépendance. Rien de tout cela ne survit à la
@@ -84,21 +91,26 @@ out.mkdir(exist_ok=True)
 def export(model, target):
     """Fige un réseau sur une tranche de la taille qu'il a apprise."""
     model.eval()
-    # Le drapeau du fork : il bascule la STFT et son inverse sur la version en
-    # tenseurs réels. Sans lui, l'export échoue dans `torch.functional.stft`.
+    # Le drapeau du fork bascule la STFT sur des tenseurs réels — nécessaire pour que
+    # `_spec` reste traçable, puisqu'on s'en sert encore pour fabriquer l'exemple.
     model.onnx_exportable = True
+    # Le nôtre sort les transformées du graphe.
+    model.external_spectrogram = True
     length = int(model.segment * model.samplerate)
-    example = F.pad(torch.randn(1, model.audio_channels, 343980), (0, length - 343980))
+    mix = F.pad(torch.randn(1, model.audio_channels, 343980), (0, length - 343980))
+    with torch.no_grad():
+        spec = model._spec(mix)
     target.unlink(missing_ok=True)          # pas de reste d'un essai précédent
-    print(f"   {target.name}  (tranche {length})", flush=True)
+    print(f"   {target.name}  (tranche {length}, spectre {tuple(spec.shape)})", flush=True)
     with torch.no_grad():
         # `dynamo=False` : le chemin par traçage, celui qu'ont employé les gens de
         # Mixxx. L'exportateur récent de torch 2.9 bute en amont, sur une taille
         # calculée dans `pad1d` qu'il ne sait pas trancher.
-        torch.onnx.export(model, example, str(target),
+        torch.onnx.export(model, (mix, spec), str(target),
                           export_params=True, opset_version=17,
                           do_constant_folding=True, dynamo=False,
-                          input_names=["mix"], output_names=["stems"])
+                          input_names=["mix", "spec"],
+                          output_names=["zout", "xt"])
 
 
 def core(bag):

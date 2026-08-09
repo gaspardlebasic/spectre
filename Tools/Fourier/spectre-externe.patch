@@ -1,0 +1,60 @@
+diff --git a/demucs/htdemucs.py b/demucs/htdemucs.py
+index 451f487..51b751e 100644
+--- a/demucs/htdemucs.py
++++ b/demucs/htdemucs.py
+@@ -548,7 +548,14 @@ class HTDemucs(nn.Module):
+                     f"training length {training_length}")
+         return training_length
+ 
+-    def forward(self, mix):
++    def forward(self, mix, spec=None):
++        # `external_spectrogram` : la STFT et son inverse sont faites au dehors, par
++        # l'application. Le graphe reçoit alors le spectre déjà calculé et rend le
++        # spectre masqué plus la branche temporelle, à charge pour l'appelant de les
++        # recoller. On y gagne les tables de Fourier — 128 Mo figés dans le graphe —
++        # et le coût en N² d'une multiplication matricielle là où une FFT coûte
++        # N log N.
++        external = getattr(self, "external_spectrogram", False)
+         length = mix.shape[-1]
+         length_pre_pad = None
+         if self.use_train_segment:
+@@ -559,7 +566,7 @@ class HTDemucs(nn.Module):
+                 if mix.shape[-1] < training_length:
+                     length_pre_pad = mix.shape[-1]
+                     mix = F.pad(mix, (0, training_length - length_pre_pad))
+-        z = self._spec(mix)
++        z = spec if external else self._spec(mix)
+         mag = self._magnitude(z).to(mix.device)
+         x = mag
+ 
+@@ -659,7 +666,9 @@ class HTDemucs(nn.Module):
+             x = x.cpu()
+ 
+         zout = self._mask(z, x)
+-        if self.use_train_segment:
++        if external:
++            x = None
++        elif self.use_train_segment:
+             if self.training:
+                 x = self._ispec(zout, length)
+             else:
+@@ -668,7 +677,7 @@ class HTDemucs(nn.Module):
+             x = self._ispec(zout, length)
+ 
+         # back to mps device
+-        if x_is_mps_xpu:
++        if x_is_mps_xpu and x is not None:
+             x = x.to(x_device)
+ 
+         if self.use_train_segment:
+@@ -679,6 +688,10 @@ class HTDemucs(nn.Module):
+         else:
+             xt = xt.view(B, S, -1, length)
+         xt = xt * stdt[:, None] + meant[:, None]
++        if external:
++            # Le recollement — transformée inverse puis somme des deux branches —
++            # revient à l'appelant.
++            return zout, xt
+         x = xt + x
+         if length_pre_pad:
+             x = x[..., :length_pre_pad]

@@ -139,8 +139,16 @@ def verify(reference, candidate, samples):
 
     def run(path):
         session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
-        name = session.get_inputs()[0].name
-        return session.run(None, {name: signal})[0]
+        # Le graphe a plusieurs entrées depuis que les transformées sont au dehors :
+        # on les remplit toutes, en déduisant les formes du modèle lui-même.
+        feed = {}
+        for entry in session.get_inputs():
+            if len(entry.shape) == 3:
+                feed[entry.name] = signal
+            else:
+                feed[entry.name] = rng.standard_normal(
+                    [d if isinstance(d, int) else 1 for d in entry.shape]).astype(np.float32)
+        return session.run(None, feed)[0]
 
     before, after = run(reference), run(candidate)
     scale = float(np.abs(before).max())
@@ -188,6 +196,14 @@ def main():
     blob_name = f"{args.prefix}-fourier.bin"
     blob = args.directory / blob_name
     placement = share_big_tensors(models, blob, blob_name)
+    if not placement and not args.demi_precision:
+        # Plus rien de gros à partager : c'est le cas depuis que les transformées se
+        # font côté Swift. On remet les fichiers en place plutôt que d'en écrire des
+        # copies identiques.
+        for keep, path in zip(originals, sources):
+            keep.rename(path)
+        print("   rien à partager : les tables de Fourier ne sont plus dans le graphe")
+        return 0
     if placement:
         print(f"→ {blob_name} : {len(placement)} table(s) partagée(s),"
               f" {blob.stat().st_size / 1e6:.0f} Mo")
