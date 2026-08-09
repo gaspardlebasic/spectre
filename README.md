@@ -85,7 +85,8 @@ regarde le morceau en entier.
 | ⇧ + pincement, ⇧ + molette | Zoom fréquentiel, ancré lui aussi |
 | ⌥ + molette | Zoom temporel (souris à molette) |
 | Clic, glisser | Placer la tête de lecture, **et entendre la raie désignée** |
-| Glisser dans la réglette, ⇧ + glisser | Tracer la boucle |
+| Glisser dans la réglette, ⇧ + glisser | Tracer la boucle, aimantée sur la grille |
+| ⌘ pendant le tracé | Poser les bornes où l'on veut |
 | Espace | Lire / mettre en pause |
 | ← → (⇧ pour 5 s) | Reculer, avancer |
 | `[` `]` | Poser le début, la fin de la boucle |
@@ -144,11 +145,32 @@ touche au trackpad. En fin de fichier, quand il n'y a plus rien à découvrir, l
 destination se confond avec la position courante et il ne se passe simplement
 rien.
 
+## N'entendre que ce qu'on regarde
+
+La bande passante de la lecture suit la portion visible de l'axe des fréquences :
+zoomer sur les graves isole la basse. Le filtre se règle image par image, donc
+pendant qu'on déplace la vue au trackpad sans interrompre la lecture — les
+consignes ne sont retouchées que lorsque l'écart dépasse un dixième de demi-ton,
+de quoi rester fluide sans faire travailler les biquads pour rien.
+
+Deux passe-haut et deux passe-bas en cascade, soit 24 dB par octave de chaque
+côté : un seul biquad laisserait passer la basse voisine qu'on cherche
+précisément à écarter. Le filtrage est placé **avant** la transposition, si bien
+que ce qu'on entend correspond à ce qu'on voit même en jouant un ton plus haut.
+Quand tout le spectre est à l'écran, les filtres sont retirés — il ne s'agit pas
+de filtrer entre les deux extrêmes de l'analyse, mais de ne pas filtrer du tout.
+
 ## Boucle A–B
 
 Un glisser dans la réglette du haut trace la boucle ; ce qui est en dehors
 s'assombrit, de sorte qu'on voit d'un coup d'œil ce qui va être joué. `B` la cale
 sur les mesures qui l'encadrent, ce qui est presque toujours ce qu'on veut.
+
+Les bornes s'aimantent sur la grille, et **⌘ pendant le geste les libère**, comme
+dans les séquenceurs. Le pas d'aimantation est celui de la grille *dessinée* :
+mesures, temps ou subdivisions selon le zoom, si bien que ce sur quoi les bornes
+se posent est exactement ce qu'on voit. Trop dézoomé pour qu'une grille
+s'affiche, on se cale quand même sur les mesures.
 
 Les tours sont **programmés d'avance dans la file du lecteur** (trois d'avance,
 réalimentés à mesure) plutôt que déclenchés à l'arrivée sur la fin : la reprise
@@ -173,7 +195,9 @@ traits. Les mesures sont numérotées dès qu'elles ont la place.
 L'estimation reste une estimation : quand le pic d'autocorrélation n'est pas
 franc, un « ≈ » s'affiche devant le tempo plutôt que de faire croire à une
 certitude. ÷2, ×2, la signature et « 1 ici » permettent de rattraper les erreurs
-classiques en trois clics.
+classiques en trois clics, et ↻ relance l'estimation — avec la signature choisie,
+ce qui en fait autre chose qu'un simple retour en arrière : à 3/4, la recherche du
+premier temps ne cherche pas au même endroit qu'à 4/4.
 
 ## La palette « notes »
 
@@ -204,6 +228,12 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
 - **Tempo** — un click-track de synthèse à 132 BPM, accentué sur le premier temps,
   passe par toute la chaîne : le tempo doit ressortir à moins d'un BPM près, les
   temps tomber sur les clicks, et le premier temps sur l'accent.
+- **Bande écoutée** — tout le spectre visible ne demande aucun filtrage, un zoom
+  de deux octaves donne une bande de deux octaves, et déplacer la vue déplace la
+  bande d'autant.
+- **Aimantation de la boucle** — le pas suit le zoom (mesures, temps, doubles
+  croches), une borne retombe sur le multiple le plus proche, et un pas nul la
+  laisse libre.
 - **Sinusoïde d'écoute** — fréquence sortie, arrivée du glissando, et absence de
   saut à l'attaque, au bond d'octave et à l'extinction : l'écart entre deux
   échantillons ne doit jamais dépasser ce qu'exige la sinusoïde elle-même.

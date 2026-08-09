@@ -76,7 +76,8 @@ final class TimelineMetalView: MTKView {
     // MARK: Souris
 
     /// Un glisser dans la réglette du haut — ou avec ⇧ n'importe où — trace la
-    /// boucle ; partout ailleurs, il déplace la tête de lecture.
+    /// boucle ; partout ailleurs, il déplace la tête de lecture et fait sonner la
+    /// raie désignée.
     private func drawsLoop(_ event: NSEvent, at p: CGPoint) -> Bool {
         p.y <= rulerHeight || event.modifierFlags.contains(.shift)
     }
@@ -99,7 +100,9 @@ final class TimelineMetalView: MTKView {
         let p = location(event)
         model.hover = p
         if let anchor = loopAnchor {
-            model.setLoop(from: anchor, to: model.time(atPoint: Double(p.x)))
+            // ⌘ enfoncé pendant le geste libère les bornes de la grille.
+            model.setLoop(from: anchor, to: model.time(atPoint: Double(p.x)),
+                          snapping: !event.modifierFlags.contains(.command))
         } else {
             model.seek(to: model.time(atPoint: Double(p.x)))
         }
@@ -229,13 +232,9 @@ struct TimelineOverlay: View {
         guard pointsPerBeat > 0.5 else { return }
 
         let beatsPerBar = Double(max(tempo.beatsPerBar, 1))
-        // Pas le plus fin qui reste lisible : subdivisions, temps, ou mesures.
-        let subdivision: Double
-        if pointsPerBeat >= 120 { subdivision = 0.25 }
-        else if pointsPerBeat >= 60 { subdivision = 0.5 }
-        else if pointsPerBeat >= 9 { subdivision = 1 }
-        else if pointsPerBeat * beatsPerBar >= 7 { subdivision = beatsPerBar }
-        else { return }
+        // Le pas est celui du modèle : ce qu'on dessine est exactement ce sur quoi
+        // la boucle s'aimante.
+        guard let subdivision = model.gridUnit else { return }
 
         let first = (tempo.beat(at: model.time(atPoint: 0)) / subdivision).rounded(.down) * subdivision
         let last = tempo.beat(at: model.time(atPoint: Double(size.width)))

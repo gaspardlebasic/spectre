@@ -16,6 +16,26 @@ struct TempoGrid: Equatable {
     /// Numéro de temps (fractionnaire) à un instant donné. 0 = le premier temps fort.
     func beat(at time: Double) -> Double { (time - origin) / beatSeconds }
     func time(ofBeat b: Double) -> Double { origin + b * beatSeconds }
+
+    /// Pas de grille le plus fin qui reste lisible à une densité donnée, en temps.
+    /// `nil` quand même les mesures se marcheraient dessus.
+    ///
+    /// Une seule définition sert au tracé *et* à l'aimantation de la boucle : ce
+    /// sur quoi les bornes se posent est exactement ce qu'on voit à l'écran.
+    func unit(pointsPerBeat: Double) -> Double? {
+        let bar = Double(max(beatsPerBar, 1))
+        if pointsPerBeat >= 120 { return 0.25 }
+        if pointsPerBeat >= 60 { return 0.5 }
+        if pointsPerBeat >= 9 { return 1 }
+        if pointsPerBeat * bar >= 7 { return bar }
+        return nil
+    }
+
+    /// Instant le plus proche sur une grille de pas donné.
+    func snap(_ time: Double, unit: Double) -> Double {
+        guard unit > 0 else { return time }
+        return self.time(ofBeat: (beat(at: time) / unit).rounded() * unit)
+    }
 }
 
 /// Estimation du tempo à partir du spectrogramme déjà calculé.

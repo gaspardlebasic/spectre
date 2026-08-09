@@ -265,6 +265,65 @@ let farAway = Snapping.nearest(to: CGPoint(x: 300, y: 20), in: scene, viewport: 
 check("hors de portée, pas d'aimantation", farAway == nil,
       farAway == nil ? "rien accroché" : "accroché à tort")
 
+// --- Bande écoutée ----------------------------------------------------------
+// « N'entendre que ce qu'on regarde » : la bande passante suit la portion visible
+// de l'axe des fréquences, et disparaît quand tout le spectre est à l'écran.
+print("\n=== Bande écoutée ===")
+var full = Viewport.fitting(columns: 400, bins: layout.binCount,
+                            size: (Double(size.width), Double(size.height)))
+check("tout le spectre visible ne filtre rien",
+      full.visibleBand(in: layout, height: Double(size.height)) == nil,
+      "aucune bande demandée")
+
+// Zoom sur les deux octaves du bas.
+var zoomed = full
+zoomed.binsPerPoint = 72 / Double(size.height)
+zoomed.bottomBin = 0
+if let audible = zoomed.visibleBand(in: layout, height: Double(size.height)) {
+    let octaves = log2(audible.upperBound / audible.lowerBound)
+    check("zoomer sur les graves restreint la bande", abs(octaves - 2) < 0.05,
+          String(format: "%.0f Hz…%.0f Hz, soit %.2f octaves",
+                 audible.lowerBound, audible.upperBound, octaves))
+} else {
+    check("zoomer sur les graves restreint la bande", false, "aucune bande demandée")
+}
+
+// La bande suit la vue : la même hauteur d'écran, deux octaves plus haut.
+var moved = zoomed
+moved.bottomBin = 72
+if let a = zoomed.visibleBand(in: layout, height: Double(size.height)),
+   let b = moved.visibleBand(in: layout, height: Double(size.height)) {
+    check("déplacer la vue déplace la bande",
+          abs(log2(b.lowerBound / a.lowerBound) - 2) < 0.05,
+          String(format: "%.0f Hz devient %.0f Hz", a.lowerBound, b.lowerBound))
+} else {
+    check("déplacer la vue déplace la bande", false, "aucune bande demandée")
+}
+
+// --- Aimantation de la boucle -----------------------------------------------
+// Le pas d'aimantation est celui de la grille dessinée : ce sur quoi les bornes
+// se posent est exactement ce qu'on voit.
+print("\n=== Aimantation de la boucle ===")
+let ruled = TempoGrid(bpm: 120, origin: 0.25, beatsPerBar: 4)
+check("très dézoomé, on se cale sur les mesures", ruled.unit(pointsPerBeat: 3) == 4,
+      "pas de \(ruled.unit(pointsPerBeat: 3).map { "\($0)" } ?? "—") temps")
+check("au zoom courant, sur les temps", ruled.unit(pointsPerBeat: 30) == 1,
+      "pas de \(ruled.unit(pointsPerBeat: 30).map { "\($0)" } ?? "—") temps")
+check("bien zoomé, sur les doubles croches", ruled.unit(pointsPerBeat: 150) == 0.25,
+      "pas de \(ruled.unit(pointsPerBeat: 150).map { "\($0)" } ?? "—") temps")
+
+// Une borne posée n'importe où doit retomber sur un multiple du pas.
+let snapped = ruled.snap(3.31, unit: 1)
+check("une borne se pose sur la grille",
+      abs(ruled.beat(at: snapped) - ruled.beat(at: snapped).rounded()) < 1e-9,
+      String(format: "3,310 s → %.3f s (temps %.0f)", snapped, ruled.beat(at: snapped)))
+check("elle se pose sur la plus proche", abs(snapped - 3.25) < 1e-9,
+      String(format: "%.3f s, entre les temps posés à %.3f et %.3f",
+             snapped, ruled.time(ofBeat: 6), ruled.time(ofBeat: 7)))
+let free = ruled.snap(3.31, unit: 0)
+check("un pas nul laisse la borne libre", free == 3.31,
+      String(format: "%.3f s inchangés", free))
+
 // --- Sinusoïde d'écoute -----------------------------------------------------
 // Ce qui compte n'est pas qu'une sinusoïde sorte, mais qu'elle sorte *sans clic* :
 // une discontinuité d'amplitude ou de phase s'entend immédiatement, et le geste

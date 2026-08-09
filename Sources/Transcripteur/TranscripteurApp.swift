@@ -104,6 +104,8 @@ struct TranscripteurApp: App {
                 Button("Poser le premier temps ici") { model.setDownbeatAtPlayhead() }
                     .keyboardShortcut("t", modifiers: [])
                 Divider()
+                Button("Recalculer la grille") { model.recomputeTempo() }
+                Divider()
                 Button("Moitié") { model.scaleTempo(by: 0.5) }.disabled(model.tempo == nil)
                 Button("Double") { model.scaleTempo(by: 2) }.disabled(model.tempo == nil)
             }
@@ -266,10 +268,23 @@ struct ContentView: View {
                 .frame(width: 66)
                 Button("1 ici") { model.setDownbeatAtPlayhead() }
                     .help("Poser le premier temps à la tête de lecture (T)")
+                Button {
+                    model.recomputeTempo()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .help("Recalculer la grille, avec la signature choisie")
             } else {
                 Text("tempo indéterminé")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
+                Button {
+                    model.recomputeTempo()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .help("Chercher une grille")
+                .disabled(model.spectrogram.columnCount == 0)
             }
         }
         .controlSize(.small)

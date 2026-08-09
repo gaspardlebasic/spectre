@@ -13,6 +13,13 @@ import Observation
     private let engine = AVAudioEngine()
     private let node = AVAudioPlayerNode()
     private let timePitch = AVAudioUnitTimePitch()
+    /// Deux passe-haut et deux passe-bas en cascade : 24 dB par octave de chaque
+    /// côté. Un seul biquad (12 dB/octave) laisserait passer la basse voisine
+    /// qu'on cherche précisément à écarter.
+    private let band = AVAudioUnitEQ(numberOfBands: 4)
+    /// Bande actuellement appliquée, pour ne pas retoucher les filtres à chaque
+    /// image quand rien n'a bougé.
+    @ObservationIgnored private var appliedBand: ClosedRange<Double>?
 
     @ObservationIgnored private var file: AVAudioFile?
     @ObservationIgnored private var fileSampleRate: Double = 44100
@@ -43,6 +50,41 @@ import Observation
     init() {
         engine.attach(node)
         engine.attach(timePitch)
+        engine.attach(band)
+        for (i, parameters) in band.bands.enumerated() {
+            parameters.filterType = i < 2 ? .highPass : .lowPass
+            parameters.bypass = true
+        }
+    }
+
+    /// Restreint la lecture à une bande de fréquences, ou la laisse entière.
+    ///
+    /// Les fréquences sont celles du **fichier**, pas celles qui sortent : le
+    /// filtrage est placé avant la transposition, si bien que ce qu'on entend
+    /// correspond à ce qu'on voit même quand on joue un ton plus haut.
+    func setBand(_ range: ClosedRange<Double>?) {
+        // Un mouvement de trackpad produit une consigne par image ; on ne retouche
+        // les filtres que lorsque l'écart devient audible (un dixième de demi-ton).
+        if let range, let applied = appliedBand,
+           abs(log2(range.lowerBound / applied.lowerBound)) < 0.005,
+           abs(log2(range.upperBound / applied.upperBound)) < 0.005 { return }
+        if range == nil && appliedBand == nil { return }
+        appliedBand = range
+
+        guard let range else {
+            for parameters in band.bands { parameters.bypass = true }
+            return
+        }
+        let nyquist = fileSampleRate / 2
+        let low = min(max(range.lowerBound, 20), nyquist * 0.95)
+        let high = min(max(range.upperBound, low * 1.05), nyquist * 0.95)
+        for (i, parameters) in band.bands.enumerated() {
+            let isHighPass = i < 2
+            parameters.frequency = Float(isHighPass ? low : high)
+            // Une borne collée au bord de l'analyse ne filtre rien : on la retire
+            // plutôt que de laisser un filtre travailler pour rien.
+            parameters.bypass = isHighPass ? low <= 25 : high >= nyquist * 0.9
+        }
     }
 
     func load(url: URL) {
@@ -53,8 +95,10 @@ import Observation
             fileSampleRate = f.processingFormat.sampleRate
             duration = Double(f.length) / fileSampleRate
             engine.disconnectNodeOutput(node)
+            engine.disconnectNodeOutput(band)
             engine.disconnectNodeOutput(timePitch)
-            engine.connect(node, to: timePitch, format: f.processingFormat)
+            engine.connect(node, to: band, format: f.processingFormat)
+            engine.connect(band, to: timePitch, format: f.processingFormat)
             engine.connect(timePitch, to: engine.mainMixerNode, format: f.processingFormat)
             engine.prepare()
             pausedAt = 0

@@ -73,6 +73,22 @@ struct Viewport: Equatable {
         }
     }
 
+    /// Bande de fréquences visible, ou `nil` quand tout le spectre est à l'écran.
+    ///
+    /// C'est cette bande que la lecture reproduit : n'entendre que ce qu'on
+    /// regarde. Le cas « tout est visible » est distingué exprès — il ne s'agit
+    /// pas de filtrer entre les deux extrêmes de l'analyse, mais de ne pas
+    /// filtrer du tout.
+    func visibleBand(in layout: BinLayout, height: Double) -> ClosedRange<Double>? {
+        let last = Double(layout.binCount - 1)
+        guard last > 0 else { return nil }
+        let bottom = max(bottomBin, 0)
+        let top = min(topBin(height: height), last)
+        guard top > bottom else { return nil }
+        guard bottom > 0.5 || top < last - 0.5 else { return nil }
+        return layout.frequency(atBin: bottom)...layout.frequency(atBin: top)
+    }
+
     /// Cadrage initial : tout le fichier en largeur, tout le spectre en hauteur.
     static func fitting(columns: Int, bins: Int,
                         size: (width: Double, height: Double)) -> Viewport {

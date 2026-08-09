@@ -143,6 +143,45 @@ import UniformTypeIdentifiers
         advanceTurn()
         if resized { clampViewport() }
         updateSnap()
+        updateBandFilter()
+    }
+
+    /// N'entendre que ce qu'on regarde.
+    ///
+    /// La bande passante suit la portion visible de l'axe des fréquences : zoomer
+    /// sur les graves isole la basse, et le filtre se règle image par image, donc
+    /// pendant qu'on déplace la vue au trackpad sans interrompre la lecture.
+    /// Quand tout le spectre est à l'écran, les filtres sont retirés — inutile de
+    /// faire travailler quatre biquads pour ne rien couper.
+    private func updateBandFilter() {
+        guard spectrogram.columnCount > 0 else { return }
+        player.setBand(viewport.visibleBand(in: spectrogram.layout,
+                                            height: Double(viewSize.height)))
+    }
+
+    // MARK: Grille
+
+    /// Pas de la grille actuellement dessinée, en temps. `nil` quand le zoom ne
+    /// permet plus d'en montrer une.
+    ///
+    /// Une seule définition sert au tracé *et* à l'aimantation : ce sur quoi la
+    /// boucle se cale est exactement ce qu'on voit, comme dans un séquenceur.
+    var gridUnit: Double? {
+        guard let tempo, tempo.bpm > 0, spectrogram.columnCount > 0 else { return nil }
+        return tempo.unit(pointsPerBeat: tempo.beatSeconds
+                            / spectrogram.secondsPerColumn / viewport.columnsPerPoint)
+    }
+
+    /// Pas d'aimantation. Trop dézoomé pour montrer une grille, on se cale quand
+    /// même sur les mesures : ⌘ reste de toute façon la porte de sortie.
+    private var snapUnit: Double? {
+        guard let tempo else { return nil }
+        return gridUnit ?? Double(max(tempo.beatsPerBar, 1))
+    }
+
+    func snapToGrid(_ time: Double) -> Double {
+        guard let tempo, let unit = snapUnit else { return time }
+        return tempo.snap(time, unit: unit)
     }
 
     private func updateSnap() {
@@ -249,9 +288,13 @@ import UniformTypeIdentifiers
     }
 
     /// Définit la boucle à partir de deux instants, dans n'importe quel ordre.
-    func setLoop(from a: Double, to b: Double) {
-        let lo = min(max(min(a, b), 0), duration)
-        let hi = min(max(max(a, b), 0), duration)
+    /// Par défaut les bornes se posent sur la grille ; ⌘ pendant le geste les
+    /// laisse libres, comme dans les séquenceurs.
+    func setLoop(from a: Double, to b: Double, snapping: Bool = false) {
+        let first = snapping ? snapToGrid(a) : a
+        let second = snapping ? snapToGrid(b) : b
+        let lo = min(max(min(first, second), 0), duration)
+        let hi = min(max(max(first, second), 0), duration)
         loop = hi - lo > 0.05 ? lo...hi : nil
     }
 
@@ -275,6 +318,19 @@ import UniformTypeIdentifiers
     }
 
     // MARK: Tempo
+
+    /// Relance l'estimation, avec la signature choisie par l'utilisateur — ce qui
+    /// en fait autre chose qu'un simple retour en arrière : à 3/4, la recherche du
+    /// premier temps ne cherche pas au même endroit qu'à 4/4.
+    func recomputeTempo() {
+        guard spectrogram.columnCount > 0 else { return }
+        let matrix = spectrogram
+        let signature = beatsPerBar
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let grid = TempoEstimator.estimate(matrix, beatsPerBar: signature)
+            DispatchQueue.main.async { self?.tempo = grid }
+        }
+    }
 
     func scaleTempo(by factor: Double) {
         guard var grid = tempo else { return }
