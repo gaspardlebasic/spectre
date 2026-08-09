@@ -10,15 +10,8 @@ import OnnxRuntimeBindings
 /// morceau consiste donc à le découper, appliquer le réseau tranche par tranche, et
 /// recoller le tout en fondu enchaîné.
 ///
-/// Deux variantes cohabitent. `htdemucs` rend les quatre pistes en un seul parcours ;
-/// `htdemucs_ft` est un sac de quatre réseaux dont chacun n'a appris qu'un instrument,
-/// et demande donc quatre parcours. Les sessions sont ouvertes et refermées l'une
-/// après l'autre : chacune occupe de la mémoire en quantité, et rien n'oblige à les
-/// tenir toutes ouvertes ensemble.
+/// Un seul réseau rend les quatre pistes, en un parcours du morceau.
 struct DemucsSeparator: StemSeparator {
-    /// Quelle variante employer — un réseau pour tout, ou un par piste.
-    var variant: SeparationModel = .fine
-
     /// Longueur de la tranche, en échantillons : `segment × samplerate` du modèle.
     static let segment = 343_980
     static let sampleRate = 44_100.0
@@ -29,7 +22,7 @@ struct DemucsSeparator: StemSeparator {
     func separate(fileAt url: URL,
                   progress: @escaping (Double) -> Void,
                   isCancelled: @escaping () -> Bool) throws -> [Stem: [[Float]]] {
-        guard StemStore.has(variant) else { throw SeparationFailure.modelMissing }
+        guard StemStore.hasModel else { throw SeparationFailure.modelMissing }
 
         var mix = try Self.loadForNetwork(url)
         let length = mix[0].count
@@ -60,7 +53,7 @@ struct DemucsSeparator: StemSeparator {
         let step = Int(Double(Self.segment) * (1 - Self.overlap))
         let starts = Array(stride(from: 0, to: length, by: step))
         let window = Self.transitionWindow()
-        let total = Double(Self.groups(for: variant).count * starts.count)
+        let total = Double(starts.count)
         var done = 0.0
 
         guard let fourier = DemucsFourier() else {
@@ -74,63 +67,55 @@ struct DemucsSeparator: StemSeparator {
             throw SeparationFailure.engine("environnement ONNX indisponible — \(error.localizedDescription)")
         }
 
-        var result: [Stem: [[Float]]] = [:]
-        for group in Self.groups(for: variant) {
+        let session = try Self.session(in: environment)
+
+        // Un accumulateur par piste : le réseau les rend toutes ensemble.
+        var sums = Stem.separated.map { _ in
+            [[Float]](repeating: [Float](repeating: 0, count: length), count: Self.channels)
+        }
+        var weights = [Float](repeating: 0, count: length)
+
+        for start in starts {
             if isCancelled() { throw SeparationFailure.cancelled }
-            let session = try Self.session(for: group[0], using: variant, in: environment)
+            let count = min(Self.segment, length - start)
+            let voices = try Self.apply(session, fourier: fourier,
+                                        to: mix, from: start, count: count)
 
-            // Un accumulateur par piste que ce passage produit : une seule avec le
-            // sac affiné, les quatre avec le réseau simple.
-            var sums = group.map { _ in
-                [[Float]](repeating: [Float](repeating: 0, count: length),
-                          count: Self.channels)
-            }
-            var weights = [Float](repeating: 0, count: length)
-
-            for start in starts {
-                if isCancelled() { throw SeparationFailure.cancelled }
-                let count = min(Self.segment, length - start)
-                let voices = try Self.apply(session, fourier: fourier,
-                                            to: mix, from: start, count: count)
-
-                // Fondu enchaîné : chaque tranche est pesée par une fenêtre
-                // triangulaire, et l'on divise à la fin par la somme des poids. Sans
-                // cela, la couture s'entendrait toutes les 5,8 s.
-                for (k, stem) in group.enumerated() {
-                    // La sortie du réseau range toujours les sources dans l'ordre de
-                    // Demucs, que le réseau soit spécialisé ou non.
-                    let source = Stem.separated.firstIndex(of: stem)!
-                    for c in 0..<Self.channels {
-                        let voice = voices[source * Self.channels + c]
-                        for i in 0..<count {
-                            sums[k][c][start + i] += window[i] * voice[i]
-                        }
-                    }
-                }
-                for i in 0..<count { weights[start + i] += window[i] }
-
-                done += 1
-                progress(done / total)
-            }
-
-            for (k, stem) in group.enumerated() {
-                // Normalisation par les poids et retour à l'échelle d'origine, en un
-                // seul passage.
+            // Fondu enchaîné : chaque tranche est pesée par une fenêtre
+            // triangulaire, et l'on divise à la fin par la somme des poids. Sans
+            // cela, la couture s'entendrait toutes les 5,8 s.
+            for (source, _) in Stem.separated.enumerated() {
                 for c in 0..<Self.channels {
-                    for i in 0..<length {
-                        let w = weights[i]
-                        sums[k][c][i] = w > 0
-                            ? sums[k][c][i] / w * Float(deviation) + Float(mean) : 0
+                    let voice = voices[source * Self.channels + c]
+                    for i in 0..<count {
+                        sums[source][c][start + i] += window[i] * voice[i]
                     }
                 }
-                // Une piste non finie ne doit jamais atteindre le disque : elle
-                // s'écrirait sans bruit, se relirait sans erreur, et ne se verrait
-                // qu'au moment où le spectrogramme resterait noir.
-                guard sums[k].allSatisfy({ $0.allSatisfy(\.isFinite) }) else {
-                    throw SeparationFailure.engine("piste « \(stem.label) » non finie")
-                }
-                result[stem] = sums[k]
             }
+            for i in 0..<count { weights[start + i] += window[i] }
+
+            done += 1
+            progress(done / total)
+        }
+
+        var result: [Stem: [[Float]]] = [:]
+        for (source, stem) in Stem.separated.enumerated() {
+            // Normalisation par les poids et retour à l'échelle d'origine, en un
+            // seul passage.
+            for c in 0..<Self.channels {
+                for i in 0..<length {
+                    let w = weights[i]
+                    sums[source][c][i] = w > 0
+                        ? sums[source][c][i] / w * Float(deviation) + Float(mean) : 0
+                }
+            }
+            // Une piste non finie ne doit jamais atteindre le disque : elle
+            // s'écrirait sans bruit, se relirait sans erreur, et ne se verrait
+            // qu'au moment où le spectrogramme resterait noir.
+            guard sums[source].allSatisfy({ $0.allSatisfy(\.isFinite) }) else {
+                throw SeparationFailure.engine("piste « \(stem.label) » non finie")
+            }
+            result[stem] = sums[source]
         }
         return result
     }
@@ -222,21 +207,8 @@ struct DemucsSeparator: StemSeparator {
         }
     }
 
-    /// Comment les pistes se répartissent entre les passages.
-    ///
-    /// Un seul groupe de quatre pour `htdemucs`, qui rend tout d'un coup ; quatre
-    /// groupes d'une pour `htdemucs_ft`, dont chaque réseau ne sait faire qu'une
-    /// piste. Toute la différence de vitesse tient dans ce compte.
-    static func groups(for variant: SeparationModel) -> [[Stem]] {
-        switch variant {
-        case .simple: [Stem.separated]
-        case .fine: Stem.separated.map { [$0] }
-        }
-    }
-
-    private static func session(for stem: Stem, using variant: SeparationModel,
-                                in environment: ORTEnv) throws -> ORTSession {
-        guard let file = StemStore.modelFile(for: stem, using: variant) else {
+    private static func session(in environment: ORTEnv) throws -> ORTSession {
+        guard let file = StemStore.modelFile else {
             throw SeparationFailure.modelMissing
         }
         do {
@@ -253,7 +225,7 @@ struct DemucsSeparator: StemSeparator {
             return try ORTSession(env: environment, modelPath: file.path,
                                   sessionOptions: options)
         } catch {
-            throw SeparationFailure.modelUnreadable("\(stem.label) — \(error.localizedDescription)")
+            throw SeparationFailure.modelUnreadable(error.localizedDescription)
         }
     }
 

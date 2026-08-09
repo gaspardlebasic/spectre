@@ -1,8 +1,10 @@
 #!/bin/bash
-# Fabrique les réseaux de Demucs au format ONNX, pour que l'application les embarque
-# et n'ait plus besoin ni de Python ni de PyTorch. Deux variantes :
-#   htdemucs_ft — quatre réseaux affinés, un par piste, meilleur mais quatre passages
-#   htdemucs    — un seul réseau qui rend les quatre pistes d'un coup
+# Fabrique le réseau de Demucs au format ONNX, pour que l'application l'embarque et
+# n'ait plus besoin ni de Python ni de PyTorch.
+#
+# `htdemucs_ft` — quatre réseaux affinés, un par instrument — a été essayé puis
+# écarté : quatre fois plus lent et 665 Mo de plus pour un gain qui ne s'entend pas
+# assez.
 #
 # À lancer **une fois**. Le résultat va dans Resources/, que .gitignore écarte :
 # les poids de Demucs ne sont pas couverts par la licence MIT du code — leur auteur
@@ -117,19 +119,8 @@ def core(bag):
     return bag.models[0] if hasattr(bag, "models") else bag
 
 
-# `htdemucs_ft` : un sac de quatre réseaux, un par piste. Sa matrice de pondération
-# est l'identité, donc le réseau i ne sert qu'à la source i — on les nomme par la
-# piste dont chacun a la charge.
-bag = get_model("htdemucs_ft")
-sources = bag.models[0].sources        # ['drums', 'bass', 'other', 'vocals']
-assert len(bag.models) == len(sources), "le sac n'a pas quatre réseaux"
-print("→ htdemucs_ft : quatre réseaux affinés")
-for model, source in zip(bag.models, sources):
-    export(model, out / f"htdemucs_ft-{source}.onnx")
-
-# `htdemucs` : un seul réseau, qui rend les quatre pistes d'un coup. Un peu moins
-# bon, mais un seul passage sur le morceau au lieu de quatre.
-print("→ htdemucs : un seul réseau")
+# Un seul réseau, qui rend les quatre pistes d'un coup.
+print("→ htdemucs")
 export(core(get_model("htdemucs")), out / "htdemucs.onnx")
 PY
 
@@ -145,10 +136,9 @@ mv -f Resources/htdemucs*-fp32.onnx "$WORK/fp32/" 2>/dev/null || true
 echo
 # Le sac n'est utilisable qu'entier : sortir en succès avec trois fichiers, ou
 # aucun, laisserait croire que le modèle est prêt.
-COUNT=$(ls Resources/htdemucs_ft-*.onnx 2>/dev/null | wc -l | tr -d ' ')
-if [ "$COUNT" -ne 4 ] || [ ! -f Resources/htdemucs.onnx ]; then
-  echo "Échec : $COUNT réseau(x) affiné(s) sur 4, htdemucs simple $([ -f Resources/htdemucs.onnx ] && echo présent || echo absent)."
+if [ ! -f Resources/htdemucs.onnx ]; then
+  echo "Échec : le réseau n'a pas été produit."
   exit 1
 fi
-ls -lh Resources/htdemucs*.onnx Resources/*.bin
+ls -lh Resources/htdemucs*.onnx
 echo "→ relancer ./build.sh pour les embarquer dans l'application"

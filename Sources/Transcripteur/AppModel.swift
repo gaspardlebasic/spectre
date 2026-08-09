@@ -450,30 +450,12 @@ import UniformTypeIdentifiers
     @ObservationIgnored private var stemCache: [Set<Stem>: Spectrogram] = [:]
     @ObservationIgnored private var job: SeparationJob?
 
-    /// Variante employée. Le choix est global, pas propre à un morceau, et survit
-    /// au lancement : c'est un arbitrage entre vitesse et finesse qu'on fait une
-    /// fois pour sa façon de travailler.
-    var separationModel: SeparationModel = SeparationModel(
-        rawValue: UserDefaults.standard.string(forKey: "modeleSeparation") ?? "") ?? .fine {
-        didSet {
-            guard separationModel != oldValue else { return }
-            UserDefaults.standard.set(separationModel.rawValue, forKey: "modeleSeparation")
-            // Les pistes de l'autre variante restent sur le disque, mais ce n'est
-            // plus elles qu'on regarde : on repart du mixage.
-            job?.cancel(); job = nil
-            separating = nil
-            stemCache.removeAll()
-            selection = Self.everything
-            show(Self.everything)
-        }
-    }
-
     var isSeparated: Bool {
         guard let fingerprint = source?.fingerprint else { return false }
-        return StemStore.isSeparated(fingerprint, variant: separationModel)
+        return StemStore.isSeparated(fingerprint)
     }
 
-    var hasModel: Bool { StemStore.has(separationModel) }
+    var hasModel: Bool { StemStore.hasModel }
 
     /// Garde ou retire une piste.
     ///
@@ -502,7 +484,7 @@ import UniformTypeIdentifiers
             return
         }
         guard let fingerprint = source?.fingerprint else { return }
-        if StemStore.isSeparated(fingerprint, variant: separationModel) {
+        if StemStore.isSeparated(fingerprint) {
             selection = wanted
             show(wanted)
             return
@@ -511,7 +493,7 @@ import UniformTypeIdentifiers
         // problème d'utilisation mais de construction, et se dit comme tel. On ne
         // touche pas à la sélection — la déplacer vers des pistes qu'on ne peut pas
         // montrer serait mentir sur l'état des choses.
-        guard StemStore.has(separationModel) else {
+        guard StemStore.hasModel else {
             separationError = "Modèle absent de l'application : lancer ./modele.sh puis ./build.sh."
             status = separationError
             return
@@ -528,8 +510,7 @@ import UniformTypeIdentifiers
         separating = 0
         status = "Séparation des pistes…"
         work.run(fileAt: source.url, fingerprint: fingerprint,
-                 variant: separationModel,
-                 separator: DemucsSeparator(variant: separationModel),
+                 separator: DemucsSeparator(),
                  progress: { [weak self] p in self?.separating = p * 0.8 },
                  completion: { [weak self] result in
                      guard let self, self.job === work else { return }
@@ -566,8 +547,7 @@ import UniformTypeIdentifiers
         if let ready = stemCache[wanted] {
             if !stillWorking { separating = nil }
             adopt(spectrogram: ready,
-                  playing: try? StemStore.combined(wanted, for: fingerprint,
-                                                   variant: separationModel))
+                  playing: try? StemStore.combined(wanted, for: fingerprint))
             return
         }
 
@@ -575,12 +555,11 @@ import UniformTypeIdentifiers
         let name = Stem.label(for: wanted)
         status = "Analyse de « \(name) »…"
         let settings = analysis
-        let variant = separationModel
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             // La somme des pistes choisies est fabriquée ici, puis gardée : rejouer
             // « basse + batterie » ne doit pas coûter une seconde addition sur dix
             // millions d'échantillons.
-            guard let file = try? StemStore.combined(wanted, for: fingerprint, variant: variant),
+            guard let file = try? StemStore.combined(wanted, for: fingerprint),
                   let loaded = try? AudioSource.load(file) else {
                 DispatchQueue.main.async {
                     self?.separating = nil
@@ -629,7 +608,7 @@ import UniformTypeIdentifiers
         job = nil
         separating = nil
         stemCache.removeAll()
-        StemStore.removeStems(for: fingerprint, variant: separationModel)
+        StemStore.removeStems(for: fingerprint)
         selection = Self.everything
         show(Self.everything)
         status = "Pistes effacées."

@@ -7,14 +7,13 @@ import Foundation
 /// c'est aussi la façon de séparer une série de morceaux d'avance, avant de s'asseoir
 /// pour travailler.
 enum SeparationCommand {
-    static func run(path: String, into destination: String?,
-                    variant: SeparationModel) -> Int32 {
+    static func run(path: String, into destination: String?) -> Int32 {
         let url = URL(fileURLWithPath: path)
         guard FileManager.default.fileExists(atPath: url.path) else {
             FileHandle.standardError.write(Data("Fichier introuvable : \(path)\n".utf8))
             return 1
         }
-        guard StemStore.has(variant) else {
+        guard StemStore.hasModel else {
             FileHandle.standardError.write(Data(
                 "Modèle absent : lancer ./modele.sh puis ./build.sh\n".utf8))
             return 1
@@ -24,10 +23,9 @@ enum SeparationCommand {
             ?? url.deletingLastPathComponent().appendingPathComponent(url.deletingPathExtension().lastPathComponent + " — pistes")
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
 
-        print("Modèle : \(variant.rawValue) — \(variant.passes) parcours du morceau")
         let started = Date()
         var last = -1
-        let separator = DemucsSeparator(variant: variant)
+        let separator = DemucsSeparator()
         do {
             let stems = try separator.separate(fileAt: url, progress: { fraction in
                 let percent = Int((fraction * 100).rounded())
@@ -54,8 +52,8 @@ enum SeparationCommand {
             let elapsed = Date().timeIntervalSince(started)
             let duration = Double(stems.values.first?.first?.count ?? 0) / DemucsSeparator.sampleRate
             let ratio = duration > 0 ? elapsed / duration : 0
-            print(String(format: "Fait en %.0f s pour %.0f s de musique (×%.2f temps réel), modèle ",
-                         elapsed, duration, ratio) + variant.rawValue + ".")
+            print(String(format: "Fait en %.0f s pour %.0f s de musique (×%.2f temps réel).",
+                         elapsed, duration, ratio))
             return 0
         } catch {
             FileHandle.standardError.write(Data("\nÉchec : \(error.localizedDescription)\n".utf8))

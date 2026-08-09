@@ -20,21 +20,10 @@ cp Resources/Transcripteur.icns "$APP/Contents/Resources/Transcripteur.icns"
 # de Demucs ne sont pas couverts par la licence MIT du code, et `./modele.sh` les
 # refabrique sur place. Son absence n'empêche pas de construire — tout le reste de
 # l'application s'en passe.
-# Quatre réseaux, un par piste : le sac n'est utilisable qu'entier. Les quatre
-# renvoient à un même fichier de tables de Fourier, qui doit voyager avec eux — et
-# se ranger à côté d'eux, puisque ONNX Runtime résout ce renvoi relativement au
-# modèle. Les sauvegardes en simple précision, elles, restent à quai.
-MODELS=()
-for m in Resources/htdemucs*.onnx; do
-  case "$m" in *-fp32.onnx) continue;; esac
-  [ -f "$m" ] && MODELS+=("$m")
-done
-# Quatre réseaux affinés plus le réseau simple : cinq en tout.
-if [ ${#MODELS[@]} -ge 4 ]; then
-  cp "${MODELS[@]}" "$APP/Contents/Resources/"
-  [ -f Resources/htdemucs-fourier.bin ] \
-    && cp Resources/htdemucs-fourier.bin "$APP/Contents/Resources/"
-  echo "→ modèle de séparation embarqué ($(du -ch "$APP/Contents/Resources/htdemucs"* | tail -1 | cut -f1))"
+# Un seul réseau, qui rend les quatre pistes.
+if [ -f Resources/htdemucs.onnx ]; then
+  cp Resources/htdemucs.onnx "$APP/Contents/Resources/"
+  echo "→ modèle de séparation embarqué ($(du -h Resources/htdemucs.onnx | cut -f1))"
 else
   echo "Note : pas de modèle de séparation — lancer ./modele.sh pour l'ajouter."
 fi
