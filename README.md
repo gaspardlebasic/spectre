@@ -84,7 +84,7 @@ regarde le morceau en entier.
 | Pincement | Zoom temporel, ancré sous le curseur |
 | ⇧ + pincement, ⇧ + molette | Zoom fréquentiel, ancré lui aussi |
 | ⌥ + molette | Zoom temporel (souris à molette) |
-| Clic, glisser | Placer la tête de lecture |
+| Clic, glisser | Placer la tête de lecture, **et entendre la raie désignée** |
 | Glisser dans la réglette, ⇧ + glisser | Tracer la boucle |
 | Espace | Lire / mettre en pause |
 | ← → (⇧ pour 5 s) | Reculer, avancer |
@@ -110,6 +110,39 @@ que le shader, seuil, pente et γ compris. Une région que vous avez réglée en
 vaut zéro et n'attire donc rien. Monter le seuil retire du bruit de l'aimant en
 même temps que de l'image, et c'est vérifié par `check.sh`. À distance comparable,
 une raie franche l'emporte sur une raie pâle.
+
+## Entendre une raie
+
+Cliquer sur l'image place la tête de lecture *et* fait sonner une sinusoïde à la
+fréquence de la raie accrochée. Tant que le bouton reste enfoncé, la note suit le
+curseur. C'est le geste qui manque à un spectrogramme : l'œil repère une raie,
+l'oreille confirme que c'est bien celle qu'on cherchait — et comme la sinusoïde
+suit l'aimantation, elle se tait d'elle-même sur les régions que les réglages
+rendent noires.
+
+Rien n'y saute jamais : la fréquence rejoint sa consigne par un filtre du premier
+ordre (20 ms), donc un déplacement s'entend comme un portamento ; le gain fait de
+même en plus rapide (8 ms), sans quoi chaque début et chaque fin claquerait ; et
+la phase n'est jamais remise à zéro, y compris quand un écart de plus d'une octave
+fait reposer la fréquence d'un bond plutôt que glisser comme une sirène. Une
+rupture de phase s'entend exactement comme une rupture d'amplitude.
+
+Le calcul du signal vit dans `ToneOscillator`, à part du moteur audio : c'est ce
+qui permet à `check.sh` de vérifier sans carte son que la fréquence sortie est
+bien celle demandée, que le glissando arrive à destination, et surtout qu'aucun
+des trois moments délicats — attaque, saut d'octave, extinction — ne produit
+d'écart entre deux échantillons plus grand que ce que la sinusoïde exige.
+
+## Le défilement
+
+Pendant la lecture, la vue suit toujours la tête de lecture, mais elle ne glisse
+pas en continu — une image qui bouge sans arrêt est illisible. Elle **tourne la
+page** quand la tête arrive à 10 % du bord, et se repose alors à 10 % de l'autre
+côté : un peu de passé derrière soi, presque toute la largeur devant. Le saut est
+animé en 0,32 s, avec départ et arrivée en douceur, et s'interrompt net dès qu'on
+touche au trackpad. En fin de fichier, quand il n'y a plus rien à découvrir, la
+destination se confond avec la position courante et il ne se passe simplement
+rien.
 
 ## Boucle A–B
 
@@ -144,7 +177,10 @@ classiques en trois clics.
 
 ## La palette « notes »
 
-Reprise telle quelle de Spectromètre : la teinte dépend de la note, les douze
+C'est la palette par défaut : c'est la seule qui dise *quoi* est joué et pas
+seulement *combien fort*. Reprise de Spectromètre, avec une saturation poussée
+au-delà de la chroma commune aux douze teintes — les raies d'une musique réelle
+sont fines et se détachent mal, le compromis vaut la peine. la teinte dépend de la note, les douze
 teintes sont réparties sur le cercle chromatique **dans l'ordre du cycle des
 quintes** (deux notes proches harmoniquement sont proches en couleur, un triton met
 les couleurs en opposition), et elles partagent exactement la même clarté et la
@@ -168,6 +204,9 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
 - **Tempo** — un click-track de synthèse à 132 BPM, accentué sur le premier temps,
   passe par toute la chaîne : le tempo doit ressortir à moins d'un BPM près, les
   temps tomber sur les clicks, et le premier temps sur l'accent.
+- **Sinusoïde d'écoute** — fréquence sortie, arrivée du glissando, et absence de
+  saut à l'attaque, au bond d'octave et à l'extinction : l'écart entre deux
+  échantillons ne doit jamais dépasser ce qu'exige la sinusoïde elle-même.
 - **Magnétisme** — sur une matrice fabriquée, le curseur doit préférer une raie
   franche à une raie pâle plus proche, ne rien accrocher au-delà de son rayon, et
   surtout ne rien accrocher du tout dans une région que les réglages rendent
@@ -189,6 +228,8 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
 | `Viewport.swift` | Fenêtre visible, zoom ancré (temps et fréquences), recadrage |
 | `Tempo.swift` | Flux spectral, autocorrélation, phase des temps et des mesures |
 | `Snapping.swift` | Aimantation du curseur sur les raies |
+| `ToneOscillator.swift` | Sinusoïde : glissando, fondus, continuité de phase |
+| `ToneGenerator.swift` | Branchement du moteur audio, consignes du thread audio |
 | `Renderer.swift` | Tuiles Metal + shader (fenêtre, palettes, max par pixel) |
 | `TimelineView.swift` | Vue Metal, gestes trackpad, repères dessinés par-dessus |
 | `Player.swift` | Lecture, ralenti et transposition |

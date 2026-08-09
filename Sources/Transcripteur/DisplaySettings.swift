@@ -27,7 +27,9 @@ struct DisplaySettings: Equatable, Codable {
     /// Pente ajoutée à l'affichage, en dB par octave (compense le spectre
     /// décroissant de la plupart des sons naturels).
     var tiltDbPerOctave: Double = 3
-    var colorMap: ColorMap = .inferno
+    /// La palette des notes par défaut : c'est la seule qui dise *quoi* est joué
+    /// et pas seulement *combien fort*.
+    var colorMap: ColorMap = .notes
     var showGrid: Bool = true
 
     /// Fréquence du La₃, qui détermine où tombent les bandes de la palette
@@ -35,6 +37,9 @@ struct DisplaySettings: Equatable, Codable {
     var referenceA: Double = 440
 
     /// Saturation de la palette « notes » (0 = gris, 1 = chroma commune aux douze
-    /// teintes, 2 = chaque teinte à son maximum).
-    var noteSaturation: Double = 1
+    /// teintes, 2 = chaque teinte à son maximum). Au-delà de 1, les teintes
+    /// gagnent en franchise ce qu'elles perdent en chroma égale : sur de la
+    /// musique réelle, où les raies sont fines et se détachent mal, le compromis
+    /// vaut la peine.
+    var noteSaturation: Double = 1.4
 }

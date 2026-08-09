@@ -83,9 +83,6 @@ struct TranscripteurApp: App {
                     .keyboardShortcut(.space, modifiers: [])
                 Button("Revenir au début") { model.seek(to: 0) }
                     .keyboardShortcut(.home, modifiers: [])
-                Divider()
-                Toggle("Suivre la lecture", isOn: Binding(get: { model.follow },
-                                                          set: { model.follow = $0 }))
             }
             CommandMenu("Boucle") {
                 Button("Début ici") { model.setLoopStart(at: model.playhead) }
@@ -200,9 +197,6 @@ struct ContentView: View {
                 }
                 .labelsHidden()
                 .frame(width: 178)
-
-                Toggle("Suivre", isOn: $model.follow)
-                    .toggleStyle(.checkbox)
 
                 Spacer(minLength: 8)
 

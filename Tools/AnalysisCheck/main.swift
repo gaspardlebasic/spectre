@@ -265,6 +265,96 @@ let farAway = Snapping.nearest(to: CGPoint(x: 300, y: 20), in: scene, viewport: 
 check("hors de portée, pas d'aimantation", farAway == nil,
       farAway == nil ? "rien accroché" : "accroché à tort")
 
+// --- Sinusoïde d'écoute -----------------------------------------------------
+// Ce qui compte n'est pas qu'une sinusoïde sorte, mais qu'elle sorte *sans clic* :
+// une discontinuité d'amplitude ou de phase s'entend immédiatement, et le geste
+// consiste justement à déplacer la souris en continu.
+print("\n=== Sinusoïde d'écoute ===")
+let toneRate = 48000.0
+
+func renderTone(_ oscillator: inout ToneOscillator,
+                frequency: Double, gain: Double, seconds: Double) -> [Float] {
+    let count = Int(seconds * toneRate)
+    var out = [Float](repeating: 0, count: count)
+    out.withUnsafeMutableBufferPointer {
+        oscillator.render(targetFrequency: frequency, targetGain: gain, into: $0, count: count)
+    }
+    return out
+}
+
+/// Fréquence mesurée par comptage des passages par zéro montants.
+func measuredFrequency(_ x: [Float]) -> Double {
+    var first = -1.0, last = -1.0, crossings = 0
+    for i in 1..<x.count where x[i - 1] <= 0 && x[i] > 0 {
+        // Interpolation linéaire du passage : sans elle, la résolution serait
+        // limitée à l'échantillon et la mesure inutilisable.
+        let t = Double(i - 1) + Double(-x[i - 1]) / Double(x[i] - x[i - 1])
+        if first < 0 { first = t } else { last = t; crossings += 1 }
+    }
+    guard crossings > 0, last > first else { return .nan }
+    return Double(crossings) * toneRate / (last - first)
+}
+
+/// Plus grand écart entre deux échantillons voisins, rapporté à ce qu'exige la
+/// sinusoïde elle-même : au-delà de 1, il y a saut.
+func discontinuity(_ x: [Float], frequency: Double, gain: Double) -> Double {
+    let expected = 2 * Double.pi * frequency / toneRate * gain
+    var worst = 0.0
+    for i in 1..<x.count { worst = max(worst, abs(Double(x[i] - x[i - 1]))) }
+    return worst / max(expected, 1e-12)
+}
+
+var oscillator = ToneOscillator(sampleRate: toneRate, frequency: 440)
+let attack = renderTone(&oscillator, frequency: 440, gain: 0.16, seconds: 0.05)
+let steady = renderTone(&oscillator, frequency: 440, gain: 0.16, seconds: 1)
+
+check("la fréquence demandée est celle qui sort",
+      abs(measuredFrequency(steady) - 440) < 0.5,
+      String(format: "%.2f Hz pour 440", measuredFrequency(steady)))
+
+check("l'attaque part de zéro", abs(attack[0]) < 1e-4,
+      String(format: "premier échantillon à %.5f", abs(attack[0])))
+check("le fondu d'entrée ne claque pas",
+      discontinuity(attack, frequency: 440, gain: 0.16) < 1.05,
+      String(format: "×%.2f de l'écart attendu entre deux échantillons",
+             discontinuity(attack, frequency: 440, gain: 0.16)))
+let reached = steady.suffix(1000).map { abs($0) }.max() ?? 0
+check("le niveau visé est atteint", abs(Double(reached) - 0.16) < 0.005,
+      String(format: "%.3f pour 0,160", reached))
+
+// Glissando : la consigne saute d'une quinte, le signal doit y aller en glissant
+// et sans rupture de phase.
+let glide = renderTone(&oscillator, frequency: 660, gain: 0.16, seconds: 0.2)
+check("le glissando arrive à destination",
+      abs(measuredFrequency(Array(glide.suffix(4800))) - 660) < 1,
+      String(format: "%.1f Hz après 200 ms", measuredFrequency(Array(glide.suffix(4800)))))
+check("le glissando ne rompt pas la phase",
+      discontinuity(glide, frequency: 660, gain: 0.16) < 1.05,
+      String(format: "×%.2f de l'écart attendu",
+             discontinuity(glide, frequency: 660, gain: 0.16)))
+
+// Grand écart : la fréquence est reposée d'un bond plutôt que glissée, mais la
+// phase, elle, ne doit toujours pas sauter.
+oscillator.jump(to: 3000)
+let leap = renderTone(&oscillator, frequency: 3000, gain: 0.16, seconds: 0.05)
+check("un saut d'octave ne claque pas non plus",
+      discontinuity(leap, frequency: 3000, gain: 0.16) < 1.05,
+      String(format: "×%.2f de l'écart attendu",
+             discontinuity(leap, frequency: 3000, gain: 0.16)))
+
+// Le moteur est mis en pause 200 ms après le relâchement : d'ici là le son doit
+// être éteint pour de bon, sans quoi la pause elle-même couperait dans le vif.
+let released = renderTone(&oscillator, frequency: 3000, gain: 0, seconds: 0.1)
+let residual = Double(released.suffix(480).map { abs($0) }.max() ?? 1) / 0.16
+check("le fondu de sortie éteint le son avant la pause du moteur",
+      residual < 1e-4,
+      String(format: "%.0f dB sous le niveau, 100 ms après le relâchement",
+             20 * log10(max(residual, 1e-12))))
+check("le fondu de sortie ne claque pas",
+      discontinuity(released, frequency: 3000, gain: 0.16) < 1.05,
+      String(format: "×%.2f de l'écart attendu",
+             discontinuity(released, frequency: 3000, gain: 0.16)))
+
 print("")
 if failures == 0 {
     print("Tout est bon.")

@@ -18,8 +18,6 @@ import UniformTypeIdentifiers
 
     /// Position de la tête de lecture, en secondes.
     var playhead: Double = 0
-    /// La vue suit-elle la lecture ?
-    var follow = true
     /// Position du curseur dans la vue (en points, depuis le coin haut-gauche).
     var hover: CGPoint? {
         didSet { if hover == nil { snap = nil } }
@@ -37,6 +35,10 @@ import UniformTypeIdentifiers
     /// Avancement de l'analyse (0…1), `nil` quand rien n'est en cours.
     var progress: Double?
     var status: String?
+
+    /// Sinusoïde d'écoute, tenue tant que le bouton reste enfoncé.
+    @ObservationIgnored private let tone = ToneGenerator()
+    @ObservationIgnored private var probing = false
 
     /// Taille de la vue en points, tenue à jour par le rendu.
     @ObservationIgnored var viewSize = CGSize(width: 1200, height: 700)
@@ -135,32 +137,95 @@ import UniformTypeIdentifiers
         if player.isPlaying {
             let t = player.currentTime
             if abs(t - playhead) > 1e-4 { playhead = t }
-            if follow { scrollToPlayhead() }
+            scrollToPlayhead()
             if player.loop == nil, t >= duration - 0.005 { player.pause() }
         }
+        advanceTurn()
         if resized { clampViewport() }
         updateSnap()
     }
 
     private func updateSnap() {
-        guard let hover, spectrogram.columnCount > 0 else {
-            if snap != nil { snap = nil }
-            return
-        }
-        let found = Snapping.nearest(to: hover, in: spectrogram, viewport: viewport,
+        var found: SnapTarget?
+        if let hover, spectrogram.columnCount > 0 {
+            found = Snapping.nearest(to: hover, in: spectrogram, viewport: viewport,
                                      display: display, viewSize: viewSize)
+        }
         if found != snap { snap = found }
+        // La sinusoïde suit l'aimantation : elle se tait donc d'elle-même dès que
+        // le curseur passe sur une région que les réglages rendent noire.
+        if probing { tone.play(found?.frequency) }
     }
 
+    // MARK: Écoute d'une raie
+
+    /// Fait sonner la raie désignée, et la suit tant que le bouton reste enfoncé.
+    func beginProbe(at point: CGPoint) {
+        hover = point
+        probing = true
+        updateSnap()
+    }
+
+    func endProbe() {
+        guard probing else { return }
+        probing = false
+        tone.stop()
+    }
+
+    /// Marge, en fraction de la largeur, que la tête de lecture ne doit pas franchir.
+    private static let margin = 0.1
+    /// Durée du tourne-page.
+    private static let turnDuration = 0.32
+
+    /// Fait tourner la page quand la tête de lecture sort du cadre.
+    ///
+    /// L'image ne glisse pas en continu — illisible — mais saute d'une page quand
+    /// la tête arrive à 10 % du bord, et se repose alors à 10 % de l'autre côté :
+    /// on garde un peu de passé derrière soi et presque toute la largeur devant.
     private func scrollToPlayhead() {
         let width = Double(viewSize.width)
-        let x = viewport.point(ofColumn: spectrogram.column(atTime: playhead))
-        // Tant que la tête reste dans les deux tiers du milieu, on ne bouge pas :
-        // une image qui glisse en permanence est illisible.
-        if x > width * 0.75 || x < width * 0.1 {
-            viewport.startColumn = spectrogram.column(atTime: playhead) - width * 0.25 * viewport.columnsPerPoint
-            clampViewport()
-        }
+        guard width > 1 else { return }
+        let column = spectrogram.column(atTime: playhead)
+        // Pendant l'animation, c'est la destination qui décide : sans quoi chaque
+        // image relancerait un tourne-page tant que la tête est encore hors cadre.
+        let start = turn?.to ?? viewport.startColumn
+        let x = (column - start) / viewport.columnsPerPoint
+        guard x > width * (1 - Self.margin) || x < width * Self.margin else { return }
+        turnPage(to: column - width * Self.margin * viewport.columnsPerPoint)
+    }
+
+    /// Tourne-page en cours : d'où, vers où, depuis quand.
+    @ObservationIgnored private var turn: (from: Double, to: Double, start: CFTimeInterval)?
+
+    private func turnPage(to startColumn: Double) {
+        // La destination est recadrée d'avance : en fin de fichier elle se confond
+        // avec la position courante, et il ne se passe alors rien du tout plutôt
+        // qu'une animation relancée à chaque image contre la butée.
+        let target = clamped(startColumn)
+        guard abs(target - viewport.startColumn) > 0.5 else { return }
+        turn = (from: viewport.startColumn, to: target, start: CACurrentMediaTime())
+    }
+
+    private func clamped(_ startColumn: Double) -> Double {
+        var candidate = viewport
+        candidate.startColumn = startColumn
+        candidate.clamp(columns: spectrogram.columnCount, bins: spectrogram.binCount,
+                        size: (Double(viewSize.width), Double(viewSize.height)))
+        return candidate.startColumn
+    }
+
+    /// Interrompt le tourne-page. Appelé dès que la main reprend la barre : rien
+    /// n'est plus désagréable qu'une vue qui continue de glisser sous les doigts.
+    func cancelTurn() { turn = nil }
+
+    private func advanceTurn() {
+        guard let turn else { return }
+        let elapsed = CACurrentMediaTime() - turn.start
+        let t = min(max(elapsed / Self.turnDuration, 0), 1)
+        let eased = t * t * (3 - 2 * t)          // départ et arrivée en douceur
+        viewport.startColumn = turn.from + (turn.to - turn.from) * eased
+        if t >= 1 { self.turn = nil }
+        clampViewport()
     }
 
     func clampViewport() {

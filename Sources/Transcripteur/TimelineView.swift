@@ -54,8 +54,8 @@ final class TimelineMetalView: MTKView {
         } else {
             model.viewport.startColumn -= dx * model.viewport.columnsPerPoint
             model.viewport.bottomBin += dy * model.viewport.binsPerPoint
-            if abs(dx) > 0 { model.follow = false }
         }
+        model.cancelTurn()
         model.clampViewport()
     }
 
@@ -69,6 +69,7 @@ final class TimelineMetalView: MTKView {
         } else {
             model.viewport.zoomTime(factor: factor, anchorX: p.x)
         }
+        model.cancelTurn()
         model.clampViewport()
     }
 
@@ -83,12 +84,13 @@ final class TimelineMetalView: MTKView {
     override func mouseDown(with event: NSEvent) {
         guard let model else { return }
         let p = location(event)
-        model.follow = false
+        model.cancelTurn()
         if drawsLoop(event, at: p) {
             loopAnchor = model.time(atPoint: Double(p.x))
             if event.clickCount >= 2 { model.loop = nil; loopAnchor = nil }
         } else {
             model.seek(to: model.time(atPoint: Double(p.x)))
+            model.beginProbe(at: p)
         }
     }
 
@@ -105,6 +107,7 @@ final class TimelineMetalView: MTKView {
 
     override func mouseUp(with event: NSEvent) {
         loopAnchor = nil
+        model?.endProbe()
     }
 
     override func mouseMoved(with event: NSEvent) {
