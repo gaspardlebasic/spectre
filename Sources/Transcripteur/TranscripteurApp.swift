@@ -388,21 +388,25 @@ struct ContentView: View {
     /// doit pouvoir continuer à travailler sur le mixage pendant ce temps.
     private var stemControls: some View {
         Group {
-            Picker("", selection: Binding(get: { model.stem },
-                                          set: { model.select($0) })) {
-                ForEach(Stem.allCases) { stem in
-                    Image(systemName: stem.symbol).tag(stem)
-                }
+            // Des bascules plutôt qu'un sélecteur : on veut pouvoir écouter la
+            // basse *et* la batterie ensemble. La forme d'onde, elle, ne se combine
+            // avec rien — c'est le morceau entier, elle remet donc tout à zéro.
+            Toggle(isOn: Binding(get: { model.selection.isEmpty },
+                                 set: { if $0 { model.selectMix() } })) {
+                Image(systemName: Stem.mix.symbol).frame(width: 17)
             }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-            .frame(width: 196)
+            .toggleStyle(.button)
+            .help(Stem.mix.help)
+
+            ForEach(Stem.separated) { stem in
+                Toggle(isOn: Binding(get: { model.selection.contains(stem) },
+                                     set: { _ in model.toggle(stem) })) {
+                    Image(systemName: stem.symbol).frame(width: 17)
+                }
+                .toggleStyle(.button)
+                .help(stem.help + "\nPlusieurs pistes ensemble donnent leur somme.")
+            }
             .disabled(model.spectrogram.columnCount == 0)
-            .help("""
-                  Mixage, batterie, basse, voix, reste.
-                  Choisir une piste change ce qu'on entend et ce qu'on voit : le spectrogramme d'un seul instrument a bien moins de raies qui se croisent, et le curseur s'aimante enfin sur la bonne.
-                  La séparation se calcule une fois par morceau, en tâche de fond.
-                  """)
 
             if let progress = model.separating {
                 ProgressView(value: progress)

@@ -50,6 +50,13 @@ enum Stem: String, CaseIterable, Codable, Identifiable {
     /// Cet ordre est celui de Demucs et ne doit pas être réarrangé : il indexe
     /// directement la sortie du réseau.
     static let separated: [Stem] = [.drums, .bass, .other, .vocals]
+
+    /// Comment nommer un ensemble de pistes — pour la ligne d'état.
+    static func label(for stems: Set<Stem>) -> String {
+        let wanted = separated.filter(stems.contains)
+        guard !wanted.isEmpty else { return Stem.mix.label }
+        return wanted.map(\.label).joined(separator: " + ")
+    }
 }
 
 /// Les deux variantes de Demucs v4 embarquées.
@@ -178,6 +185,75 @@ enum StemStore {
     static func removeStems(for fingerprint: String, variant: SeparationModel) {
         guard let folder = folder(for: fingerprint, variant: variant) else { return }
         try? FileManager.default.removeItem(at: folder)
+    }
+
+    // MARK: Combinaisons
+
+    /// Le fichier correspondant à un ensemble de pistes — la piste elle-même quand
+    /// il n'y en a qu'une, leur somme sinon.
+    ///
+    /// Les sommes sont mises en cache à côté des pistes, sous un nom formé des
+    /// leurs : réécouter « basse + batterie » ne doit pas coûter une nouvelle
+    /// addition sur dix millions d'échantillons. Le nom est trié, de sorte que
+    /// l'ordre dans lequel on a cliqué ne fabrique pas deux fichiers pour la même
+    /// combinaison.
+    static func combined(_ stems: Set<Stem>, for fingerprint: String,
+                         variant: SeparationModel) throws -> URL? {
+        let wanted = stems.subtracting([.mix]).sorted { $0.rawValue < $1.rawValue }
+        guard !wanted.isEmpty else { return nil }
+        if wanted.count == 1 { return url(wanted[0], for: fingerprint, variant: variant) }
+
+        guard let folder = folder(for: fingerprint, variant: variant) else { return nil }
+        let target = folder.appendingPathComponent(
+            wanted.map(\.rawValue).joined(separator: "+") + ".caf")
+        if FileManager.default.fileExists(atPath: target.path) { return target }
+
+        var sum: [[Float]] = []
+        var rate = 44100.0
+        for stem in wanted {
+            guard let file = url(stem, for: fingerprint, variant: variant) else { continue }
+            let (channels, sampleRate) = try readChannels(from: file)
+            rate = sampleRate
+            if sum.isEmpty {
+                sum = channels
+                continue
+            }
+            // Les pistes viennent du même morceau : mêmes longueurs, même cadence.
+            // On se garde tout de même d'un dépassement, plutôt que d'y compter.
+            for c in 0..<min(sum.count, channels.count) {
+                let n = min(sum[c].count, channels[c].count)
+                for i in 0..<n { sum[c][i] += channels[c][i] }
+            }
+        }
+        guard !sum.isEmpty else { return nil }
+        try write(sum, sampleRate: rate, to: target)
+        return target
+    }
+
+    /// Lit un fichier canal par canal, en virgule flottante.
+    ///
+    /// La boucle est indispensable : `read(into:)` n'est pas tenu de rendre tout ce
+    /// qu'on lui demande en une fois, et un seul appel rend 44 032 images sur
+    /// 44 100 — une troncature muette que rien ne signale.
+    static func readChannels(from url: URL) throws -> (channels: [[Float]], sampleRate: Double) {
+        let file = try AVAudioFile(forReading: url)
+        let format = file.processingFormat
+        let count = Int(format.channelCount)
+        var channels = [[Float]](repeating: [], count: count)
+        let block: AVAudioFrameCount = 1 << 16
+        guard count > 0, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: block)
+        else { throw SeparationFailure.engine("format illisible") }
+
+        while file.framePosition < file.length {
+            try file.read(into: buffer, frameCount: block)
+            let n = Int(buffer.frameLength)
+            if n == 0 { break }
+            for c in 0..<count {
+                channels[c].append(contentsOf: UnsafeBufferPointer(
+                    start: buffer.floatChannelData![c], count: n))
+            }
+        }
+        return (channels, format.sampleRate)
     }
 
     /// Écrit une piste en CAF flottant : sans perte, et lisible par `AVAudioFile`

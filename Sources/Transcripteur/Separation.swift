@@ -45,30 +45,10 @@ protocol StemSeparator {
 }
 
 extension StemSeparator {
-    /// Charge un fichier canal par canal, en virgule flottante.
-    ///
-    /// La boucle est indispensable : `read(into:)` n'est pas tenu de rendre tout ce
-    /// qu'on lui demande en une fois, et un seul appel rend ici 44 032 images sur
-    /// 44 100 — une troncature muette de 68 images que rien ne signale.
+    /// Charge un fichier canal par canal. Même lecture que pour les pistes rangées :
+    /// une seule implémentation, dans `StemStore`.
     func loadChannels(from url: URL) throws -> (channels: [[Float]], sampleRate: Double) {
-        let file = try AVAudioFile(forReading: url)
-        let format = file.processingFormat
-        let count = Int(format.channelCount)
-        var channels = [[Float]](repeating: [], count: count)
-        let block: AVAudioFrameCount = 1 << 16
-        guard count > 0, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: block)
-        else { throw SeparationFailure.engine("format illisible") }
-
-        while file.framePosition < file.length {
-            try file.read(into: buffer, frameCount: block)
-            let n = Int(buffer.frameLength)
-            if n == 0 { break }
-            for c in 0..<count {
-                channels[c].append(contentsOf: UnsafeBufferPointer(
-                    start: buffer.floatChannelData![c], count: n))
-            }
-        }
-        return (channels, format.sampleRate)
+        try StemStore.readChannels(from: url)
     }
 }
 

@@ -127,6 +127,35 @@ if let bass = StemStore.url(.bass, for: fingerprint, variant: variante),
     check(false, "une piste se relit comme un morceau", "illisible")
 }
 
+// MARK: - Combinaisons
+
+print()
+print("=== Combinaisons ===")
+if let melange = try? StemStore.combined([.bass, .drums], for: fingerprint, variant: variante),
+   let somme = try? StemStore.readChannels(from: melange),
+   let basse = StemStore.url(.bass, for: fingerprint, variant: variante),
+   let batterie = StemStore.url(.drums, for: fingerprint, variant: variante),
+   let a = try? StemStore.readChannels(from: basse),
+   let b = try? StemStore.readChannels(from: batterie) {
+    let attendu = zip(a.channels[0], b.channels[0]).map(+)
+    let ecart = zip(somme.channels[0], attendu).map { abs($0 - $1) }.max() ?? 1
+    check(ecart < 1e-6, "deux pistes ensemble donnent leur somme",
+          String(format: "écart maximal %.1e", ecart))
+    check(melange.lastPathComponent == "bass+drums.caf",
+          "le nom de la combinaison est trié", melange.lastPathComponent)
+    // Deuxième appel : le fichier existe déjà et doit être rendu tel quel.
+    let encore = try? StemStore.combined([.drums, .bass], for: fingerprint, variant: variante)
+    check(encore == melange, "l'ordre des clics ne fabrique pas deux fichiers")
+} else {
+    check(false, "deux pistes ensemble donnent leur somme", "combinaison impossible")
+}
+if let seule = try? StemStore.combined([.vocals], for: fingerprint, variant: variante) {
+    check(seule.lastPathComponent == "vocals.caf",
+          "une piste seule n'est pas recopiée", seule.lastPathComponent)
+}
+check((try? StemStore.combined([], for: fingerprint, variant: variante)) ?? nil == nil,
+      "une sélection vide ne désigne aucun fichier")
+
 // MARK: - Annulation
 
 print()
