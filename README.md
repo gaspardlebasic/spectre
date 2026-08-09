@@ -98,6 +98,25 @@ Les deux axes se zooment séparément : le temps au pincement, les fréquences a
 ⇧. Dans les deux cas le point sous le curseur ne bouge pas — c'est la seule façon
 qu'un zoom au trackpad ne donne pas l'impression de glisser.
 
+## La barre de commandes
+
+Les commandes sont groupées par ce à quoi elles servent — **lecture**, **boucle**,
+**tempo**, **affichage** — chaque groupe portant son nom. Cela coûte une dizaine
+de points de hauteur et fait gagner la question « où se règle le tempo, déjà ? ».
+
+Chaque champ explique au survol ce qu'il fait, y compris ce qui n'a pas de
+commande visible : le curseur de zoom vertical dit le raccourci du trackpad
+(⇧ + pincement), celui du contraste dit qu'il agit aussi sur l'aimantation, celui
+de la vitesse dit qu'un cran ramène exactement à ×1,00.
+
+Le zoom vertical a son curseur, gradué en **octaves visibles** plutôt qu'en
+facteur — c'est l'unité dans laquelle on pense quand on regarde de la musique. Il
+zoome autour du milieu de la vue, seul point fixe qui ait un sens pour un geste
+qui ne désigne aucun endroit de l'image, là où le pincement s'ancre sous le doigt.
+
+La barre de titre nomme le **morceau ouvert**, avec l'icône du fichier et son
+chemin : c'est ce qu'on cherche en regardant une fenêtre parmi d'autres.
+
 ## L'aimantation du curseur
 
 Survoler n'affiche pas ce qu'il y a *sous le pixel* mais **la raie la plus

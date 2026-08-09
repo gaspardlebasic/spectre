@@ -59,6 +59,7 @@ import UniformTypeIdentifiers
     }
 
     var title: String { source?.name ?? "Transcripteur" }
+    var fileURL: URL? { source?.url }
     var duration: Double { source?.duration ?? 0 }
 
     // MARK: Ouverture
@@ -250,6 +251,38 @@ import UniformTypeIdentifiers
         let top = Int(viewport.topBin(height: Double(viewSize.height)).rounded(.up))
         let all = 0..<spectrogram.binCount
         return (max(bottom, 0)..<max(top, 1)).clamped(to: all)
+    }
+
+    // MARK: Zoom vertical
+
+    /// Nombre d'octaves visibles — la façon musicale de dire « zoom vertical ».
+    var visibleOctaves: Double {
+        guard spectrogram.binCount > 0 else { return 0 }
+        return Double(viewSize.height) * viewport.binsPerPoint
+            / max(spectrogram.layout.binsPerOctave, 1)
+    }
+
+    /// Zoom vertical, 1 = tout le spectre tient dans la vue.
+    ///
+    /// Le curseur zoome autour du **milieu de la vue** : c'est le seul point fixe
+    /// qui ait un sens quand le geste ne désigne aucun endroit de l'image, alors
+    /// que le pincement, lui, s'ancre sous le doigt.
+    var verticalZoom: Double {
+        get {
+            guard spectrogram.binCount > 0, viewport.binsPerPoint > 0,
+                  viewSize.height > 1 else { return 1 }
+            return Double(spectrogram.binCount) / Double(viewSize.height) / viewport.binsPerPoint
+        }
+        set {
+            let current = verticalZoom
+            guard spectrogram.binCount > 0, current > 0 else { return }
+            let target = min(max(newValue, 1), 64)
+            guard abs(target - current) > 1e-6 else { return }
+            viewport.zoomFrequency(factor: target / current,
+                                   anchorY: Double(viewSize.height) / 2,
+                                   height: Double(viewSize.height))
+            clampViewport()
+        }
     }
 
     /// Règle noir, clair et pente sur ce qu'on a sous les yeux.

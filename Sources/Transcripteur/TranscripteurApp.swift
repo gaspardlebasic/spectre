@@ -54,7 +54,12 @@ struct TranscripteurApp: App {
     var body: some Scene {
         Window("Transcripteur", id: "principale") {
             ContentView(model: model)
-                .frame(minWidth: 720, minHeight: 420)
+                .frame(minWidth: 860, minHeight: 460)
+                // La barre de titre nomme le morceau ouvert, pas le programme :
+                // c'est ce qu'on cherche en regardant une fenêtre parmi d'autres.
+                // `navigationDocument` y ajoute l'icône du fichier et son chemin.
+                .navigationTitle(model.title)
+                .modifier(DocumentProxy(url: model.fileURL))
                 .onAppear {
                     trace("onAppear")
                     AppDelegate.model = model
@@ -121,6 +126,21 @@ struct TranscripteurApp: App {
     }
 }
 
+/// Ajoute l'icône du fichier et son chemin à la barre de titre — mais seulement
+/// quand il y a un fichier : sans cela, une fenêtre vide afficherait la racine du
+/// disque.
+private struct DocumentProxy: ViewModifier {
+    let url: URL?
+
+    func body(content: Content) -> some View {
+        if let url {
+            content.navigationDocument(url)
+        } else {
+            content
+        }
+    }
+}
+
 struct ContentView: View {
     @Bindable var model: AppModel
 
@@ -168,65 +188,24 @@ struct ContentView: View {
         .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
     }
 
+    // MARK: Barre de commandes
+
+    /// Les commandes sont groupées par ce à quoi elles servent, chaque groupe
+    /// portant son nom. Cela coûte une dizaine de points de hauteur et fait gagner
+    /// la question « où est réglé le tempo, déjà ? ».
     private var controls: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 14) {
-                Button {
-                    model.togglePlayback()
-                } label: {
-                    Image(systemName: model.player.isPlaying ? "pause.fill" : "play.fill")
-                        .frame(width: 18)
-                }
-                .disabled(model.duration == 0)
-                .help("Espace")
-
-                Text(AppModel.format(model.playhead))
-                    .font(.system(size: 11, design: .monospaced))
-                    .frame(width: 62, alignment: .leading)
-
-                slider("Vitesse", value: $model.player.speed, range: 0.25...1.5,
-                       reset: 1, format: { String(format: "×%.2f", $0) })
-                slider("Ton", value: $model.player.transpose, range: -12...12,
-                       reset: 0, format: {
-                           // Un demi-ton entier s'écrit sans décimale ; une valeur
-                           // intermédiaire, elle, doit se voir.
-                           String(format: abs($0 - $0.rounded()) < 0.005 ? "%+.0f dt" : "%+.1f dt", $0)
-                       })
-
-                Divider().frame(height: 16)
-                loopControls
-
-                Spacer(minLength: 8)
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .bottom, spacing: 14) {
+                section("Lecture") { playbackControls }
+                separator
+                section("Boucle") { loopControls }
+                separator
+                section("Tempo") { tempoControls }
+                Spacer(minLength: 0)
             }
-            HStack(spacing: 14) {
-                tempoControls
-
-                Divider().frame(height: 16)
-
-                slider("Contraste", value: $model.display.floorDb, range: -120...(-40),
-                       format: { String(format: "%.0f dB", $0) })
-                Button("Auto") { model.applyAutoContrast() }
-                    .controlSize(.small)
-                    .disabled(model.spectrogram.columnCount == 0)
-                    .help("Régler noir, clair et pente sur ce qui est à l'écran")
-
-                Picker("", selection: $model.display.colorMap) {
-                    ForEach(ColorMap.allCases) { Text($0.label).tag($0) }
-                }
-                .labelsHidden()
-                .frame(width: 178)
-
-                Picker("", selection: $model.display.useFlats) {
-                    Text("♭").tag(true)
-                    Text("♯").tag(false)
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(width: 62)
-                .help("Nommer les touches noires par le bas ou par le haut")
-
+            HStack(alignment: .bottom, spacing: 14) {
+                section("Affichage") { displayControls }
                 Spacer(minLength: 8)
-
                 Text(model.status ?? "")
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
@@ -235,26 +214,84 @@ struct ContentView: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, 9)
         .background(.bar)
     }
 
+    private var separator: some View {
+        Divider().frame(height: 22)
+    }
+
+    private func section<Content: View>(_ title: String,
+                                        @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .foregroundStyle(.tertiary)
+                .textCase(.uppercase)
+            HStack(spacing: 9) { content() }
+        }
+    }
+
+    private var playbackControls: some View {
+        Group {
+            Button {
+                model.togglePlayback()
+            } label: {
+                Image(systemName: model.player.isPlaying ? "pause.fill" : "play.fill")
+                    .frame(width: 18)
+            }
+            .disabled(model.duration == 0)
+            .help("Lire ou mettre en pause (espace)")
+
+            Text(AppModel.format(model.playhead))
+                .font(.system(size: 11, design: .monospaced))
+                .fixedSize()
+                .frame(width: 62, alignment: .leading)
+                .help("Position de lecture. Cliquer dans l'image la déplace, et fait sonner la raie désignée.")
+
+            slider("Vitesse", value: $model.player.speed, range: 0.25...1.5,
+                   reset: 1, format: { String(format: "×%.2f", $0) },
+                   help: """
+                   Ralentit ou accélère sans toucher à la hauteur.
+                   Un cran ramène exactement à ×1,00, où le traitement est retiré du chemin du son.
+                   Double-clic sur le texte pour y revenir.
+                   """)
+            slider("Ton", value: $model.player.transpose, range: -12...12,
+                   reset: 0, format: {
+                       // Un demi-ton entier s'écrit sans décimale ; une valeur
+                       // intermédiaire, elle, doit se voir.
+                       String(format: abs($0 - $0.rounded()) < 0.005 ? "%+.0f dt" : "%+.1f dt", $0)
+                   },
+                   help: """
+                   Transpose sans toucher à la vitesse, en demi-tons.
+                   Les valeurs intermédiaires servent à recaler un enregistrement désaccordé.
+                   Double-clic sur le texte pour revenir à +0.
+                   """)
+        }
+    }
+
     private var loopControls: some View {
-        HStack(spacing: 6) {
+        Group {
             Toggle(isOn: $model.loopEnabled) {
                 Image(systemName: "repeat")
             }
             .toggleStyle(.button)
             .disabled(model.loop == nil)
-            .help("Boucler (L)")
+            .help("Jouer le passage en boucle, sans trou à la reprise (L)")
 
             if let loop = model.loop {
                 Text("\(AppModel.format(loop.lowerBound)) → \(AppModel.format(loop.upperBound))")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.secondary)
+                    .fixedSize()
+                    .help("""
+                          Glisser la zone jaune la déplace, ses bords l'étendent.
+                          Les bornes se posent sur la grille ; ⌘ pendant le geste les libère.
+                          """)
                 Button("Mesures") { model.snapLoopToBars() }
                     .disabled(model.tempo == nil)
-                    .help("Caler la boucle sur les mesures (B)")
+                    .help("Étendre la boucle aux mesures qui l'encadrent (B)")
                 Button {
                     model.loop = nil
                 } label: {
@@ -265,32 +302,40 @@ struct ContentView: View {
                 Text("glisser dans la réglette")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
+                    .help("Tracer une boucle : glisser dans la bande du haut, ou ⇧ + glisser dans l'image. [ et ] posent ses bornes à la tête de lecture.")
             }
         }
         .controlSize(.small)
     }
 
     private var tempoControls: some View {
-        HStack(spacing: 6) {
+        Group {
             if let tempo = model.tempo {
                 // Une estimation peu franche est annoncée comme telle : mieux vaut
                 // un « à peu près » visible qu'une grille faussement assurée.
                 Text(tempo.confidence > 0 && tempo.confidence < 2.2 ? "≈" : " ")
                     .font(.system(size: 11))
                     .foregroundStyle(.orange)
+                    .help("L'estimation n'est pas franche sur ce morceau : la grille est à vérifier.")
                 Text(String(format: "%.1f BPM", tempo.bpm))
                     .font(.system(size: 11, design: .monospaced))
+                    .fixedSize()
                     .frame(width: 74, alignment: .leading)
+                    .help("Tempo estimé à l'ouverture à partir des attaques du morceau.")
                 Stepper("") { model.nudgeTempo(by: 0.1) } onDecrement: { model.nudgeTempo(by: -0.1) }
                     .labelsHidden()
+                    .help("Ajuster de 0,1 BPM — de quoi rattraper une grille qui dérive sur la longueur.")
                 Button("÷2") { model.scaleTempo(by: 0.5) }
+                    .help("Moitié du tempo : l'erreur la plus courante de l'estimation.")
                 Button("×2") { model.scaleTempo(by: 2) }
+                    .help("Double du tempo : l'autre erreur courante.")
                 Picker("", selection: Binding(get: { model.beatsPerBar },
                                               set: { model.beatsPerBar = $0 })) {
                     ForEach([2, 3, 4, 5, 6, 7], id: \.self) { Text("\($0)/4").tag($0) }
                 }
                 .labelsHidden()
                 .frame(width: 66)
+                .help("Temps par mesure. Change l'espacement des barres, et le repère du premier temps.")
                 Button("1 ici") { model.setDownbeatAtPlayhead() }
                     .help("Poser le premier temps à la tête de lecture (T)")
                 Button {
@@ -298,7 +343,7 @@ struct ContentView: View {
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
-                .help("Recalculer la grille, avec la signature choisie")
+                .help("Relancer l'estimation, avec la signature choisie.")
             } else {
                 Text("tempo indéterminé")
                     .font(.system(size: 10))
@@ -308,11 +353,59 @@ struct ContentView: View {
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
-                .help("Chercher une grille")
+                .help("Chercher une grille dans ce morceau.")
                 .disabled(model.spectrogram.columnCount == 0)
             }
         }
         .controlSize(.small)
+    }
+
+    private var displayControls: some View {
+        Group {
+            slider("Contraste", value: $model.display.floorDb, range: -120...(-40),
+                   format: { String(format: "%.0f dB", $0) },
+                   help: """
+                   Niveau rendu noir. Le monter nettoie le fond,
+                   et retire du même coup ce bruit de l'aimant du curseur.
+                   """)
+            Button("Auto") { model.applyAutoContrast() }
+                .controlSize(.small)
+                .disabled(model.spectrogram.columnCount == 0)
+                .help("""
+                      Règle noir, clair et pente d'après ce qui est à l'écran (K).
+                      La pente est ajustée sur les niveaux de raies, pour que graves et aigus ressortent pareillement.
+                      ⇧K le fait sur tout le morceau.
+                      """)
+
+            slider("Zoom", value: Binding(get: { log2(model.verticalZoom) },
+                                          set: { model.verticalZoom = pow(2, $0) }),
+                   // 16× au maximum : au-delà, la vue butterait sur sa propre
+                   // limite et le curseur continuerait de bouger sans effet.
+                   range: 0...4,
+                   reset: 0,
+                   format: { _ in String(format: "%.1f oct", model.visibleOctaves) },
+                   help: """
+                   Étale l'axe des fréquences ; la valeur donne le nombre d'octaves visibles.
+                   Au trackpad : ⇧ + pincement, ou ⇧ + molette — ancré sous le curseur.
+                   La lecture est filtrée sur la bande visible.
+                   """)
+
+            Picker("", selection: $model.display.colorMap) {
+                ForEach(ColorMap.allCases) { Text($0.label).tag($0) }
+            }
+            .labelsHidden()
+            .frame(width: 178)
+            .help("Couleur des raies. « Notes » donne une teinte à chaque demi-ton, réparties selon le cycle des quintes.")
+
+            Picker("", selection: $model.display.useFlats) {
+                Text("♭").tag(true)
+                Text("♯").tag(false)
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(width: 62)
+            .help("Nommer les touches noires par le bas (Mi♭) ou par le haut (Ré♯).")
+        }
     }
 
     /// Un curseur, son intitulé et sa valeur. Double-cliquer sur l'un ou l'autre
@@ -321,20 +414,27 @@ struct ContentView: View {
     private func slider(_ title: String, value: Binding<Double>,
                         range: ClosedRange<Double>,
                         reset: Double? = nil,
-                        format: @escaping (Double) -> String) -> some View {
+                        format: @escaping (Double) -> String,
+                        help: String) -> some View {
         let restore = {
             if let reset { value.wrappedValue = reset }
         }
         return HStack(spacing: 5) {
-            Text(title).font(.system(size: 10)).foregroundStyle(.secondary)
+            // `fixedSize` : sans lui, la barre serrée coupe les intitulés en
+            // colonnes d'une lettre plutôt que de les laisser prendre leur place.
+            Text(title)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .fixedSize()
                 .onTapGesture(count: 2, perform: restore)
-            Slider(value: value, in: range).frame(width: 88)
+            Slider(value: value, in: range).frame(width: 84)
             Text(format(value.wrappedValue))
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(.secondary)
-                .frame(width: 46, alignment: .leading)
+                .fixedSize()
+                .frame(width: 48, alignment: .leading)
                 .onTapGesture(count: 2, perform: restore)
         }
-        .help(reset == nil ? "" : "Double-clic sur le texte pour revenir à la normale")
+        .help(help)
     }
 }
