@@ -185,6 +185,10 @@ let clicks = OfflineAnalysis.run(samples: clickTrack(duration: 24),
 if let grid = TempoEstimator.estimate(clicks, beatsPerBar: beatsPerBar) {
     check("tempo retrouvé", abs(grid.bpm - bpm) < 1,
           String(format: "%.2f BPM pour %.0f", grid.bpm, bpm))
+    // L'estimation ne propose que des entiers : c'est à l'utilisateur d'ajouter
+    // les dixièmes s'il en faut.
+    check("le tempo estimé est rond", grid.bpm == grid.bpm.rounded(),
+          String(format: "%.3f", grid.bpm))
 
     // Phase : l'origine doit tomber sur un temps, à une fraction de temps près.
     let offset = (grid.origin - firstClick).truncatingRemainder(dividingBy: grid.beatSeconds)

@@ -147,8 +147,18 @@ enum TempoEstimator {
                 lag += min(max(0.5 * (a - c) / denominator, -0.5), 0.5)
             }
         }
-        let period = lag * hop
-        guard period > 0 else { return nil }
+        guard lag * hop > 0 else { return nil }
+
+        // Le tempo est **arrondi à l'entier**. L'affinage sous-colonne ci-dessus
+        // donne des valeurs comme 123,4 BPM : une précision que la mesure n'a pas
+        // vraiment, et qui se lit comme une certitude. La quasi-totalité des
+        // morceaux est jouée sur un tempo rond ; on propose donc l'entier, et le
+        // pas de 0,1 BPM de la barre reste là pour rattraper les cas où il faut.
+        let bpm = max((60 / (lag * hop)).rounded(), 1)
+        // La phase est ensuite cherchée avec la période **arrondie** — celle qu'on
+        // va réellement dessiner. L'optimiser pour une autre laisserait la grille
+        // décalée dès la première mesure.
+        lag = 60 / (bpm * hop)
 
         // Phase : on essaie chaque décalage possible et on garde celui où les
         // temps tombent sur le plus d'énergie d'attaque.
@@ -173,7 +183,7 @@ enum TempoEstimator {
         let mean = correlations[minLag...maxLag].reduce(0, +) / Double(maxLag - minLag + 1)
         let confidence = mean > 0 ? correlations[best] / mean : 0
 
-        return TempoGrid(bpm: 60 / period,
+        return TempoGrid(bpm: bpm,
                          origin: (bestPhase + Double(bestDownbeat) * lag) * hop,
                          beatsPerBar: beatsPerBar,
                          confidence: confidence)
