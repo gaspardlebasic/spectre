@@ -51,6 +51,16 @@ if (Test-Path $sortie) { Remove-Item -Recurse -Force $sortie }
 New-Item -ItemType Directory -Force -Path $sortie | Out-Null
 
 Copy-Item "$bin\SpectreCLI.exe" $sortie
+if (Test-Path "$bin\SpectreWindows.exe") {
+    Copy-Item "$bin\SpectreWindows.exe" $sortie
+    # Le nuanceur est lu à côté de l'exécutable : il n'est pas compilé dans le
+    # binaire, ce qui permet de le retoucher sans reconstruire.
+    Copy-Item "Resources\spectrogramme.glsl" $sortie
+    $sdl = Get-ChildItem "build\deps" -Filter "SDL3.dll" -Recurse -ErrorAction SilentlyContinue |
+           Where-Object { $_.DirectoryName -like "*arm64*" -or $_.DirectoryName -like "*x64*" } |
+           Select-Object -First 1
+    if ($sdl) { Copy-Item $sdl.FullName $sortie } else { Write-Host "Note : SDL3.dll introuvable." }
+}
 
 # Les bibliothèques d'exécution de Swift ne sont pas sur la machine de qui reçoit
 # le zip. Les emporter évite un « le programme ne peut pas démarrer car

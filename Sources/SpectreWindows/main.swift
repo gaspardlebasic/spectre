@@ -65,6 +65,41 @@ if sansTete {
     exit(0)
 }
 
+// Le morceau à regarder. Sans argument, la fenêtre reste noire — ce qui est déjà
+// une information : le contexte tient.
+var rendu: SpectrogramRenderer?
+var vue = Viewport()
+var affichage = DisplaySettings()
+
+let fichiers = ProcessInfo.processInfo.arguments.dropFirst().filter { !$0.hasPrefix("--") }
+if let chemin = fichiers.first {
+    do {
+        let audio = try WAVFile.read(at: URL(fileURLWithPath: chemin))
+        let spectrogramme = OfflineAnalysis.run(samples: audio.mono,
+                                                sampleRate: audio.sampleRate,
+                                                settings: AnalysisSettings())
+        if let regle = AutoContrast.settings(basedOn: affichage, in: spectrogramme) {
+            affichage = regle
+        }
+        vue = Viewport.fitting(columns: spectrogramme.columnCount,
+                               bins: spectrogramme.binCount,
+                               size: (width: 1200, height: 700))
+        // Le nuanceur est lu à côté de l'exécutable : `build.ps1` l'y dépose.
+        let voisin = URL(fileURLWithPath: CommandLine.arguments[0])
+            .deletingLastPathComponent().appendingPathComponent("spectrogramme.glsl")
+        let source = FileManager.default.fileExists(atPath: voisin.path)
+            ? voisin
+            : URL(fileURLWithPath: "Resources/spectrogramme.glsl")
+        rendu = SpectrogramRenderer(spectrogram: spectrogramme, shaderPath: source)
+        if rendu == nil { exit(1) }
+        print(String(format: "  %d colonnes × %d lignes", spectrogramme.columnCount,
+                     spectrogramme.binCount))
+    } catch {
+        FileHandle.standardError.write(Data("\(error)\n".utf8))
+        exit(1)
+    }
+}
+
 var fini = false
 var evenement = SDL_Event()
 while !fini {
@@ -73,6 +108,10 @@ while !fini {
         if evenement.type == SDL_EVENT_KEY_DOWN.rawValue,
            evenement.key.key == SDLK_ESCAPE { fini = true }
     }
+    var largeur: Int32 = 0, hauteur: Int32 = 0
+    SDL_GetWindowSizeInPixels(fenetre, &largeur, &hauteur)
+    rendu?.draw(viewport: vue, display: affichage,
+                size: (width: Int(largeur), height: Int(hauteur)))
     SDL_GL_SwapWindow(fenetre)
     SDL_Delay(16)
 }
