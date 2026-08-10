@@ -1,4 +1,4 @@
-#if canImport(Accelerate)
+#if !SPECTRE_PORTABLE && canImport(Accelerate)
 import Accelerate
 #endif
 
@@ -15,10 +15,9 @@ import Accelerate
 public enum Vector {
 
     /// `out = a · b`, terme à terme.
-    @inlinable
     public static func multiply(_ a: UnsafePointer<Float>, _ b: UnsafePointer<Float>,
                                 into out: UnsafeMutablePointer<Float>, count: Int) {
-        #if canImport(Accelerate)
+        #if !SPECTRE_PORTABLE && canImport(Accelerate)
         vDSP_vmul(a, 1, b, 1, out, 1, vDSP_Length(count))
         #else
         for i in 0..<count { out[i] = a[i] * b[i] }
@@ -26,10 +25,9 @@ public enum Vector {
     }
 
     /// `out = x · scalaire`. La source et la destination peuvent être confondues.
-    @inlinable
     public static func scale(_ x: UnsafePointer<Float>, by scalar: Float,
                              into out: UnsafeMutablePointer<Float>, count: Int) {
-        #if canImport(Accelerate)
+        #if !SPECTRE_PORTABLE && canImport(Accelerate)
         var s = scalar
         vDSP_vsmul(x, 1, &s, out, 1, vDSP_Length(count))
         #else
@@ -38,10 +36,9 @@ public enum Vector {
     }
 
     /// `out = x + scalaire`.
-    @inlinable
     public static func add(_ x: UnsafePointer<Float>, _ scalar: Float,
                            into out: UnsafeMutablePointer<Float>, count: Int) {
-        #if canImport(Accelerate)
+        #if !SPECTRE_PORTABLE && canImport(Accelerate)
         var s = scalar
         vDSP_vsadd(x, 1, &s, out, 1, vDSP_Length(count))
         #else
@@ -50,10 +47,9 @@ public enum Vector {
     }
 
     /// `dst += src · gain`. Sert au mixage des canaux en mono.
-    @inlinable
     public static func addScaled(_ src: UnsafePointer<Float>, times gain: Float,
                                  into dst: UnsafeMutablePointer<Float>, count: Int) {
-        #if canImport(Accelerate)
+        #if !SPECTRE_PORTABLE && canImport(Accelerate)
         var g = gain
         vDSP_vsma(src, 1, &g, dst, 1, dst, 1, vDSP_Length(count))
         #else
@@ -62,11 +58,10 @@ public enum Vector {
     }
 
     /// Carré du module d'un spectre en parties séparées : `out = evens² + odds²`.
-    @inlinable
     public static func magnitudesSquared(evens: UnsafeMutablePointer<Float>,
                                          odds: UnsafeMutablePointer<Float>,
                                          into out: UnsafeMutablePointer<Float>, count: Int) {
-        #if canImport(Accelerate)
+        #if !SPECTRE_PORTABLE && canImport(Accelerate)
         var split = DSPSplitComplex(realp: evens, imagp: odds)
         vDSP_zvmags(&split, 1, out, 1, vDSP_Length(count))
         #else
@@ -79,11 +74,10 @@ public enum Vector {
     ///
     /// L'appelant garantit que `input` porte au moins `2·(count−1) + taps.count`
     /// échantillons — c'est ce que calcule le décimateur avant d'appeler.
-    @inlinable
     public static func decimatingFIR(_ input: UnsafePointer<Float>,
                                      taps: UnsafePointer<Float>, tapCount: Int,
                                      into out: UnsafeMutablePointer<Float>, count: Int) {
-        #if canImport(Accelerate)
+        #if !SPECTRE_PORTABLE && canImport(Accelerate)
         vDSP_desamp(input, 2, taps, out, vDSP_Length(count), vDSP_Length(tapCount))
         #else
         for k in 0..<count {

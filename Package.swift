@@ -20,10 +20,19 @@ let package = Package(
                  from: "1.24.0"),
     ],
     targets: [
+        // `SPECTRE_PORTABLE` bascule la couche numérique sur son implémentation en
+        // Swift pur. Il est posé d'office hors des plateformes Apple, où
+        // Accelerate n'existe pas ; sur macOS on peut l'exiger à la main —
+        // `swift build -Xswiftc -DSPECTRE_PORTABLE` — pour faire tourner toutes
+        // les vérifications sur le chemin portable. C'est ainsi que le socle du
+        // portage se prouve sans la machine cible.
         .target(
             name: "SpectreDSP",
             path: "Sources/SpectreDSP",
-            swiftSettings: [.unsafeFlags(["-Ounchecked"], .when(configuration: .release))]
+            swiftSettings: [
+                .define("SPECTRE_PORTABLE", .when(platforms: [.windows, .linux, .android])),
+                .unsafeFlags(["-Ounchecked"], .when(configuration: .release)),
+            ]
         ),
         .target(
             name: "SpectreCore",
@@ -61,6 +70,8 @@ let package = Package(
         // moment venu sur une machine sans macOS. Les deux suivantes touchent au
         // rendu et à la séparation, donc à la couche Apple, et auront leur pendant
         // à écrire pour chaque plateforme.
+        .executableTarget(name: "DSPCheck", dependencies: ["SpectreDSP"],
+                          path: "Tools/DSPCheck"),
         .executableTarget(name: "AnalysisCheck", dependencies: ["SpectreCore"],
                           path: "Tools/AnalysisCheck"),
         .executableTarget(name: "FourierCheck", dependencies: ["SpectreCore"],
