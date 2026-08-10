@@ -23,6 +23,19 @@ let surMac = true
 let surMac = false
 #endif
 
+// Le décodeur des formats compressés est du C qui parle COM : il n'existe que
+// sous Windows, et `SpectreCore` ne le connaît que là. La dépendance se compose
+// ici plutôt qu'avec une condition de plateforme, pour que la cible elle-même
+// ne soit pas déclarée sur un Mac — où elle ne compilerait pas.
+var dependancesNoyau: [Target.Dependency] = [
+    "SpectreDSP",
+    .product(name: "Crypto", package: "swift-crypto",
+             condition: .when(platforms: [.windows, .linux, .android])),
+]
+#if os(Windows)
+dependancesNoyau.append("CMediaFoundation")
+#endif
+
 let reglagesRelease: [SwiftSetting] = [
     .unsafeFlags(["-Ounchecked"], .when(configuration: .release))
 ]
@@ -45,11 +58,7 @@ var cibles: [Target] = [
     ),
     .target(
         name: "SpectreCore",
-        dependencies: [
-            "SpectreDSP",
-            .product(name: "Crypto", package: "swift-crypto",
-                     condition: .when(platforms: [.windows, .linux, .android])),
-        ],
+        dependencies: dependancesNoyau,
         path: "Sources/SpectreCore",
         swiftSettings: reglagesRelease
     ),
@@ -75,6 +84,8 @@ var cibles: [Target] = [
     // personne ne peut regarder l'écran.
     .executableTarget(name: "ImageCheck", dependencies: ["SpectreCore"],
                       path: "Tools/ImageCheck"),
+    .executableTarget(name: "GaplessCheck", dependencies: ["SpectreCore"],
+                      path: "Tools/GaplessCheck"),
 ]
 
 var produits: [Product] = [
@@ -88,6 +99,7 @@ var produits: [Product] = [
     .executable(name: "AnalysisCheck", targets: ["AnalysisCheck"]),
     .executable(name: "FourierCheck", targets: ["FourierCheck"]),
     .executable(name: "ImageCheck", targets: ["ImageCheck"]),
+    .executable(name: "GaplessCheck", targets: ["GaplessCheck"]),
 ]
 
 var dependances: [Package.Dependency] = [
@@ -112,6 +124,16 @@ cibles += [
     // de compilation qui définit `MINIAUDIO_IMPLEMENTATION`.
     .target(name: "CMiniaudio", path: "Sources/CMiniaudio",
             cSettings: [.headerSearchPath("include")]),
+    // Media Foundation : les bibliothèques d'import se déclarent ici, faute de
+    // quoi l'édition de liens échoue sur des symboles COM introuvables. `mfuuid`
+    // n'est pas du code mais les identifiants d'interface eux-mêmes.
+    .target(name: "CMediaFoundation", path: "Sources/CMediaFoundation",
+            linkerSettings: [
+                .linkedLibrary("mfplat"),
+                .linkedLibrary("mfreadwrite"),
+                .linkedLibrary("mfuuid"),
+                .linkedLibrary("ole32"),
+            ]),
     .executableTarget(name: "SpectreWindows",
                       dependencies: ["SpectreCore", "SpectreDSP", "CSDL3", "CMiniaudio"],
                       path: "Sources/SpectreWindows",

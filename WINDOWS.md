@@ -371,7 +371,7 @@ que les deviner n'est pas un ornement.
 |---|---|
 | 0. Découpage du dépôt | **fait**, comportement inchangé, mesuré |
 | 1. Socle numérique | **fait**, vérifié sur Windows |
-| 2. Entrée audio | **WAV fait** ; compressés à venir |
+| 2. Entrée audio | **fait** : WAV en propre, le reste par Media Foundation, amorçage rogné |
 | 3. Rendu | **fait** : nuanceur, tuiles, fenêtre — et l'image mesurée contre celle du processeur |
 | 4. Lecture | **fait** : WASAPI par miniaudio, boucle, filtre de bande ; ralenti à venir |
 | 5. Gestes | **fait** : molette, zooms ancrés, tête de lecture, bornes de boucle |
@@ -382,6 +382,45 @@ que les deviner n'est pas un ornement.
 L'application s'ouvre, montre le spectrogramme, joue le son, se navigue à la
 molette et n'entend que ce qu'elle montre. Ce qui lui manque pour être Spectre :
 les commandes d'affichage, le ralenti, et la séparation de pistes.
+
+### Le décodeur du système ne rend pas ce qu'on croit
+
+Media Foundation lit MP3, AAC, WMA, FLAC et ALAC sans qu'on embarque quoi que ce
+soit — c'est le meilleur marché du portage. Mais il rend **plus** que le morceau.
+
+Les formats à trame font précéder le signal de quelques centaines à quelques
+milliers d'échantillons d'amorçage, et le complètent à la fin. Le compte exact
+est écrit dans le conteneur ; `AVAudioFile` le retranche tout seul, Media
+Foundation non. Mesuré sur un même extrait de six secondes :
+
+| | macOS | Windows, brut | Windows, rogné |
+|---|---|---|---|
+| WAV | 264 600 | 264 600 | 264 600 |
+| FLAC, ALAC | 264 600 | 264 600 | 264 600 |
+| AAC | 264 600 | 267 264 | **264 600** |
+| MP3 (LAME) | 264 600 | 266 736 | **264 600** |
+
+Les 2 664 échantillons de trop de l'AAC font 48 ms : le morceau démarre plus
+tard, la grille de tempo glisse, et un fichier de session écrit sur un système ne
+retombe plus juste sur l'autre. C'est le genre de défaut qui ne se voit pas et
+qui se paie longtemps.
+
+`SpectreCore/Gapless.swift` lit ce que le conteneur déclare — `iTunSMPB` sur les
+fichiers d'Apple, la table d'édition `elst` ailleurs, l'en-tête `Xing` et la
+balise LAME sur un MP3 — sans rien décoder. Deux choses valent d'être notées.
+
+**Chaque décodeur en fait déjà une part, et aucun ne dit laquelle.** Media
+Foundation ôte les 529 échantillons de retard du banc de filtres d'un MP3, et
+rien d'autre. Retrancher aveuglément ce que le conteneur déclare décalerait donc
+le signal dans l'autre sens. La longueur utile, elle, ne dépend d'aucun
+décodeur : on s'en sert de point fixe, et l'écart entre l'excédent déclaré et
+l'excédent observé dit ce qui a déjà été pris — au début, forcément, puisque le
+retard d'un décodeur est un phénomène de début.
+
+**Ce lecteur est en Swift portable**, donc il se met au point sur un Mac en
+confrontant ses réponses à celles d'`AVAudioFile`. C'est le même principe que
+`SPECTRE_PORTABLE` pour la couche numérique : ramener sur la machine de
+développement tout ce qui peut y être jugé.
 
 ### Le piège qui a coûté le plus cher
 

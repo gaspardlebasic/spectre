@@ -47,6 +47,7 @@ jobs:
           "$BIN/FilterCheck"
           "$BIN/ChainCheck"
           "$BIN/WAVCheck"
+          "$BIN/GaplessCheck"
           "$BIN/AnalysisCheck"
 
   windows:
@@ -90,7 +91,8 @@ jobs:
       - name: Vérifications
         run: |
           $bin = swift build -c release --show-bin-path
-          foreach ($p in @("DSPCheck", "FilterCheck", "ChainCheck", "WAVCheck", "AnalysisCheck")) {
+          foreach ($p in @("DSPCheck", "FilterCheck", "ChainCheck", "WAVCheck",
+                           "GaplessCheck", "AnalysisCheck")) {
             Write-Host "##### $p"
             & "$bin\$p.exe"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

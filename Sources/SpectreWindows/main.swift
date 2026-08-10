@@ -95,7 +95,7 @@ var teteAuRepos: Double = 0
 
 if let chemin = fichiers.first {
     do {
-        let audio = try WAVFile.read(at: URL(fileURLWithPath: chemin))
+        let audio = try AudioLoader.load(at: URL(fileURLWithPath: chemin))
         trace(String(format: "  %@ — %.1f s à %d Hz",
                      (chemin as NSString).lastPathComponent,
                      audio.duration, Int(audio.sampleRate)))

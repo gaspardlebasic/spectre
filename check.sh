@@ -35,6 +35,10 @@ echo "=== Chaîne de lecture ==="
 "$BIN/ChainCheck"
 
 echo
+echo "=== Amorçage des formats compressés ==="
+"$BIN/GaplessCheck"
+
+echo
 echo "=== Analyse ==="
 "$BIN/AnalysisCheck"
 

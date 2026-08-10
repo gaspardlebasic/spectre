@@ -1,7 +1,7 @@
 import Foundation
 import SpectreCore
 
-// Spectre en ligne de commande : un WAV entre, une image sort.
+// Spectre en ligne de commande : un morceau entre, une image sort.
 //
 //     SpectreCLI morceau.wav [image.ppm]
 //
@@ -14,11 +14,12 @@ import SpectreCore
 let arguments = CommandLine.arguments
 guard arguments.count >= 2 else {
     FileHandle.standardError.write(Data("""
-        usage : SpectreCLI <fichier.wav> [sortie.ppm] [--taille LxH]
+        usage : SpectreCLI <fichier> [sortie.ppm] [--taille LxH]
 
-        Analyse un WAV et écrit son spectrogramme. Le contraste est réglé
-        automatiquement sur le contenu du morceau, comme le fait ⌘K dans
-        l'application.
+        Analyse un morceau et écrit son spectrogramme. Le contraste est réglé
+        automatiquement sur son contenu, comme le fait ⌘K dans l'application.
+
+        Formats lus ici : \(AudioLoader.supportedExtensions.joined(separator: ", ")).
 
         `--taille` impose les dimensions de l'image. C'est ce qui permet de
         comparer ce dessin-ci, fait sur le processeur, à celui que le GPU produit
@@ -59,9 +60,12 @@ let sortie = positionnels.count >= 2
 
 let début = Date()
 
-let fichier: WAVFile.Contents
+let fichier: AudioLoader.Contents
 do {
-    fichier = try WAVFile.read(at: entrée)
+    // `AudioLoader` prend le WAV lui-même et confie le reste au décodeur du
+    // système — Media Foundation sous Windows. Sur macOS ce chemin s'arrête au
+    // WAV : l'application, elle, passe par `AudioSource` et AVFoundation.
+    fichier = try AudioLoader.load(at: entrée)
 } catch {
     FileHandle.standardError.write(Data("\(error)\n".utf8))
     exit(1)

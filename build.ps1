@@ -44,7 +44,8 @@ if ($LASTEXITCODE -ne 0) { throw "La compilation a échoué." }
 $bin = swift build -c $Configuration --show-bin-path
 
 if ($Verifier) {
-    foreach ($p in @("DSPCheck", "FilterCheck", "ChainCheck", "WAVCheck", "AnalysisCheck")) {
+    foreach ($p in @("DSPCheck", "FilterCheck", "ChainCheck", "WAVCheck",
+                     "GaplessCheck", "AnalysisCheck")) {
         Write-Host ""
         Write-Host "=== $p ==="
         & "$bin\$p.exe"
