@@ -5,9 +5,8 @@
 # LaunchServices. Un dossier, un zip.
 #
 # Le paquet contient `SpectreWindows` — la fenêtre, le rendu OpenGL, la lecture
-# audio —, `SpectreCLI` qui fait le même travail sans écran, et `ImageCheck` pour
-# confronter les deux. Les réglages d'affichage n'ont pas encore de commandes à
-# l'écran : ils prennent leurs valeurs automatiques, comme ⌘K sur macOS.
+# audio, la barre d'outils —, `SpectreCLI` qui fait le même travail sans écran,
+# et `ImageCheck` pour confronter les deux.
 #
 #   .\build.ps1              construit et assemble
 #   .\build.ps1 -Verifier    et fait tourner les vérifications avant d'assembler
@@ -36,6 +35,7 @@ if ($PSScriptRoot -like "\\*") {
 # qui distingue Windows du reste, sur une erreur d'en-tête introuvable.
 $drapeaux = & (Join-Path $PSScriptRoot "Tools\sdl3.ps1") -Drapeaux
 & (Join-Path $PSScriptRoot "Tools\miniaudio.ps1") | Out-Null
+& (Join-Path $PSScriptRoot "Tools\imgui.ps1") | Out-Null
 
 Write-Host "Compilation ($Configuration)…"
 swift build -c $Configuration @drapeaux

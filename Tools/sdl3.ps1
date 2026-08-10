@@ -38,8 +38,11 @@ $include = Join-Path $dossier "include"
 $lib = Join-Path $dossier "lib\$arch"
 
 if ($Drapeaux) {
-    # Sortis un par ligne, à passer tels quels à `swift build`.
+    # Sortis un par ligne, à passer tels quels à `swift build`. `-Xcxx` en plus
+    # de `-Xcc` : la passerelle vers Dear ImGui est du C++, et SwiftPM ne verse
+    # pas les drapeaux C dans la compilation C++.
     "-Xcc"; "-I$include"
+    "-Xcxx"; "-I$include"
     "-Xlinker"; "-L$lib"
 } else {
     Write-Host "SDL3 $version ($arch)"

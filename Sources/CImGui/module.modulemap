@@ -1,0 +1,4 @@
+module CImGui {
+    header "include/spectre_imgui.h"
+    export *
+}

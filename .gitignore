@@ -4,3 +4,4 @@ build/
 Resources/*.onnx
 Resources/*.bin
 Sources/CMiniaudio/include/miniaudio.h
+Sources/CImGui/imgui/

@@ -134,8 +134,14 @@ cibles += [
                 .linkedLibrary("mfuuid"),
                 .linkedLibrary("ole32"),
             ]),
+    // Dear ImGui est du C++ ; Swift n'en voit qu'un en-tête C d'une trentaine de
+    // fonctions, écrit à la main. Les sources arrivent par `Tools/imgui.sh` et ne
+    // sont pas versionnées.
+    .target(name: "CImGui", dependencies: ["CSDL3"], path: "Sources/CImGui",
+            cxxSettings: [.headerSearchPath(".")]),
     .executableTarget(name: "SpectreWindows",
-                      dependencies: ["SpectreCore", "SpectreDSP", "CSDL3", "CMiniaudio"],
+                      dependencies: ["SpectreCore", "SpectreDSP", "CSDL3",
+                                     "CMiniaudio", "CImGui"],
                       path: "Sources/SpectreWindows",
                       swiftSettings: reglagesRelease),
 ]
