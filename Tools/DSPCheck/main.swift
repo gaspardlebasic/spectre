@@ -47,10 +47,69 @@ func signaux(_ n: Int) -> [(String, [Float])] {
     ]
 }
 
+// La transformée directe, calculée bêtement en N², en double précision. Elle est
+// lente et elle a raison : c'est la définition même, sans astuce ni papillon.
+//
+// C'est la seule référence qui vaille **partout** — là où Accelerate existe comme
+// là où il n'existe pas. Sans elle, ce contrôle n'aurait rien à dire sur la
+// machine cible, qui est précisément celle dont on doute.
+func dftDirecte(_ x: [Float]) -> (evens: [Float], odds: [Float]) {
+    let n = x.count
+    let demi = n / 2
+    var evens = [Float](repeating: 0, count: demi)
+    var odds = [Float](repeating: 0, count: demi)
+    func raie(_ k: Int) -> (Double, Double) {
+        var re = 0.0, im = 0.0
+        for j in 0..<n {
+            let a = -2 * Double.pi * Double(k) * Double(j) / Double(n)
+            re += Double(x[j]) * cos(a)
+            im += Double(x[j]) * sin(a)
+        }
+        return (re, im)
+    }
+    // Convention de `vDSP_fft_zrip` : tout vaut deux fois la transformée, et la
+    // case 0 porte le continu et Nyquist ensemble.
+    evens[0] = Float(2 * raie(0).0)
+    odds[0] = Float(2 * raie(demi).0)
+    for k in 1..<demi {
+        let (re, im) = raie(k)
+        evens[k] = Float(2 * re)
+        odds[k] = Float(2 * im)
+    }
+    return (evens, odds)
+}
+
+titre("Contre la définition")
+for n in [512] {
+    guard let portable = PortableRealFourier(size: n) else {
+        verifie(false, "la transformée se construit")
+        break
+    }
+    let demi = n / 2
+    for (nom, x) in signaux(n) {
+        var pr = [Float](repeating: 0, count: demi), pi = [Float](repeating: 0, count: demi)
+        x.withUnsafeBufferPointer { entrée in
+            pr.withUnsafeMutableBufferPointer { r in
+                pi.withUnsafeMutableBufferPointer { i in
+                    portable.forward(entrée.baseAddress!, evens: r.baseAddress!, odds: i.baseAddress!)
+                }
+            }
+        }
+        let (er, ei) = dftDirecte(x)
+        var écart: Float = 0, amplitude: Float = 0
+        for k in 0..<demi {
+            écart = max(écart, abs(er[k] - pr[k]), abs(ei[k] - pi[k]))
+            amplitude = max(amplitude, abs(er[k]), abs(ei[k]))
+        }
+        verifie(écart <= max(amplitude, 1) * 5e-5, nom,
+                String(format: "écart %.2e pour une amplitude %.2f", écart, amplitude))
+    }
+}
+
 #if canImport(Accelerate)
 
 for n in [512, 4096, 8192] {
-    titre("Aller, N = \(n)")
+    titre("Contre Accelerate, N = \(n)")
     guard let référence = AccelerateRealFourier(size: n),
           let portable = PortableRealFourier(size: n) else {
         verifie(false, "les deux transformées se construisent")
@@ -177,8 +236,33 @@ if let référence = AccelerateRealFourier(size: 512),
 
 #else
 
-titre("Comparaison")
-print("  (Accelerate absent : il n'y a rien à comparer, la version portable est seule)")
+// Sans Accelerate, l'aller a été mesuré contre la définition ci-dessus. Reste à
+// éprouver le retour, qu'on ne peut confronter qu'à lui-même : l'aller-retour
+// doit rendre le signal, au facteur 2N que la convention impose.
+titre("Aller-retour")
+for n in [512, 4096] {
+    guard let portable = PortableRealFourier(size: n) else { continue }
+    let demi = n / 2
+    let x = signaux(n)[4].1
+    var er = [Float](repeating: 0, count: demi), ei = [Float](repeating: 0, count: demi)
+    var sortie = [Float](repeating: 0, count: n)
+    x.withUnsafeBufferPointer { entrée in
+        er.withUnsafeMutableBufferPointer { r in
+            ei.withUnsafeMutableBufferPointer { i in
+                portable.forward(entrée.baseAddress!, evens: r.baseAddress!, odds: i.baseAddress!)
+                sortie.withUnsafeMutableBufferPointer { o in
+                    portable.inverse(evens: r.baseAddress!, odds: i.baseAddress!,
+                                     into: o.baseAddress!)
+                }
+            }
+        }
+    }
+    var écart: Float = 0
+    for i in 0..<n { écart = max(écart, abs(sortie[i] - x[i] * Float(2 * n))) }
+    let crête = (x.map(abs).max() ?? 1) * Float(2 * n)
+    verifie(écart <= crête * 2e-5, "l'aller-retour rend le signal, N = \(n)",
+            String(format: "écart %.2e pour une amplitude %.2f", écart, crête))
+}
 
 #endif
 

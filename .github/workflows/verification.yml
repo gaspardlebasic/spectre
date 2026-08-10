@@ -9,6 +9,11 @@
 # c'est-à-dire les deux tiers du code, plus les quatre vérifications qui n'ont
 # besoin ni d'écran ni de carte son. La couche Apple et l'interface restent hors
 # du champ — leur pendant Windows n'existe pas encore.
+#
+# Le portage a d'abord été mené dans une machine virtuelle locale, ce qui donne
+# une boucle de quelques secondes là où celle-ci en demande quelques minutes.
+# Cette CI reste la mesure qui fait foi : elle part d'une machine vierge, donc
+# elle attrape ce qu'un poste déjà configuré laisse passer.
 
 name: Vérification
 
@@ -40,6 +45,7 @@ jobs:
           BIN="$(swift build -c release -Xswiftc -DSPECTRE_PORTABLE --show-bin-path)"
           "$BIN/DSPCheck"
           "$BIN/FilterCheck"
+          "$BIN/ChainCheck"
           "$BIN/AnalysisCheck"
 
   windows:
@@ -62,32 +68,25 @@ jobs:
       # `swift build` sans argument voudrait compiler la couche macOS. On ne
       # demande donc que ce qui a un sens ici, produit par produit — l'option
       # `--product` ne se répète pas.
-      #
+      # Le manifeste ne déclare la couche Apple que sur un Mac : ici, `swift build`
+      # tout court ne construit que ce qui a un sens — le noyau et ses
+      # vérifications. Pas de `--product` à répéter, pas de moteur d'inférence en
+      # xcframework à aller chercher.
+      - name: Construire le noyau
+        run: swift build -c release
+
       # `FourierCheck` est compilé mais pas exécuté : sa référence vient de
       # PyTorch et n'est pas versionnée. Le compiler prouve tout de même que la
       # STFT de Demucs tient sous Windows.
-      - name: Construire le noyau
-        run: |
-          swift build -c release --product SpectreCore
-          swift build -c release --product DSPCheck
-          swift build -c release --product FilterCheck
-          swift build -c release --product AnalysisCheck
-          swift build -c release --product FourierCheck
-
-      - name: Couche numérique
+      #
+      # `AnalysisCheck` est celui qui compte : il porte les deux propriétés
+      # difficiles — le découpage en tranches identique au bit près à l'analyse
+      # d'un seul tenant, et le recalage des octaves les unes sur les autres.
+      - name: Vérifications
         run: |
           $bin = swift build -c release --show-bin-path
-          & "$bin\DSPCheck.exe"
-
-      - name: Filtre de bande
-        run: |
-          $bin = swift build -c release --show-bin-path
-          & "$bin\FilterCheck.exe"
-
-      # Le contrôle qui compte : l'analyse complète, avec ses deux propriétés
-      # difficiles — le découpage en tranches identique au bit près, et le
-      # recalage des octaves les unes sur les autres.
-      - name: Analyse
-        run: |
-          $bin = swift build -c release --show-bin-path
-          & "$bin\AnalysisCheck.exe"
+          foreach ($p in @("DSPCheck", "FilterCheck", "ChainCheck", "AnalysisCheck")) {
+            Write-Host "##### $p"
+            & "$bin\$p.exe"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
