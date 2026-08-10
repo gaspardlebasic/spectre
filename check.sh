@@ -27,6 +27,10 @@ echo "=== Filtre de bande ==="
 "$BIN/FilterCheck"
 
 echo
+echo "=== Chaîne de lecture ==="
+"$BIN/ChainCheck"
+
+echo
 echo "=== Analyse ==="
 "$BIN/AnalysisCheck"
 
