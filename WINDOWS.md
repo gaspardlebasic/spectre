@@ -277,9 +277,40 @@ besoin ni d'écran ni de carte son. C'est l'instrument de mesure du portage auta
 que sa distribution : sans lui, les étapes 2 à 6 avancent à l'aveugle et
 l'on ne découvre qu'à la fin que rien ne compile.
 
-Ce qui reste hors de portée des deux : la qualité du ralenti, la latence WASAPI,
-et le rendu à l'écran. Ceux-là demanderont une vraie machine et une paire
-d'oreilles.
+**Et, quand elle existe, une machine Windows sous la main.** Une VM Parallels
+donne une boucle de quelques secondes là où l'intégration continue en demande
+plusieurs minutes. Elle voit le dossier du Mac par le partage, mais SwiftPM ne
+sait pas travailler sur un chemin UNC — `pushd` échoue sur
+`invalid absolute path 'UNC\Mac\…'`. Un `robocopy` des sources vers le disque de
+la VM avant chaque compilation règle la question, et va plus vite de surcroît.
+
+Ce qui reste hors de portée de tout cela : la qualité du ralenti, la latence
+WASAPI, et le rendu à l'écran. Ceux-là demanderont une paire d'oreilles et un
+écran.
+
+### Ce que la première compilation a appris
+
+Quatre choses, qu'aucune relecture n'aurait trouvées.
+
+**`--product` est sans effet sur une bibliothèque automatique.** SwiftPM prévient
+et construit *tout* — donc le moteur d'inférence livré en Objective-C, donc
+l'échec, pour une raison sans rapport avec ce qu'on demandait. La réponse n'est
+pas de mieux viser mais de ne pas déclarer la couche Apple ailleurs que sur un
+Mac : le manifeste est du code, exécuté sur la machine qui construit.
+
+**SwiftPM ne peut rien récupérer sans `git`**, absent d'une installation Windows
+nue. `MinGit`, une archive de 37 Mo à extraire, suffit — ni installeur ni
+registre.
+
+**La chaîne et le SDK doivent s'accorder.** Swift 6.0.3 sous Windows échoue sur
+`cyclic dependency in module 'ucrt'` avant même de lire le manifeste. 6.3.3
+passe. L'erreur ne désigne rien du dépôt et fait perdre du temps si on la lit au
+premier degré.
+
+**L'inférence de types n'a pas le même budget partout.** Un tableau de littéraux
+mêlant entiers, flottants et `.pi` compilait sur la machine de développement et
+dépassait le temps imparti sur l'exécutant d'intégration. Écrire les types plutôt
+que les deviner n'est pas un ornement.
 
 ## Ordre de marche
 
@@ -288,11 +319,12 @@ interface, avant que la suivante commence.
 
 0. **Le découpage du dépôt.** *Fait.* Les 181 lignes de `check.sh` sont sorties
    identiques avant et après, assertions au bit près comprises.
-1. **Le socle numérique.** *Fait, et mesuré sur le Mac.* Les six opérations
+1. **Le socle numérique.** *Fait, et vérifié sur Windows.* Les six opérations
    vectorielles et la transformée réelle ont leur version portable, comparée à
-   Accelerate dans le même processus. Il reste à le voir tourner **sur Windows** :
-   c'est ce que fait le flux d'intégration décrit plus bas, et c'est la seule
-   chose qui manque à cette étape.
+   Accelerate dans le même processus sur macOS, et à la définition — une DFT
+   bête en N², en double précision — partout. `SpectreDSP` et `SpectreCore`
+   compilent en natif `aarch64-unknown-windows-msvc`, et 92 contrôles y passent,
+   dont le découpage en tranches identique **au bit près**.
 2. **L'entrée audio.** Media Foundation et dr_flac derrière l'interface actuelle
    de `AudioFile`. Critère : le spectrogramme d'un même fichier est
    numériquement identique sur les deux plateformes. *(~2 jours)*
