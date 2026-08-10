@@ -57,10 +57,14 @@ jobs:
       # Le couple branche/étiquette doit être mis à jour ensemble : l'action va
       # chercher une archive précise, et une paire dépareillée échoue au
       # téléchargement plutôt qu'à la compilation, ce qui égare.
+      #
+      # 6.3.3 et pas moins : la 6.0.3 échoue sur « cyclic dependency in module
+      # 'ucrt' » avant même de lire le manifeste — un désaccord entre la chaîne et
+      # le SDK Windows, qui n'a rien à voir avec ce dépôt.
       - uses: compnerd/gha-setup-swift@main
         with:
-          branch: swift-6.0.3-release
-          tag: 6.0.3-RELEASE
+          branch: swift-6.3.3-release
+          tag: 6.3.3-RELEASE
 
       - name: Version de la chaîne
         run: swift --version

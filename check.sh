@@ -13,7 +13,10 @@ cd "$(dirname "$0")"
 OUT="build/check"
 mkdir -p "$OUT"
 
-swift build -c release >/dev/null
+# Sans redirection : une compilation qui échoue doit dire pourquoi. La cacher
+# fait sortir ce script sur `set -e` sans une ligne d'explication, ce qui est
+# exactement ce qu'on ne veut pas d'un harnais de vérification.
+swift build -c release
 BIN="$(swift build -c release --show-bin-path)"
 
 echo "=== Couche numérique ==="
