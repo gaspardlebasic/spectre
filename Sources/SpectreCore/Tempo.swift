@@ -1,28 +1,35 @@
 import Foundation
 
 /// Grille métrique : un tempo, un point de départ, une signature.
-struct TempoGrid: Equatable, Codable {
-    var bpm: Double
+public struct TempoGrid: Equatable, Codable {
+    public var bpm: Double
     /// Instant du premier temps fort, en secondes.
-    var origin: Double
-    var beatsPerBar: Int = 4
+    public var origin: Double
+    public var beatsPerBar: Int = 4
     /// Netteté du pic d'autocorrélation retenu, rapportée au reste (1 = rien de
     /// saillant). En dessous de 2 environ, il vaut mieux se méfier de la grille.
-    var confidence: Double = 0
+    public var confidence: Double = 0
 
-    var beatSeconds: Double { 60 / max(bpm, 1) }
-    var barSeconds: Double { beatSeconds * Double(beatsPerBar) }
+    public init(bpm: Double, origin: Double, beatsPerBar: Int = 4, confidence: Double = 0) {
+        self.bpm = bpm
+        self.origin = origin
+        self.beatsPerBar = beatsPerBar
+        self.confidence = confidence
+    }
+
+    public var beatSeconds: Double { 60 / max(bpm, 1) }
+    public var barSeconds: Double { beatSeconds * Double(beatsPerBar) }
 
     /// Numéro de temps (fractionnaire) à un instant donné. 0 = le premier temps fort.
-    func beat(at time: Double) -> Double { (time - origin) / beatSeconds }
-    func time(ofBeat b: Double) -> Double { origin + b * beatSeconds }
+    public func beat(at time: Double) -> Double { (time - origin) / beatSeconds }
+    public func time(ofBeat b: Double) -> Double { origin + b * beatSeconds }
 
     /// Pas de grille le plus fin qui reste lisible à une densité donnée, en temps.
     /// `nil` quand même les mesures se marcheraient dessus.
     ///
     /// Une seule définition sert au tracé *et* à l'aimantation de la boucle : ce
     /// sur quoi les bornes se posent est exactement ce qu'on voit à l'écran.
-    func unit(pointsPerBeat: Double) -> Double? {
+    public func unit(pointsPerBeat: Double) -> Double? {
         let bar = Double(max(beatsPerBar, 1))
         if pointsPerBeat >= 120 { return 0.25 }
         if pointsPerBeat >= 60 { return 0.5 }
@@ -32,7 +39,7 @@ struct TempoGrid: Equatable, Codable {
     }
 
     /// Instant le plus proche sur une grille de pas donné.
-    func snap(_ time: Double, unit: Double) -> Double {
+    public func snap(_ time: Double, unit: Double) -> Double {
         guard unit > 0 else { return time }
         return self.time(ofBeat: (beat(at: time) / unit).rounded() * unit)
     }
@@ -44,9 +51,9 @@ struct TempoGrid: Equatable, Codable {
 /// Le flux spectral — somme des montées de niveau d'une colonne à la suivante —
 /// donne une courbe qui pique à chaque attaque ; son autocorrélation donne la
 /// période, et une recherche de phase donne l'endroit où poser le premier temps.
-enum TempoEstimator {
-    static let minBPM = 50.0
-    static let maxBPM = 200.0
+public enum TempoEstimator {
+    public static let minBPM = 50.0
+    public static let maxBPM = 200.0
 
     /// Les niveaux sont plafonnés par le bas : sans ça, le silence numérique
     /// (−200 dB) produirait des montées de 150 dB au moindre souffle.
@@ -55,7 +62,7 @@ enum TempoEstimator {
     /// Courbe d'attaque : pour chaque colonne, ce qui a *monté* depuis la
     /// précédente. Seules les montées comptent — une note qui s'éteint n'est pas
     /// un évènement rythmique.
-    static func onsetEnvelope(_ s: Spectrogram) -> [Float] {
+    public static func onsetEnvelope(_ s: Spectrogram) -> [Float] {
         guard s.columnCount > 1, s.binCount > 0 else { return [] }
         var flux = [Float](repeating: 0, count: s.columnCount)
         s.values.withUnsafeBufferPointer { v in
@@ -110,7 +117,7 @@ enum TempoEstimator {
         return total
     }
 
-    static func estimate(_ s: Spectrogram, beatsPerBar: Int = 4) -> TempoGrid? {
+    public static func estimate(_ s: Spectrogram, beatsPerBar: Int = 4) -> TempoGrid? {
         let envelope = onsetEnvelope(s)
         guard envelope.count > 32 else { return nil }
         let hop = s.secondsPerColumn

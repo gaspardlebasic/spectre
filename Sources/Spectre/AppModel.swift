@@ -1,6 +1,8 @@
 import AppKit
 import Foundation
 import Observation
+import SpectreCore
+import SpectreMac
 import UniformTypeIdentifiers
 
 /// État de l'application : le fichier, sa matrice, la fenêtre visible, la lecture.

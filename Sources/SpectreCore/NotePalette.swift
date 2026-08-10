@@ -12,15 +12,15 @@ import Foundation
 /// la clarté perçue. À intensité sonore donnée, les 12 teintes partagent exactement
 /// la même clarté et la même chroma : seule la teinte les distingue, si bien qu'une
 /// note grave ne paraît ni plus ni moins forte qu'une autre à niveau égal.
-enum NotePalette {
-    static let pitchClassCount = 12
+public enum NotePalette {
+    public static let pitchClassCount = 12
     /// Nombre de paliers d'intensité de la table.
-    static let steps = 128
+    public static let steps = 128
     /// Clarté Oklab atteinte à pleine intensité. Volontairement en dessous de 1 :
     /// le blanc n'a pas de teinte, et les notes doivent rester identifiables au
     /// maximum du niveau. 0.75 est l'endroit où le gamut sRGB laisse le plus de
     /// chroma commune à l'ensemble des douze teintes.
-    static let maxLightness = 0.75
+    public static let maxLightness = 0.75
     /// Teinte de Do, en tours. 29° est la teinte Oklch du rouge sRGB.
     private static let baseHue = 29.0 / 360.0
     /// Marge de sécurité sous la limite du gamut sRGB.
@@ -34,18 +34,18 @@ enum NotePalette {
 
     /// Rang d'une classe de hauteur dans le cycle des quintes (Do=0, Sol=1, Ré=2…).
     /// 7·p mod 12 inverse la suite des quintes, puisque 7·7 ≡ 1 (mod 12).
-    static func circleOfFifthsIndex(_ pitchClass: Int) -> Int {
+    public static func circleOfFifthsIndex(_ pitchClass: Int) -> Int {
         ((7 * pitchClass) % 12 + 12) % 12
     }
 
-    static func hueTurns(_ pitchClass: Int) -> Double {
+    public static func hueTurns(_ pitchClass: Int) -> Double {
         baseHue + Double(circleOfFifthsIndex(pitchClass)) / Double(pitchClassCount)
     }
 
     // MARK: Oklch → sRGB
 
     /// Oklch vers sRGB linéaire (composantes non bornées : hors gamut si < 0 ou > 1).
-    static func linearRGB(lightness L: Double, chroma C: Double, hueTurns h: Double)
+    public static func linearRGB(lightness L: Double, chroma C: Double, hueTurns h: Double)
         -> (r: Double, g: Double, b: Double) {
         let angle = h * 2 * .pi
         let a = C * cos(angle)
@@ -60,7 +60,7 @@ enum NotePalette {
     }
 
     /// sRGB linéaire vers Oklab (sert à vérifier la clarté et la teinte obtenues).
-    static func oklab(linear r: Double, _ g: Double, _ b: Double) -> (L: Double, a: Double, b: Double) {
+    public static func oklab(linear r: Double, _ g: Double, _ b: Double) -> (L: Double, a: Double, b: Double) {
         let l = cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b)
         let m = cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b)
         let s = cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
@@ -69,36 +69,36 @@ enum NotePalette {
                 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s)
     }
 
-    static func oklabLightness(linear r: Double, _ g: Double, _ b: Double) -> Double {
+    public static func oklabLightness(linear r: Double, _ g: Double, _ b: Double) -> Double {
         oklab(linear: r, g, b).L
     }
 
     /// Teinte Oklch d'une couleur sRGB encodée gamma, en degrés.
-    static func hueDegrees(sRGB r: Double, _ g: Double, _ b: Double) -> Double {
+    public static func hueDegrees(sRGB r: Double, _ g: Double, _ b: Double) -> Double {
         let lab = oklab(linear: decodeGamma(r), decodeGamma(g), decodeGamma(b))
         let angle = atan2(lab.b, lab.a) * 180 / .pi
         return angle < 0 ? angle + 360 : angle
     }
 
     /// Écart angulaire entre deux teintes, en degrés (0…180).
-    static func hueSeparation(_ a: Double, _ b: Double) -> Double {
+    public static func hueSeparation(_ a: Double, _ b: Double) -> Double {
         let d = abs(a - b).truncatingRemainder(dividingBy: 360)
         return min(d, 360 - d)
     }
 
-    static func encodeGamma(_ v: Double) -> Double {
+    public static func encodeGamma(_ v: Double) -> Double {
         let x = min(max(v, 0), 1)
         return x <= 0.0031308 ? 12.92 * x : 1.055 * pow(x, 1 / 2.4) - 0.055
     }
 
-    static func decodeGamma(_ v: Double) -> Double {
+    public static func decodeGamma(_ v: Double) -> Double {
         v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
     }
 
     // MARK: Construction de la table
 
     /// Plus grande chroma restant dans le gamut sRGB pour cette clarté et cette teinte.
-    static func maxChroma(lightness L: Double, hueTurns h: Double) -> Double {
+    public static func maxChroma(lightness L: Double, hueTurns h: Double) -> Double {
         var low = 0.0, high = 0.44
         for _ in 0..<24 {
             let mid = (low + high) / 2
@@ -111,7 +111,7 @@ enum NotePalette {
 
     /// Chroma utilisable par *toutes* les teintes à cette clarté. La prendre commune
     /// est ce qui garantit que seule la teinte distingue deux notes de même niveau.
-    static func commonChroma(lightness L: Double) -> Double {
+    public static func commonChroma(lightness L: Double) -> Double {
         var minimum = Double.greatestFiniteMagnitude
         for p in 0..<pitchClassCount {
             minimum = min(minimum, maxChroma(lightness: L, hueTurns: hueTurns(p)))
@@ -146,7 +146,7 @@ enum NotePalette {
     /// Chroma retenue pour une teinte, un palier d'intensité et un réglage de
     /// saturation. Jusqu'à 1, les douze teintes restent à chroma égale ; au-delà,
     /// chacune progresse vers son propre maximum — la clarté n'en dépend jamais.
-    static func chroma(step: Int, pitchClass: Int, saturation: Double) -> Double {
+    public static func chroma(step: Int, pitchClass: Int, saturation: Double) -> Double {
         let i = min(max(step, 0), steps - 1)
         let common = profile.common[i]
         let s = max(saturation, 0)
@@ -158,13 +158,13 @@ enum NotePalette {
     /// Proportion de chroma appliquée à une intensité donnée (0 dans le bruit de
     /// fond, 1 dès qu'il y a du signal). N'affecte que la saturation : la clarté,
     /// elle, reste strictement proportionnelle à l'intensité.
-    static func chromaFade(intensity t: Double) -> Double {
+    public static func chromaFade(intensity t: Double) -> Double {
         let x = min(max((t - chromaFadeIn) / (chromaFadeFull - chromaFadeIn), 0), 1)
         return x * x * (3 - 2 * x)      // smoothstep
     }
 
     /// Couleur sRGB (0…1, encodée gamma) d'une note à une intensité donnée.
-    static func color(pitchClass: Int, intensity t: Double, saturation: Double = 1)
+    public static func color(pitchClass: Int, intensity t: Double, saturation: Double = 1)
         -> (r: Double, g: Double, b: Double) {
         let clamped = min(max(t, 0), 1)
         let step = Int((clamped * Double(steps - 1)).rounded())
@@ -176,7 +176,7 @@ enum NotePalette {
     }
 
     /// Table RGBA8 de `steps` colonnes (intensité) sur 12 lignes (classe de hauteur).
-    static func makeTable(saturation: Double = 1) -> [UInt8] {
+    public static func makeTable(saturation: Double = 1) -> [UInt8] {
         var table = [UInt8](repeating: 255, count: steps * pitchClassCount * 4)
         for i in 0..<steps {
             let t = Double(i) / Double(steps - 1)

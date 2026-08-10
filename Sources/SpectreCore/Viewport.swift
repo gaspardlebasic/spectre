@@ -7,30 +7,42 @@ import Foundation
 /// exprimé en points, pas en pixels : les gestes du trackpad arrivent en points et
 /// c'est seulement au moment de remplir les uniformes qu'on tient compte de la
 /// densité de l'écran.
-struct Viewport: Equatable, Codable {
+public struct Viewport: Equatable, Codable {
     /// Colonne au bord gauche de la vue.
-    var startColumn: Double = 0
+    public var startColumn: Double = 0
     /// Colonnes couvertes par un point : au-dessus de 1, on dézoome.
-    var columnsPerPoint: Double = 4
+    public var columnsPerPoint: Double = 4
     /// Ligne au bord bas de la vue.
-    var bottomBin: Double = 0
-    var binsPerPoint: Double = 1
+    public var bottomBin: Double = 0
+    public var binsPerPoint: Double = 1
 
-    static let minColumnsPerPoint = 0.005     // ≈ 2 s d'étalement maximal
-    static let maxColumnsPerPoint = 400.0
+    // L'initialiseur par membres qu'écrit le compilateur reste interne : il faut
+    // donc le poser à la main pour qu'il traverse la frontière du module. Ces types
+    // étant `Codable`, sans lui c'est `init(from:)` que l'appelant trouve, d'où des
+    // erreurs qui ne parlent que du décodage.
+    public init(startColumn: Double = 0, columnsPerPoint: Double = 4,
+                bottomBin: Double = 0, binsPerPoint: Double = 1) {
+        self.startColumn = startColumn
+        self.columnsPerPoint = columnsPerPoint
+        self.bottomBin = bottomBin
+        self.binsPerPoint = binsPerPoint
+    }
 
-    func endColumn(width: Double) -> Double { startColumn + width * columnsPerPoint }
-    func topBin(height: Double) -> Double { bottomBin + height * binsPerPoint }
+    public static let minColumnsPerPoint = 0.005     // ≈ 2 s d'étalement maximal
+    public static let maxColumnsPerPoint = 400.0
+
+    public func endColumn(width: Double) -> Double { startColumn + width * columnsPerPoint }
+    public func topBin(height: Double) -> Double { bottomBin + height * binsPerPoint }
 
     // MARK: Conversions
 
-    func point(ofColumn c: Double) -> Double { (c - startColumn) / columnsPerPoint }
-    func column(atPoint x: Double) -> Double { startColumn + x * columnsPerPoint }
+    public func point(ofColumn c: Double) -> Double { (c - startColumn) / columnsPerPoint }
+    public func column(atPoint x: Double) -> Double { startColumn + x * columnsPerPoint }
     /// `y` est compté depuis le **haut** de la vue, comme dans toutes les vues macOS.
-    func bin(atPoint y: Double, height: Double) -> Double {
+    public func bin(atPoint y: Double, height: Double) -> Double {
         bottomBin + (height - y) * binsPerPoint
     }
-    func point(ofBin b: Double, height: Double) -> Double {
+    public func point(ofBin b: Double, height: Double) -> Double {
         height - (b - bottomBin) / binsPerPoint
     }
 
@@ -39,14 +51,14 @@ struct Viewport: Equatable, Codable {
     /// Zoom temporel autour d'un point fixe de la vue : la colonne sous le curseur
     /// ne bouge pas d'un pixel, ce qui est la seule façon qu'un zoom au trackpad
     /// paraisse naturel.
-    mutating func zoomTime(factor: Double, anchorX: Double) {
+    public mutating func zoomTime(factor: Double, anchorX: Double) {
         let anchored = column(atPoint: anchorX)
         columnsPerPoint = min(max(columnsPerPoint / factor,
                                   Viewport.minColumnsPerPoint), Viewport.maxColumnsPerPoint)
         startColumn = anchored - anchorX * columnsPerPoint
     }
 
-    mutating func zoomFrequency(factor: Double, anchorY: Double, height: Double) {
+    public mutating func zoomFrequency(factor: Double, anchorY: Double, height: Double) {
         let anchored = bin(atPoint: anchorY, height: height)
         binsPerPoint = min(max(binsPerPoint / factor, 0.02), 8)
         bottomBin = anchored - (height - anchorY) * binsPerPoint
@@ -55,7 +67,7 @@ struct Viewport: Equatable, Codable {
     /// Recadre la vue sur la matrice : on tolère une marge d'un écran de part et
     /// d'autre en temps (agréable pour attraper le début), mais l'axe des
     /// fréquences reste strictement dans les bornes analysées.
-    mutating func clamp(columns: Int, bins: Int, size: (width: Double, height: Double)) {
+    public mutating func clamp(columns: Int, bins: Int, size: (width: Double, height: Double)) {
         let visibleColumns = size.width * columnsPerPoint
         if Double(columns) < visibleColumns {
             startColumn = (Double(columns) - visibleColumns) / 2
@@ -79,7 +91,7 @@ struct Viewport: Equatable, Codable {
     /// regarde. Le cas « tout est visible » est distingué exprès — il ne s'agit
     /// pas de filtrer entre les deux extrêmes de l'analyse, mais de ne pas
     /// filtrer du tout.
-    func visibleBand(in layout: BinLayout, height: Double) -> ClosedRange<Double>? {
+    public func visibleBand(in layout: BinLayout, height: Double) -> ClosedRange<Double>? {
         let last = Double(layout.binCount - 1)
         guard last > 0 else { return nil }
         let bottom = max(bottomBin, 0)
@@ -90,7 +102,7 @@ struct Viewport: Equatable, Codable {
     }
 
     /// Cadrage initial : tout le fichier en largeur, tout le spectre en hauteur.
-    static func fitting(columns: Int, bins: Int,
+    public static func fitting(columns: Int, bins: Int,
                         size: (width: Double, height: Double)) -> Viewport {
         var v = Viewport()
         v.columnsPerPoint = min(max(Double(columns) / max(size.width, 1),

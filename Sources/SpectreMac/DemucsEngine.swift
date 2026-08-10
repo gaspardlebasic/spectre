@@ -2,6 +2,7 @@ import AVFoundation
 import Accelerate
 import Foundation
 import OnnxRuntimeBindings
+import SpectreCore
 
 /// Séparation par Demucs v4, exécutée par ONNX Runtime.
 ///
@@ -11,15 +12,17 @@ import OnnxRuntimeBindings
 /// recoller le tout en fondu enchaîné.
 ///
 /// Un seul réseau rend les quatre pistes, en un parcours du morceau.
-struct DemucsSeparator: StemSeparator {
-    /// Longueur de la tranche, en échantillons : `segment × samplerate` du modèle.
-    static let segment = 343_980
-    static let sampleRate = 44_100.0
-    static let channels = 2
-    /// Recouvrement entre tranches voisines, comme dans Demucs.
-    static let overlap = 0.25
+public struct DemucsSeparator: StemSeparator {
+    public init() {}
 
-    func separate(fileAt url: URL,
+    /// Longueur de la tranche, en échantillons : `segment × samplerate` du modèle.
+    public static let segment = 343_980
+    public static let sampleRate = 44_100.0
+    public static let channels = 2
+    /// Recouvrement entre tranches voisines, comme dans Demucs.
+    public static let overlap = 0.25
+
+    public func separate(fileAt url: URL,
                   progress: @escaping (Double) -> Void,
                   isCancelled: @escaping () -> Bool) throws -> [Stem: [[Float]]] {
         guard StemStore.hasModel else { throw SeparationFailure.modelMissing }
@@ -234,7 +237,7 @@ struct DemucsSeparator: StemSeparator {
     /// Fenêtre triangulaire de recollement, telle que Demucs la construit : elle
     /// monte jusqu'au milieu puis redescend, si bien que deux tranches voisines se
     /// relaient sans saut.
-    static func transitionWindow() -> [Float] {
+    public static func transitionWindow() -> [Float] {
         let half = segment / 2
         var window = [Float](repeating: 0, count: segment)
         for i in 0..<half { window[i] = Float(i + 1) }
@@ -250,7 +253,7 @@ struct DemucsSeparator: StemSeparator {
     /// tampon de sortie n'est pas ce qu'on croit — et en double précision, parce
     /// qu'une somme de dix millions de carrés en simple précision perd ses derniers
     /// chiffres bien avant la fin.
-    static func moments(of mix: [[Float]]) -> (Double, Double) {
+    public static func moments(of mix: [[Float]]) -> (Double, Double) {
         let length = mix[0].count
         guard length > 0, !mix.isEmpty else { return (0, 1) }
         var total = 0.0, totalSquares = 0.0
@@ -274,7 +277,7 @@ struct DemucsSeparator: StemSeparator {
     /// Le rééchantillonnage n'est pas une politesse — le réseau a appris à cette
     /// fréquence-là, et lui donner du 48 kHz reviendrait à lui présenter une musique
     /// transposée d'un demi-ton et jouée trop vite.
-    static func loadForNetwork(_ url: URL) throws -> [[Float]] {
+    public static func loadForNetwork(_ url: URL) throws -> [[Float]] {
         let file = try AVAudioFile(forReading: url)
         guard let target = AVAudioFormat(commonFormat: .pcmFormatFloat32,
                                          sampleRate: sampleRate,

@@ -1,4 +1,6 @@
 import Foundation
+import SpectreCore
+import SpectreMac
 
 /// Séparation depuis le terminal : `Spectre --separer morceau.wav`.
 ///

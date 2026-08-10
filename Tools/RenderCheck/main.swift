@@ -2,6 +2,8 @@ import CoreGraphics
 import Foundation
 import ImageIO
 import Metal
+import SpectreCore
+import SpectreMac
 import UniformTypeIdentifiers
 
 // Vérification du rendu : on fabrique une matrice de synthèse, on la fait passer

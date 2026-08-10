@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import SpectreCore
 
 /// Sinusoïde d'écoute, jouée pendant qu'on tient le curseur sur une raie.
 ///
@@ -21,7 +22,7 @@ import Foundation
 /// allouée à part : le bloc de rendu n'y fait que des lectures de `Double`
 /// alignés, sans verrou ni allocation — les deux choses qu'on ne peut pas se
 /// permettre là où un retard s'entend.
-final class ToneGenerator {
+public final class ToneGenerator {
     private let engine = AVAudioEngine()
     private var source: AVAudioSourceNode?
     /// [0] = fréquence visée, [1] = gain visé.
@@ -39,7 +40,7 @@ final class ToneGenerator {
     /// État du thread audio, touché nulle part ailleurs.
     private var oscillator: ToneOscillator
 
-    init() {
+    public init() {
         controls[0] = 440
         controls[1] = 0
 
@@ -78,7 +79,7 @@ final class ToneGenerator {
 
     /// Fait sonner une fréquence, ou fait taire si elle est nulle. Appeler aussi
     /// souvent qu'on veut : c'est le glissando qui absorbe les écarts.
-    func play(_ frequency: Double?) {
+    public func play(_ frequency: Double?) {
         release?.cancel()
         release = nil
         guard let frequency, frequency > 0 else { return silence() }
@@ -92,7 +93,7 @@ final class ToneGenerator {
     }
 
     /// Coupe le son en fondu, puis arrête le moteur si on n'y revient pas.
-    func stop() {
+    public func stop() {
         silence()
         let work = DispatchWorkItem { [weak self] in self?.engine.pause() }
         release = work

@@ -1,5 +1,7 @@
 import AVFoundation
 import Foundation
+import SpectreCore
+import SpectreMac
 
 // Vérifie l'ossature de la séparation sans modèle et sans interface : le rangement,
 // l'écriture des pistes, leur relecture, l'annulation, et le fait qu'un échec ne

@@ -1,6 +1,7 @@
-import Accelerate
 import AVFoundation
+import Accelerate
 import Foundation
+import SpectreCore
 
 /// Le contenu d'un fichier audio ramené à ce dont l'analyse a besoin : un signal
 /// mono en virgule flottante, à la fréquence d'échantillonnage du fichier.
@@ -8,24 +9,24 @@ import Foundation
 /// Tout est chargé en mémoire (≈ 10 Mo la minute). C'est la limite assumée de cette
 /// première version : au-delà d'une demi-heure il faudra analyser en flux et ne
 /// garder que la matrice, bien plus compacte que le signal.
-struct AudioSource {
-    let url: URL
-    let sampleRate: Double
-    let frameCount: Int
+public struct AudioSource {
+    public let url: URL
+    public let sampleRate: Double
+    public let frameCount: Int
     /// Somme des canaux, normalisée : c'est ce que voit l'analyseur.
-    let mono: [Float]
+    public let mono: [Float]
     /// Identifie le morceau indépendamment de l'endroit où il est rangé, pour
     /// retrouver les réglages qu'on lui a donnés la dernière fois.
-    let fingerprint: String?
+    public let fingerprint: String?
 
-    var duration: Double { sampleRate > 0 ? Double(frameCount) / sampleRate : 0 }
-    var name: String { url.deletingPathExtension().lastPathComponent }
+    public var duration: Double { sampleRate > 0 ? Double(frameCount) / sampleRate : 0 }
+    public var name: String { url.deletingPathExtension().lastPathComponent }
 
-    enum Failure: LocalizedError {
+    public enum Failure: LocalizedError {
         case unreadable(URL, Error)
         case empty(URL)
 
-        var errorDescription: String? {
+        public var errorDescription: String? {
             switch self {
             case .unreadable(let url, let error):
                 return "Impossible de lire « \(url.lastPathComponent) » : \(error.localizedDescription)"
@@ -35,7 +36,7 @@ struct AudioSource {
         }
     }
 
-    static func load(_ url: URL) throws -> AudioSource {
+    public static func load(_ url: URL) throws -> AudioSource {
         let file: AVAudioFile
         do {
             file = try AVAudioFile(forReading: url)

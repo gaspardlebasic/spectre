@@ -1,16 +1,17 @@
-import CoreGraphics
 import Foundation
+// `CGPoint` et `CGSize` viennent de Foundation, y compris hors des plateformes
+// Apple : les nommer ici n'attache donc pas le noyau à CoreGraphics.
 
 /// Point du spectrogramme sur lequel le curseur s'est aimanté.
-struct SnapTarget: Equatable {
-    var time: Double
-    var frequency: Double
+public struct SnapTarget: Equatable {
+    public var time: Double
+    public var frequency: Double
     /// Clarté affichée à ce point (0…1) avec les réglages courants.
-    var intensity: Double
-    var column: Int
+    public var intensity: Double
+    public var column: Int
     /// Ligne affinée par interpolation : la fréquence lue est plus fine que le pas
     /// de l'analyse, ce qui rend l'écart en cents utilisable.
-    var bin: Double
+    public var bin: Double
 }
 
 /// Magnétisme du curseur sur les raies du spectrogramme.
@@ -24,17 +25,17 @@ struct SnapTarget: Equatable {
 /// que le shader, seuil, pente, γ compris. Une région que l'utilisateur a réglée en
 /// noir vaut zéro et n'attire donc rien — monter le seuil, c'est retirer du bruit
 /// de l'aimant en même temps que de l'image.
-enum Snapping {
+public enum Snapping {
     /// Clarté en dessous de laquelle un point n'attire pas.
-    static let threshold = 0.12
+    public static let threshold = 0.12
     /// Rayon de recherche autour du curseur, en points.
-    static let radius = 36.0
+    public static let radius = 36.0
     /// Nombre maximal de colonnes examinées : au dézoom le rayon peut couvrir des
     /// milliers de colonnes, on les échantillonne.
     private static let maxColumns = 48
 
     /// Clarté affichée d'une valeur, à l'identique du shader.
-    static func intensity(db: Float, bin: Double, layout: BinLayout,
+    public static func intensity(db: Float, bin: Double, layout: BinLayout,
                           display: DisplaySettings) -> Double {
         let octave = log2(layout.minFrequency / 1000) + bin / max(layout.binsPerOctave, 1e-3)
         let tilted = Double(db) + display.tiltDbPerOctave * octave
@@ -44,7 +45,7 @@ enum Snapping {
     }
 
     /// `point` est en points, depuis le coin haut-gauche de la vue.
-    static func nearest(to point: CGPoint,
+    public static func nearest(to point: CGPoint,
                         in spectrogram: Spectrogram,
                         viewport: Viewport,
                         display: DisplaySettings,

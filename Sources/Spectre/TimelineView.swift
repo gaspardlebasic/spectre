@@ -1,5 +1,7 @@
 import AppKit
 import MetalKit
+import SpectreCore
+import SpectreMac
 import SwiftUI
 
 /// Hauteur de la réglette du haut, où se dessine et s'attrape la boucle.

@@ -15,19 +15,19 @@ import Foundation
 /// - la **phase** n'est jamais remise à zéro, y compris quand on repose la
 ///   fréquence d'un bond — une discontinuité de phase s'entend comme un clic,
 ///   exactement comme une discontinuité d'amplitude.
-struct ToneOscillator {
-    let sampleRate: Double
+public struct ToneOscillator {
+    public let sampleRate: Double
     private let glide: Double
     private let fade: Double
 
-    private(set) var frequency: Double
-    private(set) var gain: Double = 0
+    public private(set) var frequency: Double
+    public private(set) var gain: Double = 0
     private var phase: Double = 0
 
     /// - Parameters:
     ///   - glideSeconds: constante de temps du portamento.
     ///   - fadeSeconds: constante de temps des fondus d'entrée et de sortie.
-    init(sampleRate: Double, frequency: Double = 440,
+    public init(sampleRate: Double, frequency: Double = 440,
          glideSeconds: Double = 0.02, fadeSeconds: Double = 0.008) {
         self.sampleRate = max(sampleRate, 1)
         self.frequency = frequency
@@ -38,12 +38,12 @@ struct ToneOscillator {
     /// Repose la fréquence sans toucher à la phase. Utile pour les grands écarts,
     /// qu'on ne veut pas entendre glisser : traverser l'image de bas en haut
     /// sonnerait comme une sirène.
-    mutating func jump(to frequency: Double) {
+    public mutating func jump(to frequency: Double) {
         self.frequency = frequency
     }
 
     /// Produit `count` échantillons en tendant vers la consigne.
-    mutating func render(targetFrequency: Double, targetGain: Double,
+    public mutating func render(targetFrequency: Double, targetGain: Double,
                          into output: UnsafeMutableBufferPointer<Float>, count: Int) {
         let twoPi = 2 * Double.pi
         for i in 0..<min(count, output.count) {

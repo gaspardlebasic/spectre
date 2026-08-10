@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import SpectreCore
 
 /// Les cinq voies du sélecteur : le mixage tel qu'il est, et les quatre pistes que
 /// la séparation isole.
@@ -8,12 +9,12 @@ import Foundation
 /// voit** : le spectrogramme d'une piste isolée a bien moins de partielles qui se
 /// croisent, si bien que l'aimantation du curseur tombe enfin sur la bonne raie.
 /// C'est là le vrai gain pour une transcription, l'écoute n'en étant que la moitié.
-enum Stem: String, CaseIterable, Codable, Identifiable {
+public enum Stem: String, CaseIterable, Codable, Identifiable {
     case mix, drums, bass, vocals, other
 
-    var id: String { rawValue }
+    public var id: String { rawValue }
 
-    var label: String {
+    public var label: String {
         switch self {
         case .mix: "Mixage"
         case .drums: "Batterie"
@@ -26,7 +27,7 @@ enum Stem: String, CaseIterable, Codable, Identifiable {
     /// Symbole système. Chacun a été vérifié présent : un nom absent ne lève
     /// aucune erreur, il ne dessine simplement rien — et `drum`, le nom qu'on
     /// écrirait d'instinct, n'existe pas sur macOS 14.
-    var symbol: String {
+    public var symbol: String {
         switch self {
         case .mix: "waveform"
         case .drums: "circle.grid.cross"
@@ -36,7 +37,7 @@ enum Stem: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    var help: String {
+    public var help: String {
         switch self {
         case .mix: "Le morceau tel qu'il est."
         case .drums: "Batterie et percussions seules."
@@ -49,14 +50,14 @@ enum Stem: String, CaseIterable, Codable, Identifiable {
     /// Les quatre pistes produites par le modèle, **dans l'ordre où il les rend**.
     /// Cet ordre est celui de Demucs et ne doit pas être réarrangé : il indexe
     /// directement la sortie du réseau.
-    static let separated: [Stem] = [.drums, .bass, .other, .vocals]
+    public static let separated: [Stem] = [.drums, .bass, .other, .vocals]
 
     /// Comment nommer un ensemble de pistes gardées — pour la ligne d'état.
     ///
     /// La sélection étant soustractive, on la dit comme on l'a faite : « sans Voix »
     /// plutôt que « Basse + Batterie + Reste ». On n'énumère ce qui reste que
     /// lorsqu'il en reste moins qu'on n'en a retiré.
-    static func label(for stems: Set<Stem>) -> String {
+    public static func label(for stems: Set<Stem>) -> String {
         let kept = separated.filter(stems.contains)
         let dropped = separated.filter { !stems.contains($0) }
         if dropped.isEmpty { return Stem.mix.label }
@@ -75,7 +76,7 @@ enum Stem: String, CaseIterable, Codable, Identifiable {
 /// Tout est dans Application Support, à côté des sessions, et rien dans le dépôt :
 /// un modèle pèse des centaines de mégaoctets et n'a pas sa place dans du code
 /// versionné.
-enum StemStore {
+public enum StemStore {
     private static var root: URL? { Storage.root }
 
     // MARK: Le modèle
@@ -94,9 +95,9 @@ enum StemStore {
     ///
     /// Application Support est consulté ensuite, ce qui permet d'essayer un autre
     /// jeu de poids sans reconstruire l'application.
-    static let modelName = "htdemucs"
+    public static let modelName = "htdemucs"
 
-    static var modelFile: URL? { locate(modelName) }
+    public static var modelFile: URL? { locate(modelName) }
 
     private static func locate(_ name: String) -> URL? {
         if let embedded = Bundle.main.url(forResource: name, withExtension: "onnx") {
@@ -107,14 +108,14 @@ enum StemStore {
         return FileManager.default.fileExists(atPath: loose.path) ? loose : nil
     }
 
-    static var hasModel: Bool { modelFile != nil }
+    public static var hasModel: Bool { modelFile != nil }
 
     // MARK: Les pistes
 
     /// Les pistes sont rangées sous le nom du modèle qui les a produites. Ce n'est
     /// plus un choix offert, mais la trace reste utile : changer de modèle un jour
     /// ne doit pas faire resservir en silence des pistes calculées par l'ancien.
-    static func folder(for fingerprint: String) -> URL? {
+    public static func folder(for fingerprint: String) -> URL? {
         guard let root else { return nil }
         let folder = root.appendingPathComponent("pistes/\(fingerprint)/\(modelName)",
                                                  isDirectory: true)
@@ -122,21 +123,21 @@ enum StemStore {
         return folder
     }
 
-    static func url(_ stem: Stem, for fingerprint: String) -> URL? {
+    public static func url(_ stem: Stem, for fingerprint: String) -> URL? {
         guard stem != .mix else { return nil }
         return folder(for: fingerprint)?
             .appendingPathComponent("\(stem.rawValue).caf")
     }
 
     /// Les quatre pistes de ce morceau sont-elles déjà sur le disque ?
-    static func isSeparated(_ fingerprint: String) -> Bool {
+    public static func isSeparated(_ fingerprint: String) -> Bool {
         Stem.separated.allSatisfy { stem in
             guard let url = url(stem, for: fingerprint) else { return false }
             return FileManager.default.fileExists(atPath: url.path)
         }
     }
 
-    static func removeStems(for fingerprint: String) {
+    public static func removeStems(for fingerprint: String) {
         guard let folder = folder(for: fingerprint) else { return }
         try? FileManager.default.removeItem(at: folder)
     }
@@ -151,7 +152,7 @@ enum StemStore {
     /// addition sur dix millions d'échantillons. Le nom est trié, de sorte que
     /// l'ordre dans lequel on a cliqué ne fabrique pas deux fichiers pour la même
     /// combinaison.
-    static func combined(_ stems: Set<Stem>, for fingerprint: String) throws -> URL? {
+    public static func combined(_ stems: Set<Stem>, for fingerprint: String) throws -> URL? {
         let wanted = stems.subtracting([.mix]).sorted { $0.rawValue < $1.rawValue }
         guard !wanted.isEmpty else { return nil }
         if wanted.count == 1 { return url(wanted[0], for: fingerprint) }
@@ -188,7 +189,7 @@ enum StemStore {
     /// La boucle est indispensable : `read(into:)` n'est pas tenu de rendre tout ce
     /// qu'on lui demande en une fois, et un seul appel rend 44 032 images sur
     /// 44 100 — une troncature muette que rien ne signale.
-    static func readChannels(from url: URL) throws -> (channels: [[Float]], sampleRate: Double) {
+    public static func readChannels(from url: URL) throws -> (channels: [[Float]], sampleRate: Double) {
         let file = try AVAudioFile(forReading: url)
         let format = file.processingFormat
         let count = Int(format.channelCount)
@@ -217,7 +218,7 @@ enum StemStore {
     /// La stéréo est conservée alors que l'analyse, elle, resomme les canaux : elle
     /// ne coûte que de la place, et il serait dommage d'écouter en mono une basse
     /// qu'on vient d'isoler.
-    static func write(_ channels: [[Float]], sampleRate: Double, to url: URL) throws {
+    public static func write(_ channels: [[Float]], sampleRate: Double, to url: URL) throws {
         guard let first = channels.first, !first.isEmpty,
               let format = AVAudioFormat(commonFormat: .pcmFormatFloat32,
                                          sampleRate: sampleRate,

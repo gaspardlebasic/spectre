@@ -1,24 +1,44 @@
-import CryptoKit
 import Foundation
+// Le seul usage est SHA-256 pour l'empreinte d'un fichier. `swift-crypto` expose
+// exactement la même API sous un autre nom de module : ailleurs que sur une
+// plateforme Apple, il suffira de le déclarer en dépendance du noyau.
+#if canImport(CryptoKit)
+import CryptoKit
+#else
+import Crypto
+#endif
 
 /// Ce qu'on retrouve en rouvrant un fichier.
 ///
 /// Le travail de transcription est long et se fait en plusieurs fois : recaler le
 /// premier temps, régler le contraste, poser une boucle sur le passage difficile.
 /// Rien de tout cela n'a de sens si c'est à refaire au prochain lancement.
-struct FileSession: Codable, Equatable {
-    var display = DisplaySettings()
-    var tempo: TempoGrid?
-    var loop: ClosedRange<Double>?
-    var playhead: Double = 0
-    var speed: Double = 1
-    var transpose: Double = 0
-    var viewport = Viewport()
+public struct FileSession: Codable, Equatable {
+    public var display = DisplaySettings()
+    public var tempo: TempoGrid?
+    public var loop: ClosedRange<Double>?
+    public var playhead: Double = 0
+    public var speed: Double = 1
+    public var transpose: Double = 0
+    public var viewport = Viewport()
+
+    public init(display: DisplaySettings = DisplaySettings(), tempo: TempoGrid? = nil,
+                loop: ClosedRange<Double>? = nil, playhead: Double = 0,
+                speed: Double = 1, transpose: Double = 0,
+                viewport: Viewport = Viewport()) {
+        self.display = display
+        self.tempo = tempo
+        self.loop = loop
+        self.playhead = playhead
+        self.speed = speed
+        self.transpose = transpose
+        self.viewport = viewport
+    }
 
     /// La même session, tête de lecture mise à zéro. Sert à décider s'il y a
     /// quelque chose à réécrire : pendant la lecture la position change à chaque
     /// image, et ce n'est pas une raison pour toucher au disque chaque seconde.
-    var withoutPlayhead: FileSession {
+    public var withoutPlayhead: FileSession {
         var copy = self
         copy.playhead = 0
         return copy
@@ -26,7 +46,7 @@ struct FileSession: Codable, Equatable {
 }
 
 /// Rangement des sessions, une par fichier audio.
-enum SessionStore {
+public enum SessionStore {
 
     /// Empreinte d'un fichier : taille, début et fin.
     ///
@@ -35,7 +55,7 @@ enum SessionStore {
     /// partagent — ce qui est le comportement souhaitable, c'est la même musique.
     /// Hacher le fichier entier serait plus sûr encore, mais ferait payer une
     /// seconde de lecture à chaque ouverture pour un gain théorique.
-    static func fingerprint(of url: URL) -> String? {
+    public static func fingerprint(of url: URL) -> String? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
         let chunk = 64 * 1024
@@ -59,7 +79,7 @@ enum SessionStore {
         return folder
     }
 
-    static func load(_ fingerprint: String) -> FileSession? {
+    public static func load(_ fingerprint: String) -> FileSession? {
         guard let url = directory?.appendingPathComponent("\(fingerprint).json"),
               let data = try? Data(contentsOf: url)
         else { return nil }
@@ -69,7 +89,7 @@ enum SessionStore {
         return try? JSONDecoder().decode(FileSession.self, from: data)
     }
 
-    static func save(_ session: FileSession, for fingerprint: String) {
+    public static func save(_ session: FileSession, for fingerprint: String) {
         guard let url = directory?.appendingPathComponent("\(fingerprint).json"),
               let data = try? JSONEncoder().encode(session)
         else { return }
@@ -78,8 +98,8 @@ enum SessionStore {
 }
 
 /// Où l'application range ce qu'elle garde d'un morceau à l'autre.
-enum Storage {
-    static var root: URL? {
+public enum Storage {
+    public static var root: URL? {
         guard let support = try? FileManager.default.url(for: .applicationSupportDirectory,
                                                          in: .userDomainMask,
                                                          appropriateFor: nil, create: true)

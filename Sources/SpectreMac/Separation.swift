@@ -1,8 +1,9 @@
 import AVFoundation
 import Foundation
+import SpectreCore
 
 /// Ce qui peut échouer entre le clic sur une piste et son apparition à l'écran.
-enum SeparationFailure: LocalizedError {
+public enum SeparationFailure: LocalizedError {
     case modelMissing
     case modelUnreadable(String)
     case noSourceFile
@@ -10,7 +11,7 @@ enum SeparationFailure: LocalizedError {
     case cancelled
     case engine(String)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .modelMissing:
             "Le modèle de séparation n'est pas installé."
@@ -36,7 +37,7 @@ enum SeparationFailure: LocalizedError {
 /// sur de la stéréo et s'appuie sur les différences entre canaux pour décider ce qui
 /// appartient à quoi. Lui donner la somme des canaux reviendrait à lui retirer une
 /// partie de ce sur quoi il travaille.
-protocol StemSeparator {
+public protocol StemSeparator {
     /// - Parameter progress: appelé depuis le fil de calcul, de 0 à 1.
     /// - Returns: pour chaque piste, ses canaux.
     func separate(fileAt url: URL,
@@ -44,7 +45,7 @@ protocol StemSeparator {
                   isCancelled: @escaping () -> Bool) throws -> [Stem: [[Float]]]
 }
 
-extension StemSeparator {
+public extension StemSeparator {
     /// Charge un fichier canal par canal. Même lecture que pour les pistes rangées :
     /// une seule implémentation, dans `StemStore`.
     func loadChannels(from url: URL) throws -> (channels: [[Float]], sampleRate: Double) {
@@ -60,16 +61,18 @@ extension StemSeparator {
 /// touche au modèle d'application est renvoyé sur le fil principal. L'annulation est
 /// consultée par le moteur entre deux tranches, de sorte que fermer un morceau
 /// n'attende pas la fin d'un calcul devenu inutile.
-final class SeparationJob {
+public final class SeparationJob {
     private var cancelled = false
     private let lock = NSLock()
 
-    var isCancelled: Bool {
+    public init() {}
+
+    public var isCancelled: Bool {
         lock.lock(); defer { lock.unlock() }
         return cancelled
     }
 
-    func cancel() {
+    public func cancel() {
         lock.lock(); cancelled = true; lock.unlock()
     }
 
@@ -77,7 +80,7 @@ final class SeparationJob {
     ///   - fingerprint: identifie le morceau ; c'est sous ce nom que les pistes sont rangées.
     ///   - progress: sur le fil principal, de 0 à 1.
     ///   - completion: sur le fil principal.
-    func run(fileAt url: URL,
+    public func run(fileAt url: URL,
              fingerprint: String,
              separator: StemSeparator,
              progress: @escaping (Double) -> Void,

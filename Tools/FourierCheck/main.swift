@@ -1,5 +1,5 @@
-import Accelerate
 import Foundation
+import SpectreCore
 
 // Confronte les transformées Swift à une référence produite par PyTorch, avec les
 // conventions exactes de Demucs. Ce qu'on vérifie n'est pas « une STFT » mais

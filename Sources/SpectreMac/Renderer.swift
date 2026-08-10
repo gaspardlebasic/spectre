@@ -1,30 +1,31 @@
 import Accelerate
 import Metal
 import MetalKit
+import SpectreCore
 import simd
 
 // Doit rester binairement identique à la structure `Uniforms` du shader.
-struct ViewUniforms {
+public struct ViewUniforms {
     /// Colonne au bord gauche, ligne au bord bas.
-    var origin = SIMD2<Float>(0, 0)
+    public var origin = SIMD2<Float>(0, 0)
     /// Colonnes et lignes couvertes par un pixel.
-    var perPixel = SIMD2<Float>(1, 1)
+    public var perPixel = SIMD2<Float>(1, 1)
     /// Taille de la vue, en pixels.
-    var viewSize = SIMD2<Float>(1, 1)
-    var columns: UInt32 = 0
-    var bins: UInt32 = 0
-    var tileRows: UInt32 = 1
+    public var viewSize = SIMD2<Float>(1, 1)
+    public var columns: UInt32 = 0
+    public var bins: UInt32 = 0
+    public var tileRows: UInt32 = 1
     /// Nombre de colonnes échantillonnées par pixel quand on est dézoomé.
-    var steps: UInt32 = 1
-    var colorMap: UInt32 = 0
-    var minDb: Float = -95
-    var maxDb: Float = -25
-    var gamma: Float = 1
-    var tiltPerOctave: Float = 0
-    var log2FminOver1k: Float = 0
-    var binsPerOctave: Float = 36
+    public var steps: UInt32 = 1
+    public var colorMap: UInt32 = 0
+    public var minDb: Float = -95
+    public var maxDb: Float = -25
+    public var gamma: Float = 1
+    public var tiltPerOctave: Float = 0
+    public var log2FminOver1k: Float = 0
+    public var binsPerOctave: Float = 36
     /// Numéro de demi-ton (échelle MIDI) de la ligne 0.
-    var semitoneAtBin0: Float = 0
+    public var semitoneAtBin0: Float = 0
 }
 
 private let shaderSource = """
@@ -182,7 +183,7 @@ fragment float4 fragmentMain(VSOut in [[stage_in]],
 /// qu'une heure de musique en fait 360 000, la matrice est découpée en tuiles
 /// empilées dans un `texture2d_array` — le shader retrouve la tuile par une
 /// division, il n'y a donc toujours qu'un seul appel de dessin.
-final class SpectrogramRenderer: NSObject, MTKViewDelegate {
+public final class SpectrogramRenderer: NSObject, MTKViewDelegate {
     private let device: MTLDevice
     private let queue: MTLCommandQueue
     private var pipeline: MTLRenderPipelineState?
@@ -192,14 +193,14 @@ final class SpectrogramRenderer: NSObject, MTKViewDelegate {
 
     /// Hauteur d'une tuile, en colonnes.
     private let tileRows = 4096
-    private(set) var columns = 0
-    private(set) var bins = 0
+    public private(set) var columns = 0
+    public private(set) var bins = 0
 
     /// Ce que le rendu doit afficher : renseigné à chaque image par la vue.
-    var viewport = Viewport()
-    var display = DisplaySettings()
+    public var viewport = Viewport()
+    public var display = DisplaySettings()
 
-    init?(device: MTLDevice) {
+    public init?(device: MTLDevice) {
         guard let q = device.makeCommandQueue() else { return nil }
         self.device = device
         self.queue = q
@@ -224,7 +225,7 @@ final class SpectrogramRenderer: NSObject, MTKViewDelegate {
     /// Envoie la matrice sur le GPU. Les dB sont convertis en demi-flottants :
     /// à ces niveaux le pas vaut 0,06 dB, très en dessous du visible, et la
     /// mémoire occupée est divisée par deux.
-    func upload(_ spectrogram: Spectrogram) {
+    public func upload(_ spectrogram: Spectrogram) {
         let bins = spectrogram.binCount
         let columns = spectrogram.columnCount
         guard bins > 0, columns > 0 else {
@@ -304,9 +305,9 @@ final class SpectrogramRenderer: NSObject, MTKViewDelegate {
 
     // MARK: Rendu
 
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+    public func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
-    func draw(in view: MTKView) {
+    public func draw(in view: MTKView) {
         guard let descriptor = view.currentRenderPassDescriptor,
               let drawable = view.currentDrawable,
               let commands = queue.makeCommandBuffer()
@@ -319,7 +320,7 @@ final class SpectrogramRenderer: NSObject, MTKViewDelegate {
     }
 
     /// Isolé de `MTKView` pour pouvoir aussi produire des images hors écran.
-    func encode(into commands: MTLCommandBuffer,
+    public func encode(into commands: MTLCommandBuffer,
                 descriptor: MTLRenderPassDescriptor,
                 pixelSize: CGSize,
                 scale: CGFloat) {
@@ -367,5 +368,5 @@ final class SpectrogramRenderer: NSObject, MTKViewDelegate {
     }
 
     /// Géométrie de l'axe des fréquences, nécessaire aux couleurs de notes.
-    var layout = BinLayout()
+    public var layout = BinLayout()
 }

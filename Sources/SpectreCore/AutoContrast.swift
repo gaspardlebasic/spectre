@@ -19,7 +19,7 @@ import Foundation
 ///    le clair un peu au-dessus des raies.
 ///
 /// Tout se lit dans la matrice déjà calculée : aucune réanalyse.
-enum AutoContrast {
+public enum AutoContrast {
     /// Niveau atteint quand une note est présente.
     private static let raieQuantile = 0.95
     /// Niveau du fond : ce que la ligne vaut la moitié du temps.
@@ -45,7 +45,7 @@ enum AutoContrast {
 
     /// Réglages déduits d'une portion de la matrice — tout le morceau par défaut,
     /// ou seulement ce qu'on a sous les yeux.
-    static func settings(basedOn current: DisplaySettings,
+    public static func settings(basedOn current: DisplaySettings,
                          in spectrogram: Spectrogram,
                          columns: Range<Int>? = nil,
                          bins: Range<Int>? = nil) -> DisplaySettings? {

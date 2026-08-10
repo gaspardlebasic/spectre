@@ -50,6 +50,29 @@ Xcode n'est pas nécessaire : le script compile avec SwiftPM, assemble le bundle
 double-clic sur un fichier audio lancerait l'application *sans lui transmettre le
 fichier*.
 
+## Les quatre étages du code
+
+Le paquet est coupé en quatre, du plus portable au moins portable. La règle est
+qu'un module ne connaît que ceux d'en dessous.
+
+| module | ce qu'il porte | ce qu'il connaît du système |
+|---|---|---|
+| `SpectreDSP` | opérations vectorielles, transformée réelle | Accelerate, et lui seul |
+| `SpectreCore` | l'analyse, le tempo, les palettes, les boucles, les sessions | **rien** |
+| `SpectreMac` | décodage, lecture, écriture des pistes, rendu Metal, séparation | AVFoundation, Metal, ONNX |
+| `Spectre` | la fenêtre, les menus, la réglette, le modèle d'application | SwiftUI, AppKit |
+
+`SpectreCore` n'importe que Foundation : c'est vérifiable d'un coup d'œil, et
+c'est ce qui donne son sens au découpage. Les deux tiers du code y vivent, et ne
+dépendent d'aucune plateforme.
+
+Les vérifications de `check.sh` sont devenues des exécutables du paquet plutôt que
+des compilations à la main. Trois d'entre elles — analyse, Fourier, crans de
+lecture — ne tirent que le noyau et tourneront donc partout où Swift compile.
+
+Le portage sous Windows, que ce découpage prépare, est décrit dans
+[WINDOWS.md](WINDOWS.md).
+
 ## L'analyse
 
 Le cœur est repris de [Spectromètre](../spectrometre) : un **banc d'étages en

@@ -1,4 +1,5 @@
 import Foundation
+import SpectreCore
 
 // Vérification de la chaîne d'analyse hors ligne sur des signaux de synthèse.
 // Aucun fichier, aucune fenêtre : uniquement du calcul, donc reproductible.

@@ -20,13 +20,13 @@ import Foundation
 ///
 /// 3. **La queue du fichier.** On prolonge l'analyse par du silence, de quoi que la
 ///    compensation ait encore des colonnes à lire jusqu'au dernier échantillon.
-enum OfflineAnalysis {
+public enum OfflineAnalysis {
 
     /// Durée visée d'une tranche. La granularité réelle est arrondie à l'alignement
     /// imposé par la cascade de décimation.
-    static let defaultChunkSeconds: Double = 30
+    public static let defaultChunkSeconds: Double = 30
 
-    static func run(samples: [Float],
+    public static func run(samples: [Float],
                     sampleRate: Double,
                     settings: AnalysisSettings,
                     chunkSeconds: Double = defaultChunkSeconds,
@@ -182,7 +182,7 @@ enum OfflineAnalysis {
 private final class Counter {
     private let lock = NSLock()
     private var value = 0
-    func increment() -> Int {
+    public func increment() -> Int {
         lock.lock(); defer { lock.unlock() }
         value += 1
         return value

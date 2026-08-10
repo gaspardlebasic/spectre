@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import Observation
+import SpectreCore
 
 /// Lecture du fichier, avec ralenti et transposition indépendants.
 ///
@@ -9,7 +10,7 @@ import Observation
 /// soit complète ; le jour où la qualité devient le sujet, c'est le seul nœud à
 /// remplacer — rien d'autre dans l'application ne dépend de la vitesse de lecture,
 /// puisque l'analyse porte sur le fichier d'origine.
-@Observable final class Player {
+@Observable public final class Player {
     private let engine = AVAudioEngine()
     private let node = AVAudioPlayerNode()
     private let timePitch = AVAudioUnitTimePitch()
@@ -28,16 +29,16 @@ import Observation
     @ObservationIgnored private var segmentStart: Double = 0
     @ObservationIgnored private var pausedAt: Double = 0
 
-    private(set) var isPlaying = false
-    private(set) var duration: Double = 0
-    var message: String?
+    public private(set) var isPlaying = false
+    public private(set) var duration: Double = 0
+    public var message: String?
 
     private var storedSpeed: Double = 1
     private var storedTranspose: Double = 0
 
     /// Vitesse de lecture (1 = normale), hauteur inchangée. La valeur est crantée
     /// à l'écriture : ce que l'affichage montre est ce qui est réellement appliqué.
-    var speed: Double {
+    public var speed: Double {
         get { storedSpeed }
         set {
             let snapped = Detent.speed(newValue)
@@ -49,7 +50,7 @@ import Observation
 
     /// Transposition, en demi-tons (fractionnaire : sert aussi à recaler un
     /// enregistrement désaccordé).
-    var transpose: Double {
+    public var transpose: Double {
         get { storedTranspose }
         set {
             let snapped = Detent.transpose(newValue)
@@ -60,7 +61,7 @@ import Observation
     }
 
     /// Ni ralenti ni transposé : le fichier tel quel.
-    var isNeutral: Bool { storedSpeed == 1 && storedTranspose == 0 }
+    public var isNeutral: Bool { storedSpeed == 1 && storedTranspose == 0 }
 
     /// Applique vitesse et hauteur, et **retire l'unité du chemin du signal**
     /// quand il n'y a rien à faire.
@@ -78,11 +79,11 @@ import Observation
         timePitch.auAudioUnit.shouldBypassEffect = isNeutral
     }
 
-    var volume: Double = 1 {
+    public var volume: Double = 1 {
         didSet { node.volume = Float(min(max(volume, 0), 1)) }
     }
 
-    init() {
+    public init() {
         engine.attach(node)
         engine.attach(timePitch)
         engine.attach(band)
@@ -100,7 +101,7 @@ import Observation
     /// Les fréquences sont celles du **fichier**, pas celles qui sortent : le
     /// filtrage est placé avant la transposition, si bien que ce qu'on entend
     /// correspond à ce qu'on voit même quand on joue un ton plus haut.
-    func setBand(_ range: ClosedRange<Double>?) {
+    public func setBand(_ range: ClosedRange<Double>?) {
         // Un mouvement de trackpad produit une consigne par image ; on ne retouche
         // les filtres que lorsque l'écart devient audible (un dixième de demi-ton).
         if let range, let applied = appliedBand,
@@ -125,7 +126,7 @@ import Observation
         }
     }
 
-    func load(url: URL) {
+    public func load(url: URL) {
         stop()
         do {
             let f = try AVAudioFile(forReading: url)
@@ -149,7 +150,7 @@ import Observation
     }
 
     /// Boucle en cours, en secondes. La lecture y reste tant qu'elle est posée.
-    private(set) var loop: ClosedRange<Double>?
+    public private(set) var loop: ClosedRange<Double>?
     /// Longueur du premier segment joué, du point de départ à la fin de la boucle.
     @ObservationIgnored private var firstSegment: Double = 0
     /// Tours déjà programmés et pas encore consommés.
@@ -163,7 +164,7 @@ import Observation
     /// En boucle, il en fournit bien plus que la durée du passage : on replie donc
     /// le temps écoulé sur la longueur de la boucle, ce qui donne une position
     /// juste sans jamais interroger la file de lecture.
-    var currentTime: Double {
+    public var currentTime: Double {
         guard isPlaying,
               let render = node.lastRenderTime,
               let played = node.playerTime(forNodeTime: render),
@@ -182,7 +183,7 @@ import Observation
 
     /// Pose ou retire la boucle. Si on est en train de lire, la file est refaite
     /// immédiatement — sans quoi le changement n'aurait d'effet qu'au tour suivant.
-    func setLoop(_ range: ClosedRange<Double>?) {
+    public func setLoop(_ range: ClosedRange<Double>?) {
         let cleaned = range.flatMap { r -> ClosedRange<Double>? in
             let lo = min(max(r.lowerBound, 0), duration)
             let hi = min(max(r.upperBound, 0), duration)
@@ -193,7 +194,7 @@ import Observation
         if isPlaying { play(from: currentTime) }
     }
 
-    func play(from time: Double? = nil) {
+    public func play(from time: Double? = nil) {
         guard let file else { return }
         var start = min(max(time ?? pausedAt, 0), max(duration - 0.01, 0))
         // Lancer la lecture hors de la boucle n'aurait aucun sens : on rentre.
@@ -246,26 +247,26 @@ import Observation
         }
     }
 
-    func pause() {
+    public func pause() {
         guard isPlaying else { return }
         pausedAt = currentTime
         node.stop()
         isPlaying = false
     }
 
-    func stop() {
+    public func stop() {
         pausedAt = isPlaying ? currentTime : pausedAt
         node.stop()
         engine.stop()
         isPlaying = false
     }
 
-    func toggle(at time: Double) {
+    public func toggle(at time: Double) {
         if isPlaying { pause() } else { play(from: time) }
     }
 
     /// Déplace la tête de lecture, en poursuivant si on était en train de lire.
-    func seek(to time: Double) {
+    public func seek(to time: Double) {
         let wasPlaying = isPlaying
         pausedAt = min(max(time, 0), duration)
         if wasPlaying {

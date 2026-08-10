@@ -1,8 +1,8 @@
-import Accelerate
 import Foundation
+import SpectreDSP
 
 /// La transformée de Fourier à court terme **telle que Demucs l'emploie**, et son
-/// inverse, calculées avec Accelerate.
+/// inverse.
 ///
 /// Ce n'est pas une STFT « en général ». Chaque convention compte, et se tromper sur
 /// une seule donne un spectrogramme plausible et faux :
@@ -18,26 +18,25 @@ import Foundation
 /// Ce travail était jusqu'ici fait *dans* le réseau, par multiplication contre des
 /// bases cosinus/sinus figées dans le graphe — 128 Mo de tables, et un coût en N²
 /// là où une FFT coûte N log N.
-final class DemucsFourier {
-    static let nfft = 4096
-    static let hop = 1024
+public final class DemucsFourier {
+    public static let nfft = 4096
+    public static let hop = 1024
     /// Raies conservées : tout sauf Nyquist.
-    static let bins = nfft / 2
+    public static let bins = nfft / 2
     /// Rembourrage propre à `_spec`, en plus de celui de la STFT.
-    static let margin = hop / 2 * 3          // 1536
+    public static let margin = hop / 2 * 3          // 1536
 
-    private let log2n = vDSP_Length(12)      // 4096 = 2¹²
-    private let setup: FFTSetup
+    private let transform: RealFourier
     private let window: [Float]
     /// Somme des carrés de la fenêtre, décalée de saut en saut : c'est par elle
     /// qu'on divise à la reconstruction.
     private let forwardScale: Float
     private let inverseScale: Float
 
-    init?() {
-        guard let setup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2)) else { return nil }
-        self.setup = setup
+    public init?() {
         let n = Self.nfft
+        guard let t = RealFourier(size: n) else { return nil }
+        self.transform = t
         // Hann **périodique** : `torch.hann_window` l'est par défaut, et la variante
         // symétrique décalerait toute la reconstruction.
         window = (0..<n).map { 0.5 * (1 - cos(2 * .pi * Float($0) / Float(n))) }
@@ -51,17 +50,15 @@ final class DemucsFourier {
         inverseScale = 1 / Float(n).squareRoot()
     }
 
-    deinit { vDSP_destroy_fftsetup(setup) }
-
     /// Nombre de trames conservées pour un signal de cette longueur.
-    static func frames(for length: Int) -> Int { (length + hop - 1) / hop }
+    public static func frames(for length: Int) -> Int { (length + hop - 1) / hop }
 
     // MARK: Aller
 
     /// Spectre d'un signal, rangé raie par raie : `real[bin * frames + frame]`.
     ///
     /// C'est la disposition de PyTorch, et celle qu'attend le réseau.
-    func spectrogram(of signal: [Float]) -> (real: [Float], imaginary: [Float]) {
+    public func spectrogram(of signal: [Float]) -> (real: [Float], imaginary: [Float]) {
         let n = Self.nfft
         let kept = Self.frames(for: signal.count)
         let padded = Self.reflect(signal,
@@ -81,16 +78,16 @@ final class DemucsFourier {
         // on ne les calcule pas.
         for f in 0..<total where f >= 2 && f < 2 + kept {
             let start = f * Self.hop
-            vDSP_vmul(Array(centred[start..<start + n]), 1, window, 1, &frame, 1, vDSP_Length(n))
+            frame.withUnsafeMutableBufferPointer {
+                Vector.multiply(Array(centred[start..<start + n]), window,
+                                into: $0.baseAddress!, count: n)
+            }
             evens.withUnsafeMutableBufferPointer { er in
                 odds.withUnsafeMutableBufferPointer { oi in
-                    var split = DSPSplitComplex(realp: er.baseAddress!, imagp: oi.baseAddress!)
                     frame.withUnsafeBufferPointer { raw in
-                        raw.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: n / 2) {
-                            vDSP_ctoz($0, 2, &split, 1, vDSP_Length(n / 2))
-                        }
+                        transform.forward(raw.baseAddress!,
+                                          evens: er.baseAddress!, odds: oi.baseAddress!)
                     }
-                    vDSP_fft_zrip(setup, &split, 1, log2n, FFTDirection(kFFTDirection_Forward))
                 }
             }
             let column = f - 2
@@ -110,7 +107,7 @@ final class DemucsFourier {
     // MARK: Retour
 
     /// Reconstruit un signal de `length` échantillons à partir de son spectre.
-    func signal(real: [Float], imaginary: [Float], length: Int) -> [Float] {
+    public func signal(real: [Float], imaginary: [Float], length: Int) -> [Float] {
         let n = Self.nfft
         let kept = Self.frames(for: length)
         let total = kept + 4                       // les deux trames de garde de chaque côté
@@ -141,12 +138,9 @@ final class DemucsFourier {
 
             evens.withUnsafeMutableBufferPointer { er in
                 odds.withUnsafeMutableBufferPointer { oi in
-                    var split = DSPSplitComplex(realp: er.baseAddress!, imagp: oi.baseAddress!)
-                    vDSP_fft_zrip(setup, &split, 1, log2n, FFTDirection(kFFTDirection_Inverse))
                     frame.withUnsafeMutableBufferPointer { raw in
-                        raw.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: n / 2) {
-                            vDSP_ztoc(&split, 1, $0, 2, vDSP_Length(n / 2))
-                        }
+                        transform.inverse(evens: er.baseAddress!, odds: oi.baseAddress!,
+                                          into: raw.baseAddress!)
                     }
                 }
             }
@@ -175,7 +169,7 @@ final class DemucsFourier {
 
     /// Réflexion sans répétition du bord : `[1,2,3]` rembourré de 2 à gauche donne
     /// `[3,2,1,2,3]`, comme `numpy` et `torch`.
-    static func reflect(_ x: [Float], left: Int, right: Int) -> [Float] {
+    public static func reflect(_ x: [Float], left: Int, right: Int) -> [Float] {
         guard x.count > 1 else { return [Float](repeating: x.first ?? 0,
                                                 count: left + x.count + right) }
         var out = [Float]()

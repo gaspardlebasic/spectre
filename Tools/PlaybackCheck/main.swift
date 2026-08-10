@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import SpectreCore
 
 // Vérification de la chaîne de lecture, en rendu hors ligne : aucun périphérique
 // audio, donc reproductible partout.

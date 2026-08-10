@@ -1,4 +1,6 @@
 import AppKit
+import SpectreCore
+import SpectreMac
 import SwiftUI
 import UniformTypeIdentifiers
 

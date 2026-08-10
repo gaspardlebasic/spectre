@@ -1,37 +1,51 @@
-import Accelerate
 import Foundation
+import SpectreDSP
 
 // MARK: - Réglages d'analyse
 
 /// Paramètres qui déterminent la structure de l'analyse (banc multi-résolution + axe
 /// des fréquences). Toute modification invalide le spectrogramme calculé.
-struct AnalysisSettings: Equatable, Codable {
+public struct AnalysisSettings: Equatable, Codable {
     /// Taille de FFT utilisée par chaque étage du banc multi-résolution.
     /// Chaque étage couvre une octave, donc le facteur de qualité vaut
     /// Q ≈ 0.1·N (bas de bande) à 0.2·N (haut de bande).
-    var fftSize: Int = 512
+    public var fftSize: Int = 512
 
     /// Taille de FFT utilisée quand le mode multi-résolution est désactivé
     /// (une seule fenêtre, constante en secondes, pour tout le spectre).
-    var monoFFTSize: Int = 8192
+    public var monoFFTSize: Int = 8192
 
     /// Analyse multi-résolution : la fenêtre s'allonge quand la fréquence baisse.
-    var multiResolution: Bool = true
+    public var multiResolution: Bool = true
 
     /// Nombre de lignes de sortie par octave (résolution verticale de l'image).
-    var binsPerOctave: Int = 36
+    public var binsPerOctave: Int = 36
 
-    var minFrequency: Double = 25
-    var maxFrequency: Double = 18000
+    public var minFrequency: Double = 25
+    public var maxFrequency: Double = 18000
 
     /// Nombre de colonnes analysées par seconde (résolution horizontale).
-    var columnsPerSecond: Double = 100
+    public var columnsPerSecond: Double = 100
 
     /// Constante de temps du lissage temporel, en secondes (0 = aucun lissage).
     /// Hors ligne on n'en veut normalement pas : rien n'oblige à masquer le bruit.
-    var smoothingSeconds: Double = 0
+    public var smoothingSeconds: Double = 0
 
-    var layoutKey: [Int] {
+    public init(fftSize: Int = 512, monoFFTSize: Int = 8192, multiResolution: Bool = true,
+                binsPerOctave: Int = 36, minFrequency: Double = 25,
+                maxFrequency: Double = 18000, columnsPerSecond: Double = 100,
+                smoothingSeconds: Double = 0) {
+        self.fftSize = fftSize
+        self.monoFFTSize = monoFFTSize
+        self.multiResolution = multiResolution
+        self.binsPerOctave = binsPerOctave
+        self.minFrequency = minFrequency
+        self.maxFrequency = maxFrequency
+        self.columnsPerSecond = columnsPerSecond
+        self.smoothingSeconds = smoothingSeconds
+    }
+
+    public var layoutKey: [Int] {
         [fftSize, monoFFTSize, multiResolution ? 1 : 0, binsPerOctave,
          Int(minFrequency * 100), Int(maxFrequency * 100),
          Int(columnsPerSecond * 100), Int(smoothingSeconds * 1000)]
@@ -40,28 +54,38 @@ struct AnalysisSettings: Equatable, Codable {
 
 // MARK: - Géométrie de l'axe fréquentiel
 
-struct BinLayout: Equatable {
-    var binCount: Int = 0
-    var minFrequency: Double = 25
-    var maxFrequency: Double = 18000
-    var binsPerOctave: Double = 36
-    var sampleRate: Double = 48000
+public struct BinLayout: Equatable {
+    public var binCount: Int = 0
+    public var minFrequency: Double = 25
+    public var maxFrequency: Double = 18000
+    public var binsPerOctave: Double = 36
+    public var sampleRate: Double = 48000
     /// Identifiant de génération : change dès que la géométrie change.
-    var key: Int = 0
+    public var key: Int = 0
 
-    var totalOctaves: Double { log2(maxFrequency / minFrequency) }
+    public init(binCount: Int = 0, minFrequency: Double = 25, maxFrequency: Double = 18000,
+                binsPerOctave: Double = 36, sampleRate: Double = 48000, key: Int = 0) {
+        self.binCount = binCount
+        self.minFrequency = minFrequency
+        self.maxFrequency = maxFrequency
+        self.binsPerOctave = binsPerOctave
+        self.sampleRate = sampleRate
+        self.key = key
+    }
 
-    func frequency(atBin i: Double) -> Double {
+    public var totalOctaves: Double { log2(maxFrequency / minFrequency) }
+
+    public func frequency(atBin i: Double) -> Double {
         minFrequency * pow(2, i / binsPerOctave)
     }
 
     /// Indice de bin (fractionnaire) d'une fréquence.
-    func bin(of frequency: Double) -> Double {
+    public func bin(of frequency: Double) -> Double {
         log2(frequency / minFrequency) * binsPerOctave
     }
 
     /// Position verticale normalisée (0 = grave, 1 = aigu) d'une fréquence.
-    func position(of frequency: Double) -> Double {
+    public func position(of frequency: Double) -> Double {
         log2(frequency / minFrequency) / max(totalOctaves, 1e-9)
     }
 }
@@ -70,8 +94,7 @@ struct BinLayout: Equatable {
 
 private final class RealFFT {
     let n: Int
-    private let log2n: vDSP_Length
-    private let setup: FFTSetup
+    private let transform: RealFourier
     private var window: [Float]
     private var scale: Float          // 1 / (Σw)²  → une sinusoïde d'amplitude 1 donne 0 dB
     private var windowed: [Float]
@@ -79,11 +102,9 @@ private final class RealFFT {
     private var imagp: [Float]
 
     init?(n: Int) {
-        guard n >= 8, (n & (n - 1)) == 0 else { return nil }
+        guard let t = RealFourier(size: n) else { return nil }
+        self.transform = t
         self.n = n
-        self.log2n = vDSP_Length(log2(Double(n)).rounded())
-        guard let s = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2)) else { return nil }
-        self.setup = s
         // Fenêtre de Hann périodique.
         window = (0..<n).map { 0.5 * (1 - cos(2 * Float.pi * Float($0) / Float(n))) }
         let sum = window.reduce(0, +)
@@ -93,35 +114,32 @@ private final class RealFFT {
         imagp = [Float](repeating: 0, count: n / 2)
     }
 
-    deinit { vDSP_destroy_fftsetup(setup) }
-
     /// `out` doit contenir n/2 + 1 échantillons ; on y écrit la densité de puissance
     /// normalisée (amplitude² d'une sinusoïde pure au sommet de son pic).
     func power(of input: [Float], into out: inout [Float]) {
-        vDSP_vmul(input, 1, window, 1, &windowed, 1, vDSP_Length(n))
+        windowed.withUnsafeMutableBufferPointer { w in
+            Vector.multiply(input, window, into: w.baseAddress!, count: n)
+        }
 
         let half = n / 2
         realp.withUnsafeMutableBufferPointer { rp in
             imagp.withUnsafeMutableBufferPointer { ip in
-                var split = DSPSplitComplex(realp: rp.baseAddress!, imagp: ip.baseAddress!)
                 windowed.withUnsafeBufferPointer { w in
-                    w.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: half) { c in
-                        vDSP_ctoz(c, 2, &split, 1, vDSP_Length(half))
-                    }
+                    transform.forward(w.baseAddress!,
+                                      evens: rp.baseAddress!, odds: ip.baseAddress!)
                 }
-                vDSP_fft_zrip(setup, &split, 1, log2n, FFTDirection(FFT_FORWARD))
                 // Format « packed » : realp[0] = DC, imagp[0] = Nyquist.
                 let dc = rp[0], nyq = ip[0]
                 out.withUnsafeMutableBufferPointer { o in
-                    vDSP_zvmags(&split, 1, o.baseAddress!, 1, vDSP_Length(half))
+                    Vector.magnitudesSquared(evens: rp.baseAddress!, odds: ip.baseAddress!,
+                                             into: o.baseAddress!, count: half)
                     o[0] = dc * dc
                     o[half] = nyq * nyq
                 }
             }
         }
-        var s = scale
         out.withUnsafeMutableBufferPointer { o in
-            vDSP_vsmul(o.baseAddress!, 1, &s, o.baseAddress!, 1, vDSP_Length(half + 1))
+            Vector.scale(o.baseAddress!, by: scale, into: o.baseAddress!, count: half + 1)
         }
     }
 }
@@ -131,16 +149,16 @@ private final class RealFFT {
 /// Filtre passe-bas RIF + décimation par 2. Le gabarit (passante jusqu'à 0.2·fs,
 /// coupée à partir de 0.3·fs) garantit qu'aucun repliement ne tombe dans la bande
 /// réellement exploitée par l'étage suivant.
-final class Decimator {
+public final class Decimator {
     private let taps: [Float]
     private var history: [Float]
     private var buffer: [Float] = []
     private var output: [Float] = []
 
     /// Nombre d'échantillons d'entrée que le filtre met à « oublier » son état initial.
-    static let tapCount = 96
+    public static let tapCount = 96
 
-    init(tapCount: Int = Decimator.tapCount) {
+    public init(tapCount: Int = Decimator.tapCount) {
         let m = tapCount
         let fc: Double = 0.25   // fréquence de coupure normalisée (×fs)
         var h = [Float](repeating: 0, count: m)
@@ -155,15 +173,17 @@ final class Decimator {
             h[i] = Float(v)
             sum += v
         }
-        var g = Float(1 / sum)
-        vDSP_vsmul(h, 1, &g, &h, 1, vDSP_Length(m))
+        let g = Float(1 / sum)
+        h.withUnsafeMutableBufferPointer {
+            Vector.scale($0.baseAddress!, by: g, into: $0.baseAddress!, count: m)
+        }
         taps = h
         history = [Float](repeating: 0, count: m - 1)
         buffer.reserveCapacity(m + 4096)
         output.reserveCapacity(2048)
     }
 
-    func process(_ x: UnsafeBufferPointer<Float>, _ body: (UnsafeBufferPointer<Float>) -> Void) {
+    public func process(_ x: UnsafeBufferPointer<Float>, _ body: (UnsafeBufferPointer<Float>) -> Void) {
         buffer.removeAll(keepingCapacity: true)
         buffer.append(contentsOf: history)
         buffer.append(contentsOf: x)
@@ -174,7 +194,8 @@ final class Decimator {
         if count > 0 {
             output.append(contentsOf: repeatElement(0, count: count))
             output.withUnsafeMutableBufferPointer { o in
-                vDSP_desamp(buffer, 2, taps, o.baseAddress!, vDSP_Length(count), vDSP_Length(p))
+                Vector.decimatingFIR(buffer, taps: taps, tapCount: p,
+                                     into: o.baseAddress!, count: count)
             }
         }
         let consumed = 2 * count
@@ -187,16 +208,16 @@ final class Decimator {
 // MARK: - Étage du banc
 
 private final class Stage {
-    let sampleRate: Double
-    let n: Int
+    public let sampleRate: Double
+    public let n: Int
     private var ring: [Float]
     private var writeIndex = 0
     private var linear: [Float]
     private let fft: RealFFT
-    var power: [Float]          // n/2 + 1
-    var pendingSamples = 0
+    public var power: [Float]          // n/2 + 1
+    public var pendingSamples = 0
 
-    init?(sampleRate: Double, n: Int) {
+    public init?(sampleRate: Double, n: Int) {
         guard let f = RealFFT(n: n) else { return nil }
         self.fft = f
         self.sampleRate = sampleRate
@@ -206,7 +227,7 @@ private final class Stage {
         power = [Float](repeating: 0, count: n / 2 + 1)
     }
 
-    func append(_ x: UnsafeBufferPointer<Float>) {
+    public func append(_ x: UnsafeBufferPointer<Float>) {
         guard let base = x.baseAddress, !x.isEmpty else { return }
         var offset = 0
         var remaining = x.count
@@ -231,7 +252,7 @@ private final class Stage {
     }
 
     /// Recalcule le spectre à partir des n derniers échantillons.
-    func refresh() {
+    public func refresh() {
         linear.withUnsafeMutableBufferPointer { l in
             ring.withUnsafeBufferPointer { r in
                 let tail = n - writeIndex
@@ -261,8 +282,8 @@ private final class Stage {
 /// L'analyseur reste strictement causal : une colonne rend compte des N derniers
 /// échantillons reçus, donc d'un instant antérieur d'une demi-fenêtre. Hors ligne,
 /// `binDelaySeconds` permet d'annuler ce décalage — voir `OfflineAnalysis`.
-final class Analyzer {
-    struct BinMapping {
+public final class Analyzer {
+    public struct BinMapping {
         var stage: Int32 = 0
         var lo: Int32 = 0
         var hi: Int32 = 0
@@ -270,25 +291,25 @@ final class Analyzer {
         var useMax: Bool = false
     }
 
-    let settings: AnalysisSettings
-    let layout: BinLayout
+    public let settings: AnalysisSettings
+    public let layout: BinLayout
     private var stages: [Stage] = []
     private var decimators: [Decimator] = []
     private var mapping: [BinMapping] = []
     private var smoothed: [Float]
     private var column: [Float]
     private var alpha: Float = 0
-    let hopSamples: Int
+    public let hopSamples: Int
     private var samplesSinceColumn = 0
 
     /// Durée de la fenêtre d'analyse de chaque ligne, en secondes.
-    private(set) var binWindowSeconds: [Double] = []
+    public private(set) var binWindowSeconds: [Double] = []
     /// Retard de chaque ligne par rapport à l'instant réel (une demi-fenêtre).
-    var binDelaySeconds: [Double] { binWindowSeconds.map { $0 / 2 } }
+    public var binDelaySeconds: [Double] { binWindowSeconds.map { $0 / 2 } }
     /// La plus longue fenêtre du banc : durée du régime transitoire à l'amorçage.
-    private(set) var maxWindowSeconds: Double = 0
+    public private(set) var maxWindowSeconds: Double = 0
 
-    init(sampleRate: Double, settings: AnalysisSettings) {
+    public init(sampleRate: Double, settings: AnalysisSettings) {
         self.settings = settings
 
         let nyquist = sampleRate / 2
@@ -383,7 +404,7 @@ final class Analyzer {
     }
 
     /// Durée de la fenêtre d'analyse (en secondes) utilisée pour une fréquence donnée.
-    func windowSeconds(at frequency: Double) -> Double {
+    public func windowSeconds(at frequency: Double) -> Double {
         guard !stages.isEmpty else { return 0 }
         let k: Int
         if settings.multiResolution {
@@ -394,13 +415,13 @@ final class Analyzer {
         return Double(stages[k].n) / stages[k].sampleRate
     }
 
-    var stageCount: Int { stages.count }
+    public var stageCount: Int { stages.count }
 
     /// Consomme un bloc audio mono et émet les colonnes de spectre complétées.
     /// Une colonne tombe exactement tous les `hopSamples` échantillons consommés,
     /// ce qui garantit que deux analyses partant de positions multiples du saut
     /// produisent les mêmes colonnes.
-    func process(_ samples: UnsafeBufferPointer<Float>, emit: (UnsafeBufferPointer<Float>) -> Void) {
+    public func process(_ samples: UnsafeBufferPointer<Float>, emit: (UnsafeBufferPointer<Float>) -> Void) {
         guard let base = samples.baseAddress else { return }
         var offset = 0
         while offset < samples.count {
