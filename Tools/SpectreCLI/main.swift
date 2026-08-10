@@ -1,0 +1,89 @@
+import Foundation
+import SpectreCore
+
+// Spectre en ligne de commande : un WAV entre, une image sort.
+//
+//     SpectreCLI morceau.wav [image.ppm]
+//
+// C'est l'application réduite à ce qu'elle a d'essentiel — décoder, analyser,
+// régler le contraste, dessiner — sans fenêtre, sans carte son, sans GPU. Sur
+// macOS elle fait double emploi avec l'application ; sur une plateforme dont
+// l'interface n'est pas encore écrite, c'est le premier endroit où l'on voit que
+// tout le reste marche.
+
+let arguments = CommandLine.arguments
+guard arguments.count >= 2 else {
+    FileHandle.standardError.write(Data("""
+        usage : SpectreCLI <fichier.wav> [sortie.ppm]
+
+        Analyse un WAV et écrit son spectrogramme. Le contraste est réglé
+        automatiquement sur le contenu du morceau, comme le fait ⌘K dans
+        l'application.
+
+        """.utf8))
+    exit(2)
+}
+
+let entrée = URL(fileURLWithPath: arguments[1])
+let sortie = arguments.count >= 3
+    ? URL(fileURLWithPath: arguments[2])
+    : entrée.deletingPathExtension().appendingPathExtension("ppm")
+
+let début = Date()
+
+let fichier: WAVFile.Contents
+do {
+    fichier = try WAVFile.read(at: entrée)
+} catch {
+    FileHandle.standardError.write(Data("\(error)\n".utf8))
+    exit(1)
+}
+
+print(String(format: "  %@ — %.1f s, %d canal(aux) à %d Hz",
+             entrée.lastPathComponent, fichier.duration,
+             fichier.channels, Int(fichier.sampleRate)))
+
+let réglages = AnalysisSettings()
+let spectrogramme = OfflineAnalysis.run(samples: fichier.mono,
+                                        sampleRate: fichier.sampleRate,
+                                        settings: réglages)
+let analyse = Date().timeIntervalSince(début)
+guard spectrogramme.columnCount > 0 else {
+    FileHandle.standardError.write(Data("Le morceau est trop court pour être analysé.\n".utf8))
+    exit(1)
+}
+print(String(format: "  %d colonnes × %d lignes, %.0f Hz…%.0f Hz, analysé en %.2f s (×%.0f temps réel)",
+             spectrogramme.columnCount, spectrogramme.binCount,
+             spectrogramme.layout.minFrequency, spectrogramme.layout.maxFrequency,
+             analyse, fichier.duration / max(analyse, 1e-9)))
+
+// Le même réglage automatique que dans l'application : sans lui, l'image d'un
+// morceau réel est soit blanche soit noire, et ne dit rien.
+var affichage = DisplaySettings()
+if let réglé = AutoContrast.settings(basedOn: affichage, in: spectrogramme) {
+    affichage = réglé
+    print(String(format: "  contraste : %.0f dB…%.0f dB, pente %.1f dB/octave",
+                 affichage.floorDb, affichage.ceilingDb, affichage.tiltDbPerOctave))
+}
+
+if let grille = TempoEstimator.estimate(spectrogramme) {
+    let sûreté = grille.confidence >= 2.2 ? "" : " (peu sûr)"
+    print(String(format: "  tempo : %.0f BPM, premier temps à %.3f s%@",
+                 grille.bpm, grille.origin, sûreté))
+} else {
+    print("  tempo : indéterminé")
+}
+
+// Une image large mais pas démesurée : au-delà, chaque colonne d'analyse occupe
+// moins d'un pixel et l'on ne gagne rien.
+let largeur = min(max(spectrogramme.columnCount, 400), 4000)
+let hauteur = min(max(spectrogramme.binCount, 200), 1200)
+let pixels = SpectrogramImage.render(spectrogramme, display: affichage,
+                                     width: largeur, height: hauteur)
+do {
+    try PPM.write(width: largeur, height: hauteur, pixels: pixels, to: sortie)
+    print("  → \(sortie.path) (\(largeur)×\(hauteur))")
+} catch {
+    FileHandle.standardError.write(Data("Écriture impossible : \(error)\n".utf8))
+    exit(1)
+}

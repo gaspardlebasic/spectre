@@ -61,6 +61,11 @@ var cibles: [Target] = [
                       path: "Tools/ChainCheck"),
     .executableTarget(name: "WAVCheck", dependencies: ["SpectreCore"],
                       path: "Tools/WAVCheck"),
+    // Spectre sans fenêtre : un WAV entre, une image sort. Sur une plateforme
+    // dont l'interface n'est pas encore écrite, c'est le premier endroit où l'on
+    // voit que tout le reste marche.
+    .executableTarget(name: "SpectreCLI", dependencies: ["SpectreCore"],
+                      path: "Tools/SpectreCLI"),
     .executableTarget(name: "AnalysisCheck", dependencies: ["SpectreCore"],
                       path: "Tools/AnalysisCheck"),
     .executableTarget(name: "FourierCheck", dependencies: ["SpectreCore"],
@@ -74,6 +79,7 @@ var produits: [Product] = [
     .executable(name: "FilterCheck", targets: ["FilterCheck"]),
     .executable(name: "ChainCheck", targets: ["ChainCheck"]),
     .executable(name: "WAVCheck", targets: ["WAVCheck"]),
+    .executable(name: "SpectreCLI", targets: ["SpectreCLI"]),
     .executable(name: "AnalysisCheck", targets: ["AnalysisCheck"]),
     .executable(name: "FourierCheck", targets: ["FourierCheck"]),
 ]
