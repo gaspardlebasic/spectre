@@ -331,6 +331,64 @@ mêlant entiers, flottants et `.pi` compilait sur la machine de développement e
 dépassait le temps imparti sur l'exécutant d'intégration. Écrire les types plutôt
 que les deviner n'est pas un ornement.
 
+## Où en est le portage
+
+| étape | état |
+|---|---|
+| 0. Découpage du dépôt | **fait**, comportement inchangé, mesuré |
+| 1. Socle numérique | **fait**, vérifié sur Windows |
+| 2. Entrée audio | **WAV fait** ; compressés à venir |
+| 3. Rendu | nuanceur traduit, GL écrit et **compilé** ; jamais affiché |
+| 4. Lecture | filtres et chaîne faits ; périphérique et ralenti à venir |
+| 5. Interface | rien |
+| 6. Séparation | rien |
+| 7. Distribution | **fait** pour ce qui existe |
+
+### La prochaine chose à faire, et elle est courte
+
+Ouvrir la fenêtre Parallels — une **session interactive**, pas `prlctl exec`, qui
+tourne en session SYSTEM sans bureau — et lancer dans la VM :
+
+```
+C:\spectre\.build\release\SpectreWindows.exe C:\temp\essai.wav
+```
+
+Trois choses peuvent clocher, par ordre de probabilité :
+
+1. **le nuanceur refuse de compiler** — le pilote le dira ligne par ligne sur la
+   sortie d'erreur, c'est le cas le plus facile ;
+2. **l'image sort à l'envers**, graves en haut : l'axe vertical, le piège
+   annoncé en tête de `Resources/spectrogramme.glsl` ;
+3. **le cadrage est décalé** — comparer alors avec `SpectreCLI` sur le même
+   fichier, qui applique la même formule sur le processeur et sert d'arbitre.
+   C'est pour cela qu'il a été écrit avant.
+
+### Reprendre la construction
+
+```
+prlctl resume "Windows 11"
+prlctl set "Windows 11" --pause-idle off
+prlctl exec "Windows 11" cmd /c "robocopy \\Mac\Home\Documents\transcripteur C:\spectre /MIR /XD .build build .git"
+prlctl exec "Windows 11" powershell -ExecutionPolicy Bypass -Command ^
+    "cd C:\spectre; swift build -c release @(& .\Tools\sdl3.ps1 -Drapeaux)"
+```
+
+Le détour par `robocopy` n'est pas un caprice : SwiftPM refuse les chemins UNC.
+
+### Ce qui reste, par ordre de dépendance
+
+1. **Voir l'image** (ci-dessus). Rien d'autre ne mérite d'être écrit avant.
+2. **Les gestes** : molette, Ctrl+molette centré sur le curseur, glisser dans la
+   réglette. `Viewport` porte déjà toute l'arithmétique et elle est éprouvée ;
+   il n'y a que les évènements SDL à y brancher.
+3. **La sortie audio** : miniaudio en WASAPI. `PlaybackChain` fait déjà tout le
+   travail — il ne reste qu'à ouvrir un périphérique et appeler `render`.
+4. **Le ralenti** : signalsmith-stretch, enveloppé dans une trentaine de lignes
+   de C. C'est le risque numéro un du plan, et il ne se juge qu'à l'oreille.
+5. **L'interface** : Dear ImGui, dans la même boucle que le rendu.
+6. **La séparation** : ONNX Runtime en C. Le modèle traverse tel quel.
+7. **Les formats compressés** : Media Foundation, présent dans le système.
+
 ## Ordre de marche
 
 L'ordre n'est pas indifférent : chaque étape doit être vérifiable seule, sans
