@@ -101,6 +101,11 @@ var nomDuMorceau: String?
 var panneauAffichage = false
 var vitesse: Double = 1
 var transposition: Double = 0
+var session = SessionSuivie()
+/// La raie sous le curseur, et si on l'écoute.
+var cible: SnapTarget?
+var sonde = false
+var sinusoide: ToneOutput?
 var taille = (largeur: Int(largeurFenetre), hauteur: Int(hauteurFenetre))
 
 /// Le nuanceur est lu à côté de l'exécutable : `build.ps1` l'y dépose, et le
@@ -113,6 +118,12 @@ let sourceNuanceur: URL = {
 
 /// Instant sous la tête de lecture, qu'on lise ou non.
 var tete: Double { lecture?.isPlaying == true ? (lecture?.currentTime ?? 0) : teteAuRepos }
+
+/// L'état tel qu'il se range sur le disque.
+func etatCourant() -> FileSession {
+    FileSession(display: affichage, tempo: tempo, loop: boucle, playhead: tete,
+                speed: vitesse, transpose: transposition, viewport: vue)
+}
 
 /// Recadre la vue et accorde la bande écoutée à ce qu'on regarde.
 ///
@@ -157,22 +168,42 @@ func charge(_ chemin: String) -> Bool {
         if lecture == nil {
             trace("  (pas de sortie audio — on regarde sans écouter)")
         } else {
-            // Le ralenti choisi vaut pour le morceau suivant : on ne le remet pas
-            // à ×1 dans le dos de qui vient de le régler.
+            // Le ralenti vaut pour le morceau qu'on ouvre — celui qu'on avait
+            // réglé, ou celui que la session rend. On ne le remet pas à ×1 dans
+            // le dos de qui vient de le choisir.
             lecture?.speed = vitesse
             lecture?.transpose = transposition
+            lecture?.seek(to: teteAuRepos)
         }
+
+        let connu = session.ouvre(URL(fileURLWithPath: chemin), courante: etatCourant)
 
         spectrogramme = matrice
         rendu = r
         nomDuMorceau = (chemin as NSString).lastPathComponent
-        boucle = nil
-        teteAuRepos = 0
-        if let regle = AutoContrast.settings(basedOn: affichage, in: matrice) { affichage = regle }
-        vue = Viewport.fitting(columns: matrice.columnCount, bins: matrice.binCount,
-                               size: (width: Double(taille.largeur),
-                                      height: Double(taille.hauteur)))
-        tempo = TempoEstimator.estimate(matrice)
+
+        if let connu {
+            // Ce qui a été réglé à la main l'emporte sur ce que l'analyse
+            // propose : on retrouve le morceau dans l'état où on l'a laissé.
+            affichage = connu.display
+            tempo = connu.tempo ?? TempoEstimator.estimate(matrice)
+            boucle = connu.loop
+            vitesse = connu.speed
+            transposition = connu.transpose
+            vue = connu.viewport
+            teteAuRepos = connu.playhead
+            trace("  réglages retrouvés")
+        } else {
+            boucle = nil
+            teteAuRepos = 0
+            if let regle = AutoContrast.settings(basedOn: affichage, in: matrice) {
+                affichage = regle
+            }
+            vue = Viewport.fitting(columns: matrice.columnCount, bins: matrice.binCount,
+                                   size: (width: Double(taille.largeur),
+                                          height: Double(taille.hauteur)))
+            tempo = TempoEstimator.estimate(matrice)
+        }
         trace("  \(matrice.columnCount) colonnes × \(matrice.binCount) lignes")
         trace("  \(r.description)")
         recadre()
@@ -230,11 +261,17 @@ if spectre_ui_demarrer(UnsafeMutableRawPointer(fenetre),
     abandonne("l'interface n'a pas pu démarrer")
 }
 defer { spectre_ui_arreter() }
+
+// La sinusoïde d'écoute a son propre périphérique, à côté de celui du morceau —
+// comme sur macOS, où c'est un second nœud du moteur. Son absence n'empêche
+// rien : on regarde et on écoute le morceau sans elle.
+sinusoide = ToneOutput()
+if sinusoide == nil { trace("  (pas de sinusoïde d'écoute)") }
 trace(String(format: "  interface prête (échelle %.2f)", echelle))
 
 trace("""
   fenêtre ouverte
-    espace         lire / mettre en pause      clic      poser la tête de lecture
+    espace         lire / mettre en pause      clic      poser la tête et écouter la raie
     molette        défiler dans le temps       Ctrl+     zoomer sur le temps
     Maj+molette    défiler en fréquence        Alt+      zoomer sur les fréquences
     [ et ]         borner la boucle            B         caler la boucle sur les mesures
@@ -249,6 +286,20 @@ trace("""
 /// Instant sous le curseur, en secondes.
 func instant(_ x: Float) -> Double {
     spectrogramme.time(ofColumn: Int(vue.column(atPoint: Double(x)).rounded()))
+}
+
+/// Cherche la raie sous le curseur, et la fait sonner si on tient le bouton.
+///
+/// `Snapping.nearest` rend `nil` là où les réglages d'affichage rendent l'image
+/// noire : la sinusoïde se tait donc d'elle-même dès qu'on quitte une raie, sans
+/// qu'il y ait de règle à écrire pour cela.
+func viseRaie(_ x: Float, _ y: Float) {
+    guard spectrogramme.columnCount > 0 else { cible = nil; return }
+    cible = Snapping.nearest(to: CGPoint(x: Double(x), y: Double(y)),
+                             in: spectrogramme, viewport: vue, display: affichage,
+                             viewSize: CGSize(width: Double(taille.largeur),
+                                              height: Double(taille.hauteur)))
+    if sonde { sinusoide?.play(cible?.frequency) }
 }
 
 func lireOuPause() {
@@ -342,6 +393,17 @@ while !fini {
             let t = instant(evenement.button.x)
             teteAuRepos = t
             lecture?.seek(to: t)
+            // Poser la tête de lecture et écouter la raie sont le même geste,
+            // comme sur macOS : on clique là où l'on regarde.
+            sonde = true
+            viseRaie(evenement.button.x, evenement.button.y)
+
+        case UInt32(SDL_EVENT_MOUSE_BUTTON_UP.rawValue):
+            sonde = false
+            sinusoide?.stop()
+
+        case UInt32(SDL_EVENT_MOUSE_MOTION.rawValue) where !prisParInterface:
+            viseRaie(evenement.motion.x, evenement.motion.y)
 
         // Le pavé tactile de précision remonte ses gestes comme des évènements de
         // molette à fort taux : la navigation reste fluide sans code particulier.
@@ -385,6 +447,12 @@ while !fini {
     spectre_ui_nouvelle_image()
     let demandes = Interface.dessine(largeur: Float(taille.largeur),
                                      nom: nomDuMorceau,
+                                     raie: cible.map {
+                                         ($0.frequency,
+                                          Pitch.noteName(for: $0.frequency,
+                                                         referenceA: affichage.referenceA,
+                                                         flats: affichage.useFlats))
+                                     },
                                      tete: tete, duree: spectrogramme.duration,
                                      enLecture: lecture?.isPlaying == true,
                                      boucle: boucle,
@@ -428,6 +496,8 @@ while !fini {
         lecture?.setLoop(boucleActive ? boucle : nil)
     }
 
+    session.suit(etatCourant())
+
     taille = dessine()
     spectre_ui_dessiner()
     if premiereImage {
@@ -440,3 +510,8 @@ while !fini {
     SDL_GL_SwapWindow(fenetre)
     SDL_Delay(16)
 }
+
+// À la fermeture, sans attendre le calme : c'est le dernier moment où l'on peut
+// écrire, et la tête de lecture en fait partie.
+session.ecris(etatCourant())
+trace("Fermé.")

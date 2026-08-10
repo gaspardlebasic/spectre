@@ -59,6 +59,7 @@ enum Interface {
 
     static func dessine(largeur: Float,
                         nom: String?,
+                        raie: (frequence: Double, note: String)?,
                         tete: Double, duree: Double, enLecture: Bool,
                         boucle: ClosedRange<Double>?,
                         boucleActive: inout Bool,
@@ -161,7 +162,15 @@ enum Interface {
             spectre_ui_meme_ligne()
             if spectre_ui_bouton("Auto", 0) != 0 { d.contrasteAuto = true }
 
-            if let nom {
+            // La note sous le curseur : c'est la lecture que l'on vient chercher,
+            // et elle prend la place du nom du fichier quand elle est là.
+            if let raie {
+                spectre_ui_meme_ligne()
+                // `noteName` compose un vrai signe moins, hors du latin-1 que
+                // porte la police par défaut.
+                let note = raie.note.replacingOccurrences(of: "\u{2212}", with: "-")
+                spectre_ui_texte(String(format: "   %@  %.1f Hz", note, raie.frequence))
+            } else if let nom {
                 spectre_ui_meme_ligne()
                 spectre_ui_texte_faible("   \(nom)")
             }
