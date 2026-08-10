@@ -59,6 +59,8 @@ var cibles: [Target] = [
                       path: "Tools/FilterCheck"),
     .executableTarget(name: "ChainCheck", dependencies: ["SpectreCore"],
                       path: "Tools/ChainCheck"),
+    .executableTarget(name: "WAVCheck", dependencies: ["SpectreCore"],
+                      path: "Tools/WAVCheck"),
     .executableTarget(name: "AnalysisCheck", dependencies: ["SpectreCore"],
                       path: "Tools/AnalysisCheck"),
     .executableTarget(name: "FourierCheck", dependencies: ["SpectreCore"],
@@ -71,6 +73,7 @@ var produits: [Product] = [
     .executable(name: "DSPCheck", targets: ["DSPCheck"]),
     .executable(name: "FilterCheck", targets: ["FilterCheck"]),
     .executable(name: "ChainCheck", targets: ["ChainCheck"]),
+    .executable(name: "WAVCheck", targets: ["WAVCheck"]),
     .executable(name: "AnalysisCheck", targets: ["AnalysisCheck"]),
     .executable(name: "FourierCheck", targets: ["FourierCheck"]),
 ]

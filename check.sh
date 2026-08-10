@@ -27,6 +27,10 @@ echo "=== Filtre de bande ==="
 "$BIN/FilterCheck"
 
 echo
+echo "=== Lecture WAV ==="
+"$BIN/WAVCheck"
+
+echo
 echo "=== Chaîne de lecture ==="
 "$BIN/ChainCheck"
 
