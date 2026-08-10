@@ -307,6 +307,13 @@ registre.
 passe. L'erreur ne désigne rien du dépôt et fait perdre du temps si on la lit au
 premier degré.
 
+**PowerShell 5.1 lit un `.ps1` sans BOM comme du Windows-1252.** Les accents et
+les flèches d'un script écrit en UTF-8 cassent alors l'analyse syntaxique, sur un
+message qui parle de guillemets non fermés. Le fichier doit porter une marque
+d'ordre d'octets. Au passage, la stratégie d'exécution refuse les scripts par
+défaut : `powershell -ExecutionPolicy Bypass -File .\build.ps1` évite d'avoir à
+toucher un réglage de la machine.
+
 **L'inférence de types n'a pas le même budget partout.** Un tableau de littéraux
 mêlant entiers, flottants et `.pi` compilait sur la machine de développement et
 dépassait le temps imparti sur l'exécutant d'intégration. Écrire les types plutôt
@@ -325,9 +332,11 @@ interface, avant que la suivante commence.
    bête en N², en double précision — partout. `SpectreDSP` et `SpectreCore`
    compilent en natif `aarch64-unknown-windows-msvc`, et 92 contrôles y passent,
    dont le découpage en tranches identique **au bit près**.
-2. **L'entrée audio.** Media Foundation et dr_flac derrière l'interface actuelle
-   de `AudioFile`. Critère : le spectrogramme d'un même fichier est
-   numériquement identique sur les deux plateformes. *(~2 jours)*
+2. **L'entrée audio.** *Le WAV est fait* — lecteur en Swift pur, PCM 8 à 32 bits
+   et flottant, éprouvé par `WAVCheck`. Le critère est atteint et au-delà : sur
+   le même chemin numérique, l'image produite sous Windows est identique **au
+   bit près** à celle du Mac. Restent les formats compressés, par Media
+   Foundation (mp3, m4a/AAC) et dr_flac. *(~1 jour)*
 3. **Le rendu.** Fenêtre SDL3, nuanceur GLSL, tuiles. Critère : `RenderCheck`
    produit la même image hors écran. *(~3 jours)*
 4. **La lecture.** miniaudio, signalsmith-stretch, oscillateur. Les biquads sont
@@ -338,7 +347,12 @@ interface, avant que la suivante commence.
    glisser-déposer. *(~5 jours)*
 6. **La séparation.** ONNX Runtime C. Critère : `SeparationCheck` rend les mêmes
    pistes. *(~2 jours)*
-7. **La distribution.** `build.ps1`, CI, zip, README. *(~2 jours)*
+7. **La distribution.** *Faite pour ce qui existe.* `build.ps1` compile,
+   assemble et zippe ; il emporte les bibliothèques d'exécution de Swift, qui ne
+   sont pas à côté du compilateur mais dans `…\Swift\Runtimes\<version>\usr\bin`
+   — les chercher au mauvais endroit donne un paquet qui ne démarre que sur la
+   machine qui l'a produit. Vérifié en lançant le binaire avec un PATH réduit à
+   System32. À reprendre quand l'application aura une fenêtre.
 
 Environ **trois semaines** de travail suivi. Les étapes 1 à 3 sont sans risque —
 du calcul et un quadrilatère texturé. Le risque tient en deux points : la qualité
