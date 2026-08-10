@@ -91,6 +91,24 @@ var dependances: [Package.Dependency] = [
     .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
 ]
 
+// La couche Windows. Comme la couche Apple, elle n'est déclarée que là où elle a
+// un sens — SDL3 n'existe pas sur le Mac de développement, et une cible qui le
+// réclame ferait échouer la construction du noyau.
+//
+// `Tools/sdl3.ps1` va chercher l'archive et écrit les chemins à passer au
+// compilateur ; ils ne sont pas figés ici, où ils dépendraient de l'endroit où
+// l'archive a été déballée.
+#if os(Windows)
+cibles += [
+    .systemLibrary(name: "CSDL3", path: "Sources/CSDL3"),
+    .executableTarget(name: "SpectreWindows",
+                      dependencies: ["SpectreCore", "SpectreDSP", "CSDL3"],
+                      path: "Sources/SpectreWindows",
+                      swiftSettings: reglagesRelease),
+]
+produits += [.executable(name: "SpectreWindows", targets: ["SpectreWindows"])]
+#endif
+
 if surMac {
     dependances.append(
         // Moteur d'inférence de la séparation de pistes. La tranche macOS arm64 est
