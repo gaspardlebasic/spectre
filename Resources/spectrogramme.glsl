@@ -53,6 +53,12 @@ uniform float tiltPerOctave;
 uniform float log2FminOver1k;
 uniform float binsPerOctave;
 uniform float semitoneAtBin0;
+// Colonne de la tête de lecture, et de la boucle. Une valeur négative les
+// éteint. Les tracer ici plutôt qu'en second passage évite un pipeline entier
+// pour trois traits verticaux.
+uniform float playhead;
+uniform float loopStart;
+uniform float loopEnd;
 
 out vec4 fragColor;
 
@@ -104,6 +110,26 @@ float readColumn(int column, int b0, int b1, float fr) {
     float a = texelFetch(tiles, ivec3(b0, row, slice), 0).r;
     float b = texelFetch(tiles, ivec3(b1, row, slice), 0).r;
     return mix(a, b, fr);
+}
+
+// La tête de lecture, et le passage mis en boucle.
+//
+// La boucle est **assombrie au-dehors** plutôt qu'éclaircie au-dedans : ce qu'on
+// regarde reste rendu tel qu'il est, et c'est le reste qui s'efface.
+vec3 marques(vec3 couleur, float colonne) {
+    if (loopEnd > loopStart && (colonne < loopStart || colonne > loopEnd)) {
+        couleur *= 0.45;
+    }
+    float largeur = max(perPixel.x, 1e-6);
+    if (loopEnd > loopStart) {
+        if (abs(colonne - loopStart) < largeur || abs(colonne - loopEnd) < largeur) {
+            couleur = mix(couleur, vec3(0.9, 0.7, 0.2), 0.85);
+        }
+    }
+    if (playhead >= 0.0 && abs(colonne - playhead) < largeur) {
+        couleur = mix(couleur, vec3(1.0), 0.9);
+    }
+    return couleur;
 }
 
 void main() {
@@ -163,9 +189,10 @@ void main() {
         int t1 = min(t0 + 1, last);
         vec3 ca = texelFetch(noteColors, ivec2(t0, pitchClass), 0).rgb;
         vec3 cb = texelFetch(noteColors, ivec2(t1, pitchClass), 0).rgb;
-        fragColor = vec4(mix(ca, cb, ft - float(t0)), 1.0);
+        fragColor = vec4(marques(mix(ca, cb, ft - float(t0)), colCenter), 1.0);
         return;
     }
 
-    fragColor = vec4(palette(t, colorMap), 1.0);
+    vec3 couleur = palette(t, colorMap);
+    fragColor = vec4(marques(couleur, colCenter), 1.0);
 }

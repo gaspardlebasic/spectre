@@ -30,8 +30,15 @@ if ($PSScriptRoot -like "\\*") {
           "robocopy $PSScriptRoot C:\spectre /MIR /XD .build build .git"
 }
 
+# SDL3 d'abord : `Tools\sdl3.ps1` va chercher l'archive si elle manque et rend
+# les chemins à passer au compilateur. Ce script est le point d'entrée unique —
+# appeler `swift build` à la main sans ces drapeaux fait échouer la seule cible
+# qui distingue Windows du reste, sur une erreur d'en-tête introuvable.
+$drapeaux = & (Join-Path $PSScriptRoot "Tools\sdl3.ps1") -Drapeaux
+& (Join-Path $PSScriptRoot "Tools\miniaudio.ps1") | Out-Null
+
 Write-Host "Compilation ($Configuration)…"
-swift build -c $Configuration
+swift build -c $Configuration @drapeaux
 if ($LASTEXITCODE -ne 0) { throw "La compilation a échoué." }
 
 $bin = swift build -c $Configuration --show-bin-path

@@ -41,6 +41,11 @@ private let GL_LINK_STATUS: GLenum = 0x8B82
 private let GL_COLOR_BUFFER_BIT: GLbitfield = 0x4000
 private let GL_TRIANGLES: GLenum = 0x0004
 private let GL_UNPACK_ALIGNMENT: GLenum = 0x0CF5
+private let GL_PACK_ALIGNMENT: GLenum = 0x0D05
+private let GL_VENDOR: GLenum = 0x1F00
+private let GL_RENDERER: GLenum = 0x1F01
+private let GL_VERSION: GLenum = 0x1F02
+private let GL_RGB: GLenum = 0x1907
 
 /// Les fonctions OpenGL, réclamées au pilote une fois pour toutes.
 private struct GL {
@@ -82,6 +87,9 @@ private struct GL {
     let genVertexArrays: @convention(c) (GLsizei, UnsafeMutablePointer<GLuint>) -> Void
     let bindVertexArray: @convention(c) (GLuint) -> Void
     let drawArrays: @convention(c) (GLenum, GLint, GLsizei) -> Void
+    let readPixels: @convention(c) (GLint, GLint, GLsizei, GLsizei, GLenum, GLenum,
+                                    UnsafeMutableRawPointer) -> Void
+    let getString: @convention(c) (GLenum) -> UnsafePointer<UInt8>?
 
     /// Chaque pointeur est réclamé nommément. Un `nil` ici veut dire que le pilote
     /// ne connaît pas la fonction — donc que le contexte n'est pas celui qu'on
@@ -126,7 +134,9 @@ private struct GL {
               let aa = lie("glUniform2f", (@convention(c) (GLint, Float, Float) -> Void).self),
               let ab = lie("glGenVertexArrays", (@convention(c) (GLsizei, UnsafeMutablePointer<GLuint>) -> Void).self),
               let ac = lie("glBindVertexArray", (@convention(c) (GLuint) -> Void).self),
-              let ad = lie("glDrawArrays", (@convention(c) (GLenum, GLint, GLsizei) -> Void).self)
+              let ad = lie("glDrawArrays", (@convention(c) (GLenum, GLint, GLsizei) -> Void).self),
+              let ae = lie("glReadPixels", (@convention(c) (GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, UnsafeMutableRawPointer) -> Void).self),
+              let af = lie("glGetString", (@convention(c) (GLenum) -> UnsafePointer<UInt8>?).self)
         else { return nil }
         clearColor = a; clear = b; viewport = c; pixelStorei = d
         genTextures = e; bindTexture = f; texParameteri = g
@@ -137,6 +147,7 @@ private struct GL {
         getProgramiv = t; getProgramInfoLog = u; useProgram = v; deleteShader = w
         getUniformLocation = x; uniform1i = y; uniform1f = z; uniform2f = aa
         genVertexArrays = ab; bindVertexArray = ac; drawArrays = ad
+        readPixels = ae; getString = af
     }
 }
 
@@ -277,7 +288,43 @@ final class SpectrogramRenderer {
         return l
     }
 
-    func draw(viewport: Viewport, display: DisplaySettings, size: (width: Int, height: Int)) {
+    /// Qui rend réellement — le pilote, pas ce qu'on espère.
+    var description: String {
+        func lire(_ nom: GLenum) -> String {
+            guard let p = gl.getString(nom) else { return "?" }
+            return String(cString: p)
+        }
+        return "\(lire(GL_RENDERER)) — OpenGL \(lire(GL_VERSION)) (\(lire(GL_VENDOR)))"
+    }
+
+    /// Relit l'image que le GPU vient de dessiner.
+    ///
+    /// C'est l'instrument qui permet de juger le rendu **sans le regarder** : la
+    /// même vue passée à `SpectrogramImage`, qui applique la même formule sur le
+    /// processeur, donne l'image de référence. Deux images qui se ressemblent
+    /// disent que le nuanceur est juste ; une image retournée ou décalée se voit
+    /// dans les chiffres avant de se voir à l'œil.
+    ///
+    /// OpenGL rend ses pixels la première ligne en bas ; on retourne à l'écriture
+    /// pour obtenir la convention de PPM, qui commence par le haut.
+    func readPixels(width: Int, height: Int) -> [UInt8] {
+        var brut = [UInt8](repeating: 0, count: width * height * 3)
+        gl.pixelStorei(GL_PACK_ALIGNMENT, 1)
+        brut.withUnsafeMutableBytes { p in
+            gl.readPixels(0, 0, GLsizei(width), GLsizei(height), GL_RGB, GL_UNSIGNED_BYTE,
+                          p.baseAddress!)
+        }
+        var image = [UInt8](repeating: 0, count: width * height * 3)
+        for y in 0..<height {
+            let source = (height - 1 - y) * width * 3
+            let cible = y * width * 3
+            for i in 0..<(width * 3) { image[cible + i] = brut[source + i] }
+        }
+        return image
+    }
+
+    func draw(viewport: Viewport, display: DisplaySettings, size: (width: Int, height: Int),
+              playhead: Double? = nil, loop: ClosedRange<Double>? = nil) {
         gl.viewport(0, 0, GLsizei(size.width), GLsizei(size.height))
         gl.clearColor(0, 0, 0, 1)
         gl.clear(GL_COLOR_BUFFER_BIT)
@@ -310,6 +357,13 @@ final class SpectrogramRenderer {
         gl.uniform1f(lieu("binsPerOctave"), Float(layout.binsPerOctave))
         gl.uniform1f(lieu("semitoneAtBin0"),
                      Float(Pitch.midi(from: layout.minFrequency, referenceA: display.referenceA)))
+
+        // Les repères sont donnés en colonnes, comme tout le reste du nuanceur :
+        // c'est la seule unité qui ne dépende ni du zoom ni de la taille de la vue.
+        let colonne = { (t: Double) in Float(self.spectrogram.column(atTime: t)) }
+        gl.uniform1f(lieu("playhead"), playhead.map(colonne) ?? -1)
+        gl.uniform1f(lieu("loopStart"), loop.map { colonne($0.lowerBound) } ?? -1)
+        gl.uniform1f(lieu("loopEnd"), loop.map { colonne($0.upperBound) } ?? -2)
 
         gl.bindVertexArray(vao)
         gl.drawArrays(GL_TRIANGLES, 0, 3)

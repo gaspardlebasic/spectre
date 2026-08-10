@@ -101,8 +101,13 @@ var dependances: [Package.Dependency] = [
 #if os(Windows)
 cibles += [
     .systemLibrary(name: "CSDL3", path: "Sources/CSDL3"),
+    // miniaudio tient dans un en-tête ; il n'est pas versionné et arrive par
+    // `Tools/miniaudio.sh`. La cible ne porte donc que le shim et l'unique unité
+    // de compilation qui définit `MINIAUDIO_IMPLEMENTATION`.
+    .target(name: "CMiniaudio", path: "Sources/CMiniaudio",
+            cSettings: [.headerSearchPath("include")]),
     .executableTarget(name: "SpectreWindows",
-                      dependencies: ["SpectreCore", "SpectreDSP", "CSDL3"],
+                      dependencies: ["SpectreCore", "SpectreDSP", "CSDL3", "CMiniaudio"],
                       path: "Sources/SpectreWindows",
                       swiftSettings: reglagesRelease),
 ]
