@@ -70,6 +70,11 @@ var cibles: [Target] = [
                       path: "Tools/AnalysisCheck"),
     .executableTarget(name: "FourierCheck", dependencies: ["SpectreCore"],
                       path: "Tools/FourierCheck"),
+    // Compare deux images : le rendu GPU relu de la carte, et le rendu
+    // processeur de la même formule. C'est ce qui tient lieu d'œil là où
+    // personne ne peut regarder l'écran.
+    .executableTarget(name: "ImageCheck", dependencies: ["SpectreCore"],
+                      path: "Tools/ImageCheck"),
 ]
 
 var produits: [Product] = [
@@ -82,6 +87,7 @@ var produits: [Product] = [
     .executable(name: "SpectreCLI", targets: ["SpectreCLI"]),
     .executable(name: "AnalysisCheck", targets: ["AnalysisCheck"]),
     .executable(name: "FourierCheck", targets: ["FourierCheck"]),
+    .executable(name: "ImageCheck", targets: ["ImageCheck"]),
 ]
 
 var dependances: [Package.Dependency] = [

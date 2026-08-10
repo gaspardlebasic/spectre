@@ -297,8 +297,42 @@ sait pas travailler sur un chemin UNC — `pushd` échoue sur
 la VM avant chaque compilation règle la question, et va plus vite de surcroît.
 
 Ce qui reste hors de portée de tout cela : la qualité du ralenti, la latence
-WASAPI, et le rendu à l'écran. Ceux-là demanderont une paire d'oreilles et un
-écran.
+WASAPI, et **ce qui s'affiche vraiment à l'écran**. Ceux-là demandent une paire
+d'oreilles et un écran.
+
+### Voir sans regarder
+
+Le rendu a fini par se vérifier sans que personne juge une image à l'œil, et la
+méthode vaut d'être notée parce qu'elle se rejoue.
+
+`SpectreWindows --rendu image.ppm` ouvre une fenêtre cachée, dessine une image,
+**relit les pixels de la carte graphique** et les écrit. `SpectreCLI --taille
+1200x700` applique la même formule sur le processeur, à la même taille.
+`ImageCheck` confronte les deux : corrélation des profils de lignes et de
+colonnes, corrélation pixel à pixel, écart médian.
+
+Les deux images ne peuvent pas être identiques — le GPU interpole entre colonnes
+et entre lignes, le processeur prend le plus proche voisin — donc l'égalité
+n'est pas le critère. Ce qui se mesure, c'est l'orientation et le cadrage. Et le
+test décisif est **comparatif** : un spectrogramme retourné corrèle encore un
+peu, à cause de ses bandes horizontales, donc un seuil absolu se ferait avoir ;
+ce qui compte est que l'endroit gagne franchement sur l'envers.
+
+Résultat sur un extrait de six secondes, en 1200×700 :
+
+```
+profils de lignes    : +0.9900  (retourné : +0.6494)
+profils de colonnes  : +0.9381  (retourné : +0.7176)
+pixel à pixel        : +0.9652
+écart : moyen 2.80/255, médian 0.00/255, 91.9 % sous 8/255
+```
+
+Le pixel médian est identique au bit près, et l'image est franchement à
+l'endroit. Le désaccord restant est concentré sur les arêtes des harmoniques,
+larges d'un ou deux pixels : c'est exactement là que l'interpolation du GPU et
+le plus proche voisin du processeur doivent différer, et c'est le GPU qui a
+raison. Il n'y a aucun décalage : la corrélation est maximale à zéro pixel près,
+sur les deux axes.
 
 ### Ce que la première compilation a appris
 
@@ -338,30 +372,30 @@ que les deviner n'est pas un ornement.
 | 0. Découpage du dépôt | **fait**, comportement inchangé, mesuré |
 | 1. Socle numérique | **fait**, vérifié sur Windows |
 | 2. Entrée audio | **WAV fait** ; compressés à venir |
-| 3. Rendu | nuanceur traduit, GL écrit et **compilé** ; jamais affiché |
-| 4. Lecture | filtres et chaîne faits ; périphérique et ralenti à venir |
-| 5. Interface | rien |
-| 6. Séparation | rien |
-| 7. Distribution | **fait** pour ce qui existe |
+| 3. Rendu | **fait** : nuanceur, tuiles, fenêtre — et l'image mesurée contre celle du processeur |
+| 4. Lecture | **fait** : WASAPI par miniaudio, boucle, filtre de bande ; ralenti à venir |
+| 5. Gestes | **fait** : molette, zooms ancrés, tête de lecture, bornes de boucle |
+| 6. Interface | rien — les réglages prennent leurs valeurs automatiques |
+| 7. Séparation | rien |
+| 8. Distribution | **fait** pour ce qui existe : un dossier autonome de 31 Mo |
 
-### La prochaine chose à faire, et elle est courte
+L'application s'ouvre, montre le spectrogramme, joue le son, se navigue à la
+molette et n'entend que ce qu'elle montre. Ce qui lui manque pour être Spectre :
+les commandes d'affichage, le ralenti, et la séparation de pistes.
 
-Ouvrir la fenêtre Parallels — une **session interactive**, pas `prlctl exec`, qui
-tourne en session SYSTEM sans bureau — et lancer dans la VM :
+### Le piège qui a coûté le plus cher
 
-```
-C:\spectre\.build\release\SpectreWindows.exe C:\temp\essai.wav
-```
+Le paquet construit ne démarrait pas chez l'utilisateur — aucune fenêtre, aucun
+message, rien. La cause n'était pas dans le code : les bibliothèques d'exécution
+de Swift ne vivent pas à côté du compilateur mais dans
+`…\Swift\Runtimes\<version>\usr\bin`, et `build.ps1` les cherchait au mauvais
+endroit. Le zip partait sans elles ; le processus mourait avant sa première
+instruction, là où le PATH de la session ne contenait pas Swift.
 
-Trois choses peuvent clocher, par ordre de probabilité :
-
-1. **le nuanceur refuse de compiler** — le pilote le dira ligne par ligne sur la
-   sortie d'erreur, c'est le cas le plus facile ;
-2. **l'image sort à l'envers**, graves en haut : l'axe vertical, le piège
-   annoncé en tête de `Resources/spectrogramme.glsl` ;
-3. **le cadrage est décalé** — comparer alors avec `SpectreCLI` sur le même
-   fichier, qui applique la même formule sur le processeur et sert d'arbitre.
-   C'est pour cela qu'il a été écrit avant.
+Deux enseignements. **Un programme à fenêtre n'a nulle part où se plaindre** :
+d'où le `spectre.log` écrit à côté de l'exécutable dès la première ligne de
+`main.swift`. Et **une distribution ne se teste pas sur la machine qui l'a
+construite**, où tout est déjà là.
 
 ### Reprendre la construction
 
@@ -369,25 +403,26 @@ Trois choses peuvent clocher, par ordre de probabilité :
 prlctl resume "Windows 11"
 prlctl set "Windows 11" --pause-idle off
 prlctl exec "Windows 11" cmd /c "robocopy \\Mac\Home\Documents\transcripteur C:\spectre /MIR /XD .build build .git"
-prlctl exec "Windows 11" powershell -ExecutionPolicy Bypass -Command ^
-    "cd C:\spectre; swift build -c release @(& .\Tools\sdl3.ps1 -Drapeaux)"
+prlctl exec "Windows 11" powershell -ExecutionPolicy Bypass -File C:\spectre\build.ps1
 ```
 
 Le détour par `robocopy` n'est pas un caprice : SwiftPM refuse les chemins UNC.
+Et `prlctl exec` tourne en session SYSTEM, sans bureau : SDL y initialise son
+pilote vidéo mais ne peut pas ouvrir de fenêtre. Tout ce qui doit s'afficher se
+lance depuis la session interactive de la machine virtuelle.
 
 ### Ce qui reste, par ordre de dépendance
 
-1. **Voir l'image** (ci-dessus). Rien d'autre ne mérite d'être écrit avant.
-2. **Les gestes** : molette, Ctrl+molette centré sur le curseur, glisser dans la
-   réglette. `Viewport` porte déjà toute l'arithmétique et elle est éprouvée ;
-   il n'y a que les évènements SDL à y brancher.
-3. **La sortie audio** : miniaudio en WASAPI. `PlaybackChain` fait déjà tout le
-   travail — il ne reste qu'à ouvrir un périphérique et appeler `render`.
-4. **Le ralenti** : signalsmith-stretch, enveloppé dans une trentaine de lignes
+1. **Les formats compressés** : Media Foundation, présent dans le système, plus
+   `dr_flac` pour ce qu'il ne lit pas. Sans cela l'application ne s'ouvre que
+   sur des WAV, ce qui est la limite la plus visible aujourd'hui.
+2. **L'interface** : Dear ImGui via `cimgui`, dans la même boucle que le rendu.
+   Les réglages existent déjà — `DisplaySettings`, `AnalysisSettings` — il n'y a
+   que des commandes à leur brancher.
+3. **Le ralenti** : signalsmith-stretch, enveloppé dans une trentaine de lignes
    de C. C'est le risque numéro un du plan, et il ne se juge qu'à l'oreille.
-5. **L'interface** : Dear ImGui, dans la même boucle que le rendu.
-6. **La séparation** : ONNX Runtime en C. Le modèle traverse tel quel.
-7. **Les formats compressés** : Media Foundation, présent dans le système.
+4. **La séparation** : ONNX Runtime en C. Le modèle traverse tel quel.
+5. **La session** : `SessionStore` est déjà portable ; il n'y a qu'à l'appeler.
 
 ## Ordre de marche
 

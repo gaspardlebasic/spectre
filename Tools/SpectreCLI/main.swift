@@ -14,19 +14,47 @@ import SpectreCore
 let arguments = CommandLine.arguments
 guard arguments.count >= 2 else {
     FileHandle.standardError.write(Data("""
-        usage : SpectreCLI <fichier.wav> [sortie.ppm]
+        usage : SpectreCLI <fichier.wav> [sortie.ppm] [--taille LxH]
 
         Analyse un WAV et écrit son spectrogramme. Le contraste est réglé
         automatiquement sur le contenu du morceau, comme le fait ⌘K dans
         l'application.
 
+        `--taille` impose les dimensions de l'image. C'est ce qui permet de
+        comparer ce dessin-ci, fait sur le processeur, à celui que le GPU produit
+        dans la même fenêtre : à taille égale, les deux images doivent se
+        ressembler, et l'écart se mesure au lieu de se juger à l'œil.
+
         """.utf8))
     exit(2)
 }
 
-let entrée = URL(fileURLWithPath: arguments[1])
-let sortie = arguments.count >= 3
-    ? URL(fileURLWithPath: arguments[2])
+// Une taille imposée, éventuellement — sinon on la déduit du spectrogramme.
+var tailleVoulue: (largeur: Int, hauteur: Int)?
+if let i = arguments.firstIndex(of: "--taille"), i + 1 < arguments.count {
+    let morceaux = arguments[i + 1].lowercased().split(separator: "x")
+    if morceaux.count == 2, let l = Int(morceaux[0]), let h = Int(morceaux[1]), l > 0, h > 0 {
+        tailleVoulue = (l, h)
+    } else {
+        FileHandle.standardError.write(Data("--taille attend « LARGEURxHAUTEUR », par exemple 1200x700.\n".utf8))
+        exit(2)
+    }
+}
+
+let positionnels = arguments.dropFirst().enumerated().filter { indice, valeur in
+    guard !valeur.hasPrefix("--") else { return false }
+    // La valeur qui suit `--taille` n'est pas un fichier.
+    let precedent = indice == 0 ? "" : arguments[indice]
+    return precedent != "--taille"
+}.map(\.element)
+
+guard let premier = positionnels.first else {
+    FileHandle.standardError.write(Data("Il manque le fichier à analyser.\n".utf8))
+    exit(2)
+}
+let entrée = URL(fileURLWithPath: premier)
+let sortie = positionnels.count >= 2
+    ? URL(fileURLWithPath: positionnels[1])
     : entrée.deletingPathExtension().appendingPathExtension("ppm")
 
 let début = Date()
@@ -76,8 +104,8 @@ if let grille = TempoEstimator.estimate(spectrogramme) {
 
 // Une image large mais pas démesurée : au-delà, chaque colonne d'analyse occupe
 // moins d'un pixel et l'on ne gagne rien.
-let largeur = min(max(spectrogramme.columnCount, 400), 4000)
-let hauteur = min(max(spectrogramme.binCount, 200), 1200)
+let largeur = tailleVoulue?.largeur ?? min(max(spectrogramme.columnCount, 400), 4000)
+let hauteur = tailleVoulue?.hauteur ?? min(max(spectrogramme.binCount, 200), 1200)
 let pixels = SpectrogramImage.render(spectrogramme, display: affichage,
                                      width: largeur, height: hauteur)
 do {

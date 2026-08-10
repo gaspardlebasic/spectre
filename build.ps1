@@ -4,10 +4,10 @@
 # `.app` à monter, pas de signature ad-hoc, pas d'enregistrement auprès de
 # LaunchServices. Un dossier, un zip.
 #
-# Ce que ce script produit aujourd'hui n'est pas encore l'application : l'interface
-# et le rendu ne sont pas portés. C'est `SpectreCLI` — décoder, analyser, régler le
-# contraste, estimer le tempo, dessiner — plus les vérifications, qui permettent à
-# qui reçoit le zip de constater que le calcul est juste chez lui.
+# Le paquet contient `SpectreWindows` — la fenêtre, le rendu OpenGL, la lecture
+# audio —, `SpectreCLI` qui fait le même travail sans écran, et `ImageCheck` pour
+# confronter les deux. Les réglages d'affichage n'ont pas encore de commandes à
+# l'écran : ils prennent leurs valeurs automatiques, comme ⌘K sur macOS.
 #
 #   .\build.ps1              construit et assemble
 #   .\build.ps1 -Verifier    et fait tourner les vérifications avant d'assembler
@@ -58,6 +58,11 @@ if (Test-Path $sortie) { Remove-Item -Recurse -Force $sortie }
 New-Item -ItemType Directory -Force -Path $sortie | Out-Null
 
 Copy-Item "$bin\SpectreCLI.exe" $sortie
+# `ImageCheck` voyage avec le reste : il permet à qui reçoit le zip de confronter
+# ce que sa carte graphique dessine à ce que le processeur calcule, sur sa
+# machine et avec ses pilotes — la seule vérification que l'on ne peut pas faire
+# à sa place.
+Copy-Item "$bin\ImageCheck.exe" $sortie -ErrorAction SilentlyContinue
 if (Test-Path "$bin\SpectreWindows.exe") {
     Copy-Item "$bin\SpectreWindows.exe" $sortie
     # Le nuanceur est lu à côté de l'exécutable : il n'est pas compilé dans le
@@ -128,4 +133,9 @@ Write-Host ""
 Write-Host "→ $sortie"
 Write-Host "→ $zip ($taille Mo)"
 Write-Host ""
-Write-Host "Essai :  $sortie\SpectreCLI.exe morceau.wav"
+Write-Host "Essai :  $sortie\SpectreWindows.exe morceau.wav"
+Write-Host ""
+Write-Host "Confronter le GPU au processeur :"
+Write-Host "  $sortie\SpectreWindows.exe morceau.wav --rendu gpu.ppm"
+Write-Host "  $sortie\SpectreCLI.exe morceau.wav cpu.ppm --taille 1200x700"
+Write-Host "  $sortie\ImageCheck.exe gpu.ppm cpu.ppm"
