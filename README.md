@@ -468,3 +468,17 @@ Par ordre d'utilité décroissante, à mon avis :
 Deux limites assumées de cette première version : le signal entier est chargé en
 mémoire (≈ 10 Mo la minute), et le ralenti passe par `AVAudioUnitTimePitch`, qui
 devient métallique en dessous de la moitié de la vitesse.
+
+## Licence
+
+Spectre est sous **GPL-3.0** (voir [`LICENSE`](LICENSE)) : on peut le reprendre,
+le modifier et s'en servir librement, y compris commercialement, mais toute
+version modifiée qui est distribuée doit l'être sous la même licence, code source
+compris.
+
+Deux réserves, détaillées dans [`NOTICE.md`](NOTICE.md) :
+
+- les **poids de Demucs** embarqués dans l'application ne sont pas sous GPL et ne
+  sont pas licenciés ici — leur auteur les réserve à un usage scientifique ;
+- le correctif `Tools/Fourier/spectre-externe.patch` dérive de code MIT de Meta et
+  de l'équipe Mixxx, dont l'avis est conservé.
