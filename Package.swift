@@ -12,12 +12,27 @@ import PackageDescription
 let package = Package(
     name: "Spectre",
     platforms: [.macOS(.v14)],
+    // Ce que l'on peut construire séparément. Hors des plateformes Apple, seuls
+    // ceux-ci sont demandables : `swift build` sans argument voudrait compiler la
+    // couche macOS, qui n'a rien à y faire.
+    products: [
+        .library(name: "SpectreCore", targets: ["SpectreCore"]),
+        .library(name: "SpectreDSP", targets: ["SpectreDSP"]),
+        .executable(name: "DSPCheck", targets: ["DSPCheck"]),
+        .executable(name: "FilterCheck", targets: ["FilterCheck"]),
+        .executable(name: "AnalysisCheck", targets: ["AnalysisCheck"]),
+        .executable(name: "FourierCheck", targets: ["FourierCheck"]),
+    ],
     dependencies: [
         // Moteur d'inférence de la séparation de pistes. La tranche macOS arm64 est
         // fournie précompilée, fournisseur CoreML compris : le calcul peut donc
         // passer par le GPU et le moteur neuronal plutôt que par les seuls cœurs.
         .package(url: "https://github.com/microsoft/onnxruntime-swift-package-manager",
                  from: "1.24.0"),
+        // Le seul usage est SHA-256, pour l'empreinte qui rattache une session à un
+        // fichier. `swift-crypto` expose la même API que CryptoKit sous un autre nom
+        // de module ; il n'est tiré que là où CryptoKit n'existe pas.
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
     ],
     targets: [
         // `SPECTRE_PORTABLE` bascule la couche numérique sur son implémentation en
@@ -36,7 +51,11 @@ let package = Package(
         ),
         .target(
             name: "SpectreCore",
-            dependencies: ["SpectreDSP"],
+            dependencies: [
+                "SpectreDSP",
+                .product(name: "Crypto", package: "swift-crypto",
+                         condition: .when(platforms: [.windows, .linux, .android])),
+            ],
             path: "Sources/SpectreCore",
             swiftSettings: [.unsafeFlags(["-Ounchecked"], .when(configuration: .release))]
         ),
@@ -72,6 +91,8 @@ let package = Package(
         // à écrire pour chaque plateforme.
         .executableTarget(name: "DSPCheck", dependencies: ["SpectreDSP"],
                           path: "Tools/DSPCheck"),
+        .executableTarget(name: "FilterCheck", dependencies: ["SpectreCore"],
+                          path: "Tools/FilterCheck"),
         .executableTarget(name: "AnalysisCheck", dependencies: ["SpectreCore"],
                           path: "Tools/AnalysisCheck"),
         .executableTarget(name: "FourierCheck", dependencies: ["SpectreCore"],

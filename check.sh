@@ -16,6 +16,14 @@ mkdir -p "$OUT"
 swift build -c release >/dev/null
 BIN="$(swift build -c release --show-bin-path)"
 
+echo "=== Couche numérique ==="
+"$BIN/DSPCheck"
+
+echo
+echo "=== Filtre de bande ==="
+"$BIN/FilterCheck"
+
+echo
 echo "=== Analyse ==="
 "$BIN/AnalysisCheck"
 

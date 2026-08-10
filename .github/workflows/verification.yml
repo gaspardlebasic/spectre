@@ -1,0 +1,93 @@
+# Le compilateur Windows, mis dans la boucle.
+#
+# Le portage se fait depuis un Mac : personne ici ne peut compiler pour Windows,
+# et du code jamais compilé n'est pas du code. Ce flux est donc l'instrument de
+# mesure du portage autant que sa distribution — c'est lui qui dit si le noyau
+# tient réellement sur la plateforme cible, et non si l'on croit qu'il tient.
+#
+# Ce qu'il construit sous Windows aujourd'hui : `SpectreDSP` et `SpectreCore`,
+# c'est-à-dire les deux tiers du code, plus les quatre vérifications qui n'ont
+# besoin ni d'écran ni de carte son. La couche Apple et l'interface restent hors
+# du champ — leur pendant Windows n'existe pas encore.
+
+name: Vérification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  macos:
+    name: macOS — tout
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Vérifications
+        run: ./check.sh
+      - name: Le chemin portable, sur macOS
+        # Les mêmes contrôles, mais en forçant la couche numérique sur son
+        # implémentation en Swift pur : c'est ce qui prouve ici ce qui tournera
+        # là-bas, sans attendre la machine cible.
+        #
+        # `FourierCheck` manque à l'appel : sa référence vient de PyTorch et n'est
+        # pas versionnée (elle pèse, et se refabrique par `Tools/Fourier`). Elle
+        # reste un contrôle local, que `check.sh` saute proprement si le fichier
+        # n'est pas là.
+        run: |
+          swift build -c release -Xswiftc -DSPECTRE_PORTABLE
+          BIN="$(swift build -c release -Xswiftc -DSPECTRE_PORTABLE --show-bin-path)"
+          "$BIN/DSPCheck"
+          "$BIN/FilterCheck"
+          "$BIN/AnalysisCheck"
+
+  windows:
+    name: Windows — le noyau
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Le couple branche/étiquette doit être mis à jour ensemble : l'action va
+      # chercher une archive précise, et une paire dépareillée échoue au
+      # téléchargement plutôt qu'à la compilation, ce qui égare.
+      - uses: compnerd/gha-setup-swift@main
+        with:
+          branch: swift-6.0.3-release
+          tag: 6.0.3-RELEASE
+
+      - name: Version de la chaîne
+        run: swift --version
+
+      # `swift build` sans argument voudrait compiler la couche macOS. On ne
+      # demande donc que ce qui a un sens ici, produit par produit — l'option
+      # `--product` ne se répète pas.
+      #
+      # `FourierCheck` est compilé mais pas exécuté : sa référence vient de
+      # PyTorch et n'est pas versionnée. Le compiler prouve tout de même que la
+      # STFT de Demucs tient sous Windows.
+      - name: Construire le noyau
+        run: |
+          swift build -c release --product SpectreCore
+          swift build -c release --product DSPCheck
+          swift build -c release --product FilterCheck
+          swift build -c release --product AnalysisCheck
+          swift build -c release --product FourierCheck
+
+      - name: Couche numérique
+        run: |
+          $bin = swift build -c release --show-bin-path
+          & "$bin\DSPCheck.exe"
+
+      - name: Filtre de bande
+        run: |
+          $bin = swift build -c release --show-bin-path
+          & "$bin\FilterCheck.exe"
+
+      # Le contrôle qui compte : l'analyse complète, avec ses deux propriétés
+      # difficiles — le découpage en tranches identique au bit près, et le
+      # recalage des octaves les unes sur les autres.
+      - name: Analyse
+        run: |
+          $bin = swift build -c release --show-bin-path
+          & "$bin\AnalysisCheck.exe"

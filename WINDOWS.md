@@ -37,7 +37,7 @@ reproduire, sauf dans la lecture audio.
 | fenêtre, entrées, dialogues | AppKit | **SDL3** |
 | interface (menus, réglettes, boutons) | SwiftUI | **Dear ImGui** (via `cimgui`, API C) |
 | rendu du spectrogramme | Metal + MetalKit | **OpenGL 3.3** via SDL3 |
-| FFT et vecteurs | Accelerate / vDSP | **PFFFT** (BSD, SSE/AVX) + shim Swift |
+| FFT et vecteurs | Accelerate / vDSP | **Swift pur** (PFFFT en réserve) |
 | décodage audio | AVAudioFile | **Media Foundation** (mp3, m4a/AAC, wav) + **dr_flac** |
 | sortie audio | AVAudioEngine | **miniaudio** (WASAPI) |
 | ralenti et transposition | AVAudioUnitTimePitch | **signalsmith-stretch** (MIT) |
@@ -58,18 +58,34 @@ transformée réelle directe et inverse, `ctoz`/`ztoc`, et quatre opérations
 vectorielles élémentaires (`vmul`, `vsma`, `vsadd`, `vsmul`). La taille est fixe
 — 4096 points, `log2n = 12`.
 
-PFFFT couvre la transformée réelle à cette taille avec un vectoriel SSE/AVX, dans
-un unique fichier C. Les quatre opérations vectorielles se réécrivent en Swift
-avec `SIMD4<Float>` ; compilées en `-Ounchecked`, elles tiennent la comparaison
-avec vDSP sur ces boucles triviales.
+**C'est fait, et en Swift pur plutôt qu'avec PFFFT.** Le plan prévoyait de
+vendoriser un fichier C ; une FFT de Cooley-Tukey écrite à la main s'est révélée
+suffisante, et elle a sur PFFFT trois avantages qui pèsent plus que sa vitesse :
+aucune dépendance à télécharger, un seul langage, et surtout elle se compile et
+se mesure **sur le Mac**, ce qu'une bibliothèque C destinée à Windows ne
+permettrait pas.
+
+Le coût a été mesuré et non supposé : ×4,8 face à vDSP, soit une analyse à ×117
+temps réel au lieu de ×573 — un morceau de huit minutes analysé en quatre
+secondes au lieu d'une. Sans conséquence pour une application hors ligne. PFFFT
+reste la porte de sortie si cela devenait gênant, et la frontière est faite pour
+qu'il s'y substitue sans rien toucher au-dessus.
 
 L'intérêt de la manœuvre : **`Analyzer.swift` et `DemucsEngine.swift` ne sont pas
 touchés**. Ils continuent d'appeler un `Fourier` dont seule l'implémentation a
 changé. C'est le point d'appui de tout le portage — le banc d'étages en cascade,
 la compensation du retard, le fenêtrage, rien de cela ne bouge.
 
-Vérification : `Tools/FourierCheck` compare déjà la transformée à une DFT naïve.
-Le port doit passer ce test avant qu'on écrive une ligne d'interface.
+Vérification : les deux implémentations sont **compilées côte à côte** et
+comparées dans le même processus par `Tools/DSPCheck`, sur des raies calées, des
+raies entre deux cases, une impulsion, du bruit et du silence. L'écart est de
+1,2e-7 en relatif — celui du flottant, pas celui d'un algorithme. Une frontière
+qu'on ne peut pas comparer des deux côtés n'est qu'une promesse.
+
+Compilé avec `-DSPECTRE_PORTABLE`, tout passe par ce chemin, et les cent
+contrôles restent au vert : l'analyse en tranches reste identique **au bit près**
+à l'analyse d'un seul tenant, et la STFT de Demucs retombe sur la référence
+PyTorch à 1,19e-06.
 
 ### Le décodage
 
@@ -92,6 +108,20 @@ l'égaliseur → sortie.
 C'est plus de code qu'un graphe AVFoundation, mais c'est du code sans surprise, et
 signalsmith-stretch est au moins aussi bon que l'unité d'Apple sur les ralentis
 marqués, qui sont précisément l'usage de l'application.
+
+**Les quatre biquads sont écrits et mesurés** (`SpectreCore/Filtre.swift`,
+`Tools/FilterCheck`). Ils ne sont pas comparés à `AVAudioUnitEQ` — dont le
+gabarit exact n'est pas documenté, si bien que l'égalité ne serait
+qu'approchée et ne dirait rien — mais à ce qu'on attend d'eux : bande passante
+plate à 0,6 dB près, 24 dB par octave de chaque côté, −6 dB aux bornes, et
+retrait du chemin quand une borne touche le bord de l'analyse.
+
+Ce −6 dB aux bornes mérite d'être dit : deux Butterworth identiques en cascade
+descendent déjà à l'approche du coude. Des facteurs de qualité échelonnés
+donneraient une bande plate jusqu'à la borne, à pente égale — mais macOS empile
+deux bandes d'`AVAudioUnitEQ` à la même fréquence et a donc la même forme.
+Reproduire l'existant l'emporte ici sur l'améliorer : les deux versions doivent
+s'entendre pareil.
 
 Le générateur de note (`ToneGenerator`) devient un second rappel miniaudio ;
 `ToneOscillator`, qui porte toute la synthèse, ne change pas.
@@ -223,26 +253,55 @@ affiche « Windows a protégé votre ordinateur » et cache le bouton de lanceme
 derrière « Informations complémentaires ». C'est le pendant exact de la mise en
 quarantaine de Gatekeeper, et il mérite le même paragraphe d'explication.
 
+## Comment on vérifie ce qu'on ne peut pas compiler
+
+Le portage se fait depuis un Mac. Il n'y a ici ni chaîne Swift pour Windows, ni
+machine Windows : **tout ce qui touche à la plateforme cible est écrit sans
+compilateur pour le contredire**, et du code jamais compilé n'est pas du code.
+C'est la contrainte dominante de ce chantier, plus que n'importe quelle
+difficulté technique.
+
+Deux façons de la desserrer, et il faut les deux.
+
+**Ramener le maximum de code sur le Mac.** Chaque fois qu'un morceau du portage
+peut s'écrire en Swift portable plutôt qu'en appel de bibliothèque C, il devient
+compilable et mesurable ici, aujourd'hui. C'est ce qui a décidé la FFT en Swift
+pur contre PFFFT, et c'est ce qui rend les biquads vérifiables alors qu'ils sont
+du code « Windows ». `-DSPECTRE_PORTABLE` sert exactement à cela : faire tourner
+sur macOS le chemin qui servira là-bas.
+
+**Mettre le compilateur Windows dans la boucle.** Ce que le Mac ne peut pas
+juger, un exécutant `windows-latest` le peut. `.github/workflows/verification.yml`
+construit le noyau sous Windows et y fait tourner les vérifications qui n'ont
+besoin ni d'écran ni de carte son. C'est l'instrument de mesure du portage autant
+que sa distribution : sans lui, les étapes 2 à 6 avancent à l'aveugle et
+l'on ne découvre qu'à la fin que rien ne compile.
+
+Ce qui reste hors de portée des deux : la qualité du ralenti, la latence WASAPI,
+et le rendu à l'écran. Ceux-là demanderont une vraie machine et une paire
+d'oreilles.
+
 ## Ordre de marche
 
 L'ordre n'est pas indifférent : chaque étape doit être vérifiable seule, sans
 interface, avant que la suivante commence.
 
-0. **Le découpage du dépôt.** *Fait* — voir ci-dessus. Les 181 lignes de
-   `check.sh` sont sorties identiques avant et après, assertions au bit près
-   comprises.
-1. **Le socle numérique.** PFFFT derrière `RealFourier`. Le shim vectoriel est
-   déjà écrit : les six opérations de `SpectreDSP` ont leur version portable, et
-   seule la transformée reste à brancher. Critère : `FourierCheck` et
-   `AnalysisCheck` passent sous Windows avec les mêmes tolérances que sur Mac.
-   *(~2 jours)*
+0. **Le découpage du dépôt.** *Fait.* Les 181 lignes de `check.sh` sont sorties
+   identiques avant et après, assertions au bit près comprises.
+1. **Le socle numérique.** *Fait, et mesuré sur le Mac.* Les six opérations
+   vectorielles et la transformée réelle ont leur version portable, comparée à
+   Accelerate dans le même processus. Il reste à le voir tourner **sur Windows** :
+   c'est ce que fait le flux d'intégration décrit plus bas, et c'est la seule
+   chose qui manque à cette étape.
 2. **L'entrée audio.** Media Foundation et dr_flac derrière l'interface actuelle
    de `AudioFile`. Critère : le spectrogramme d'un même fichier est
    numériquement identique sur les deux plateformes. *(~2 jours)*
 3. **Le rendu.** Fenêtre SDL3, nuanceur GLSL, tuiles. Critère : `RenderCheck`
    produit la même image hors écran. *(~3 jours)*
-4. **La lecture.** miniaudio, signalsmith-stretch, biquads, oscillateur.
-   Critère : `PlaybackCheck`, et le ralenti à 50 % à l'oreille. *(~4 jours)*
+4. **La lecture.** miniaudio, signalsmith-stretch, oscillateur. Les biquads sont
+   faits et mesurés ; l'oscillateur (`ToneOscillator`) était déjà portable et n'a
+   jamais eu à bouger. Critère : `PlaybackCheck`, et le ralenti à 50 % à
+   l'oreille. *(~3 jours)*
 5. **L'interface.** ImGui, menus, raccourcis, gestes, ouverture et
    glisser-déposer. *(~5 jours)*
 6. **La séparation.** ONNX Runtime C. Critère : `SeparationCheck` rend les mêmes
