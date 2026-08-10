@@ -71,16 +71,12 @@ jobs:
       - name: Version de la chaîne
         run: swift --version
 
-      # `swift build` sans argument voudrait compiler la couche macOS. On ne
-      # demande donc que ce qui a un sens ici, produit par produit — l'option
-      # `--product` ne se répète pas.
-      # Le manifeste ne déclare la couche Apple que sur un Mac : ici, `swift build`
-      # tout court ne construit que ce qui a un sens — le noyau et ses
-      # vérifications. Pas de `--product` à répéter, pas de moteur d'inférence en
-      # xcframework à aller chercher.
-      - name: Construire le noyau
-        run: swift build -c release
-
+      # `build.ps1` plutôt que `swift build` : c'est lui qui va chercher SDL3,
+      # miniaudio, Dear ImGui et signalsmith-stretch, et qui sait quels drapeaux
+      # passer au compilateur. Le lancer ici vérifie donc la construction *et* le
+      # chemin de distribution, au lieu d'une variante qui lui ressemble et qui
+      # dérive.
+      #
       # `FourierCheck` est compilé mais pas exécuté : sa référence vient de
       # PyTorch et n'est pas versionnée. Le compiler prouve tout de même que la
       # STFT de Demucs tient sous Windows.
@@ -88,12 +84,12 @@ jobs:
       # `AnalysisCheck` est celui qui compte : il porte les deux propriétés
       # difficiles — le découpage en tranches identique au bit près à l'analyse
       # d'un seul tenant, et le recalage des octaves les unes sur les autres.
-      - name: Vérifications
-        run: |
-          $bin = swift build -c release --show-bin-path
-          foreach ($p in @("DSPCheck", "FilterCheck", "ChainCheck", "WAVCheck",
-                           "GaplessCheck", "AnalysisCheck")) {
-            Write-Host "##### $p"
-            & "$bin\$p.exe"
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
+      - name: Construire, vérifier, assembler
+        run: .\build.ps1 -Verifier
+
+      # Le paquet complet, prêt à essayer : c'est la seule façon d'obtenir une
+      # version Windows sans machine Windows sous la main.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Spectre-windows
+          path: build/Spectre-windows.zip

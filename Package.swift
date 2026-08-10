@@ -134,6 +134,10 @@ cibles += [
                 .linkedLibrary("mfuuid"),
                 .linkedLibrary("ole32"),
             ]),
+    // signalsmith-stretch est du C++ ; comme pour ImGui, Swift n'en voit qu'un
+    // en-tête C. Les sources arrivent par `Tools/stretch.sh`.
+    .target(name: "CStretch", path: "Sources/CStretch",
+            cxxSettings: [.headerSearchPath(".")]),
     // Dear ImGui est du C++ ; Swift n'en voit qu'un en-tête C d'une trentaine de
     // fonctions, écrit à la main. Les sources arrivent par `Tools/imgui.sh` et ne
     // sont pas versionnées.
@@ -141,11 +145,19 @@ cibles += [
             cxxSettings: [.headerSearchPath(".")]),
     .executableTarget(name: "SpectreWindows",
                       dependencies: ["SpectreCore", "SpectreDSP", "CSDL3",
-                                     "CMiniaudio", "CImGui"],
+                                     "CMiniaudio", "CImGui", "CStretch"],
                       path: "Sources/SpectreWindows",
                       swiftSettings: reglagesRelease),
+    // Le ralenti ne se juge qu'à l'oreille, dit-on — mais trois de ses
+    // propriétés se mesurent : la transparence à ×1, la durée, et la hauteur.
+    .executableTarget(name: "StretchCheck",
+                      dependencies: ["SpectreCore", "SpectreDSP", "CStretch"],
+                      path: "Tools/StretchCheck"),
 ]
-produits += [.executable(name: "SpectreWindows", targets: ["SpectreWindows"])]
+produits += [
+    .executable(name: "SpectreWindows", targets: ["SpectreWindows"]),
+    .executable(name: "StretchCheck", targets: ["StretchCheck"]),
+]
 #endif
 
 if surMac {

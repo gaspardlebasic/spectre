@@ -58,22 +58,40 @@ func boîteLongue(_ type: String, _ contenu: [UInt8]) -> [UInt8] {
     be32(1) + [UInt8](type.utf8) + be64(UInt64(contenu.count + 16)) + contenu
 }
 
+// Les octets s'accumulent avec `+=` sur une variable typée plutôt que par une
+// longue chaîne de `+` entre littéraux : à cinq ou six termes, l'inférence de
+// types de ce genre d'expression dépasse le temps imparti sur une machine
+// lente — ce qui compile ici et échoue en intégration continue, pour une raison
+// qui n'a rien à voir avec le code.
+
 func mvhd(échelle: UInt32) -> [UInt8] {
     // version 0, drapeaux, création, modification, échelle, durée, puis le reste
     // dont rien ici ne dépend.
-    boîte("mvhd", [0, 0, 0, 0] + be32(0) + be32(0) + be32(échelle) + be32(0)
-                  + [UInt8](repeating: 0, count: 80))
+    var contenu: [UInt8] = [0, 0, 0, 0]
+    contenu += be32(0)
+    contenu += be32(0)
+    contenu += be32(échelle)
+    contenu += be32(0)
+    contenu += [UInt8](repeating: 0, count: 80)
+    return boîte("mvhd", contenu)
 }
 
 func mdhd(échelle: UInt32, durée: UInt32) -> [UInt8] {
-    boîte("mdhd", [0, 0, 0, 0] + be32(0) + be32(0) + be32(échelle) + be32(durée)
-                  + [0, 0, 0, 0])
+    var contenu: [UInt8] = [0, 0, 0, 0]
+    contenu += be32(0)
+    contenu += be32(0)
+    contenu += be32(échelle)
+    contenu += be32(durée)
+    contenu += [0, 0, 0, 0]
+    return boîte("mdhd", contenu)
 }
 
 func elst(_ entrées: [(durée: UInt32, début: Int32)]) -> [UInt8] {
     var contenu: [UInt8] = [0, 0, 0, 0] + be32(UInt32(entrées.count))
     for e in entrées {
-        contenu += be32(e.durée) + be32(UInt32(bitPattern: e.début)) + be32(0x0001_0000)
+        contenu += be32(e.durée)
+        contenu += be32(UInt32(bitPattern: e.début))
+        contenu += be32(0x0001_0000)
     }
     return boîte("elst", contenu)
 }
@@ -86,11 +104,17 @@ func iTunSMPB(amorce: Int, remplissage: Int, utiles: Int) -> [UInt8] {
     }
     let texte = " 00000000 \(hex(amorce, 8)) \(hex(remplissage, 8)) \(hex(utiles, 16))"
               + " 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000"
-    let data = boîte("data", be32(1) + be32(0) + [UInt8](texte.utf8))
-    let item = boîte("----", boîte("mean", be32(0) + [UInt8]("com.apple.iTunes".utf8))
-                            + boîte("name", be32(0) + [UInt8]("iTunSMPB".utf8))
-                            + data)
-    return boîte("udta", boîte("meta", be32(0) + boîte("ilst", item)))
+    var charge: [UInt8] = be32(1)
+    charge += be32(0)
+    charge += [UInt8](texte.utf8)
+
+    var contenuItem: [UInt8] = boîte("mean", be32(0) + [UInt8]("com.apple.iTunes".utf8))
+    contenuItem += boîte("name", be32(0) + [UInt8]("iTunSMPB".utf8))
+    contenuItem += boîte("data", charge)
+
+    var contenuMeta: [UInt8] = be32(0)
+    contenuMeta += boîte("ilst", boîte("----", contenuItem))
+    return boîte("udta", boîte("meta", contenuMeta))
 }
 
 func mp4(échelleFilm: UInt32, échellePiste: UInt32,
@@ -110,7 +134,10 @@ func mp4(échelleFilm: UInt32, échellePiste: UInt32,
                                 utiles: smpb.utiles)
     }
     let moov = longue ? boîteLongue("moov", moovContenu) : boîte("moov", moovContenu)
-    return boîte("ftyp", [UInt8]("M4A isom".utf8)) + boîte("free", [0, 0, 0, 0]) + moov
+    var fichier: [UInt8] = boîte("ftyp", [UInt8]("M4A isom".utf8))
+    fichier += boîte("free", [0, 0, 0, 0])
+    fichier += moov
+    return fichier
 }
 
 titre("MP4 : la table d'édition")
@@ -218,9 +245,10 @@ func mp3(trames: Int, amorce: Int, remplissage: Int, id3: Int = 0,
     if id3 > 0 {
         // La taille d'une étiquette ID3v2 s'écrit sur sept bits par octet.
         let t = UInt32(id3)
-        octets += [0x49, 0x44, 0x33, 4, 0, 0]
-        octets += [UInt8((t >> 21) & 0x7F), UInt8((t >> 14) & 0x7F),
-                   UInt8((t >> 7) & 0x7F), UInt8(t & 0x7F)]
+        octets += [0x49, 0x44, 0x33, 4, 0, 0] as [UInt8]
+        let taille: [UInt8] = [UInt8((t >> 21) & 0x7F), UInt8((t >> 14) & 0x7F),
+                               UInt8((t >> 7) & 0x7F), UInt8(t & 0x7F)]
+        octets += taille
         // Ce que ffmpeg met là : le nom du codeur, qui ressemble à s'y méprendre
         // au début d'une balise LAME. Le chercher plutôt que le calculer y
         // tomberait droit dedans.
@@ -238,9 +266,10 @@ func mp3(trames: Int, amorce: Int, remplissage: Int, id3: Int = 0,
     if !sansBalise {
         trame += [UInt8](codeur.utf8)                     // 0x00 : neuf octets
         trame += [UInt8](repeating: 0, count: 0x15 - codeur.utf8.count)
-        trame += [UInt8(amorce >> 4),
-                  UInt8(((amorce & 0x0F) << 4) | (remplissage >> 8)),
-                  UInt8(remplissage & 0xFF)]
+        let champ: [UInt8] = [UInt8(amorce >> 4),
+                              UInt8(((amorce & 0x0F) << 4) | (remplissage >> 8)),
+                              UInt8(remplissage & 0xFF)]
+        trame += champ
         trame += [UInt8](repeating: 0, count: 12)
     }
     return octets + trame

@@ -62,6 +62,8 @@ enum Interface {
                         tete: Double, duree: Double, enLecture: Bool,
                         boucle: ClosedRange<Double>?,
                         boucleActive: inout Bool,
+                        vitesse: inout Double,
+                        transposition: inout Double,
                         tempo: inout TempoGrid?,
                         affichage: inout DisplaySettings,
                         panneauAffichage: inout Bool) -> Demandes {
@@ -96,6 +98,27 @@ enum Interface {
                 if spectre_ui_bouton("x", 26) != 0 { d.effacerBoucle = true }
             } else {
                 spectre_ui_texte_faible("pas de boucle")
+            }
+
+            spectre_ui_separateur()
+
+            // ── Ralenti et transposition
+            //
+            // Les crans sont ceux de la version macOS, et pour la même raison :
+            // un curseur continu ne retrouve jamais exactement ×1, si bien que
+            // le vocodeur reste en service pour un écart inaudible.
+            var v = Float(vitesse)
+            if spectre_ui_reglette("##vitesse", &v, 0.25, 2, "x%.2f", 110) != 0 {
+                vitesse = Detent.speed(Double(v))
+            }
+            spectre_ui_meme_ligne()
+            var t = Float(transposition)
+            if spectre_ui_reglette("##transposition", &t, -12, 12, "%+.1f dt", 110) != 0 {
+                transposition = Detent.transpose(Double(t))
+            }
+            if vitesse != 1 || transposition != 0 {
+                spectre_ui_meme_ligne()
+                if spectre_ui_bouton("Normal", 0) != 0 { vitesse = 1; transposition = 0 }
             }
 
             spectre_ui_separateur()

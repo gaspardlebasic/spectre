@@ -36,6 +36,7 @@ if ($PSScriptRoot -like "\\*") {
 $drapeaux = & (Join-Path $PSScriptRoot "Tools\sdl3.ps1") -Drapeaux
 & (Join-Path $PSScriptRoot "Tools\miniaudio.ps1") | Out-Null
 & (Join-Path $PSScriptRoot "Tools\imgui.ps1") | Out-Null
+& (Join-Path $PSScriptRoot "Tools\stretch.ps1") | Out-Null
 
 Write-Host "Compilation ($Configuration)…"
 swift build -c $Configuration @drapeaux
@@ -45,7 +46,7 @@ $bin = swift build -c $Configuration --show-bin-path
 
 if ($Verifier) {
     foreach ($p in @("DSPCheck", "FilterCheck", "ChainCheck", "WAVCheck",
-                     "GaplessCheck", "AnalysisCheck")) {
+                     "GaplessCheck", "StretchCheck", "AnalysisCheck")) {
         Write-Host ""
         Write-Host "=== $p ==="
         & "$bin\$p.exe"
@@ -64,6 +65,7 @@ Copy-Item "$bin\SpectreCLI.exe" $sortie
 # machine et avec ses pilotes — la seule vérification que l'on ne peut pas faire
 # à sa place.
 Copy-Item "$bin\ImageCheck.exe" $sortie -ErrorAction SilentlyContinue
+Copy-Item "$bin\GaplessCheck.exe", "$bin\StretchCheck.exe" $sortie -ErrorAction SilentlyContinue
 if (Test-Path "$bin\SpectreWindows.exe") {
     Copy-Item "$bin\SpectreWindows.exe" $sortie
     # Le nuanceur est lu à côté de l'exécutable : il n'est pas compilé dans le

@@ -99,6 +99,8 @@ var tempo: TempoGrid?
 var teteAuRepos: Double = 0
 var nomDuMorceau: String?
 var panneauAffichage = false
+var vitesse: Double = 1
+var transposition: Double = 0
 var taille = (largeur: Int(largeurFenetre), hauteur: Int(hauteurFenetre))
 
 /// Le nuanceur est lu à côté de l'exécutable : `build.ps1` l'y dépose, et le
@@ -152,7 +154,14 @@ func charge(_ chemin: String) -> Bool {
         // continue par-dessus le nouveau.
         lecture?.pause()
         lecture = AudioOutput(samples: audio.mono, channels: 1, sampleRate: audio.sampleRate)
-        if lecture == nil { trace("  (pas de sortie audio — on regarde sans écouter)") }
+        if lecture == nil {
+            trace("  (pas de sortie audio — on regarde sans écouter)")
+        } else {
+            // Le ralenti choisi vaut pour le morceau suivant : on ne le remet pas
+            // à ×1 dans le dos de qui vient de le régler.
+            lecture?.speed = vitesse
+            lecture?.transpose = transposition
+        }
 
         spectrogramme = matrice
         rendu = r
@@ -232,6 +241,7 @@ trace("""
     L              boucler ou non              Échap     effacer la boucle, ou quitter
     Ctrl+O         ouvrir un morceau           K         contraste automatique
     T              premier temps ici           Origine   revenir au début
+    0              vitesse et hauteur normales
 """)
 
 // ══════════════════════════════════════════════════════════════════ les gestes
@@ -286,6 +296,8 @@ var fini = false
 var evenement = SDL_Event()
 var boucleAppliquee: ClosedRange<Double>?
 var activeAppliquee = true
+var vitesseAppliquee: Double = 1
+var transpositionAppliquee: Double = 0
 var premiereImage = true
 recadre()
 
@@ -317,6 +329,7 @@ while !fini {
             case SDLK_K: contrasteAuto()
             case SDLK_L: boucleActive.toggle()
             case SDLK_T: premierTempsIci()
+            case SDLK_0: vitesse = 1; transposition = 0
             case SDLK_O where ctrl: Dialogue.ouvrir(fenetre: fenetre)
             case SDLK_HOME:
                 teteAuRepos = 0
@@ -376,6 +389,8 @@ while !fini {
                                      enLecture: lecture?.isPlaying == true,
                                      boucle: boucle,
                                      boucleActive: &boucleActive,
+                                     vitesse: &vitesse,
+                                     transposition: &transposition,
                                      tempo: &tempo,
                                      affichage: &affichage,
                                      panneauAffichage: &panneauAffichage)
@@ -394,6 +409,14 @@ while !fini {
         // la faire ici coûte une image sautée, ce qui vaut mieux qu'un fil de
         // plus et l'état partagé qui va avec.
         tempo = TempoEstimator.estimate(spectrogramme, beatsPerBar: tempo?.beatsPerBar ?? 4)
+    }
+
+    // Vitesse et transposition ne descendent que lorsqu'elles changent, pour la
+    // même raison que la boucle.
+    if vitesse != vitesseAppliquee { vitesseAppliquee = vitesse; lecture?.speed = vitesse }
+    if transposition != transpositionAppliquee {
+        transpositionAppliquee = transposition
+        lecture?.transpose = transposition
     }
 
     // La boucle n'est portée au lecteur que lorsqu'elle change : la lui redonner
