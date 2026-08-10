@@ -133,6 +133,18 @@ texturé qui lit une matrice de tuiles et une table de couleurs. Traduit en GLSL
 3.30, il fait la même longueur. Les textures deviennent des `GL_R32F` et
 `GL_RGBA8`, la mise à jour par tuiles devient `glTexSubImage2D`.
 
+**Le nuanceur est traduit** : `Resources/spectrogramme.glsl`. Il porte un piège
+qu'il valait mieux consigner que découvrir — Metal donne au fragment une position
+dont l'origine est en haut à gauche, `gl_FragCoord` l'a en bas à gauche. Le
+retournement que fait la version MSL ne doit donc pas être repris, sous peine
+d'une image à l'envers, graves en haut : plausible, et donc coûteuse à
+diagnostiquer. Tout le reste est du vocabulaire.
+
+Ce qui manque à cette étape n'est plus la formule mais le contexte : créer la
+fenêtre, téléverser la matrice en tuiles (`glTexSubImage2D` sur un
+`GL_TEXTURE_2D_ARRAY` en `GL_R32F`), et lier les uniformes. C'est là qu'SDL3
+entre, et donc la première bibliothèque C à embarquer.
+
 OpenGL 3.3 plutôt que Direct3D : un seul nuanceur à maintenir, pas de compilation
 de bytecode dans la chaîne de fabrication, et un pilote présent sur toute machine
 Windows depuis quinze ans. Si le besoin d'un rendu hors écran plus riche
@@ -337,8 +349,11 @@ interface, avant que la suivante commence.
    le même chemin numérique, l'image produite sous Windows est identique **au
    bit près** à celle du Mac. Restent les formats compressés, par Media
    Foundation (mp3, m4a/AAC) et dr_flac. *(~1 jour)*
-3. **Le rendu.** Fenêtre SDL3, nuanceur GLSL, tuiles. Critère : `RenderCheck`
-   produit la même image hors écran. *(~3 jours)*
+3. **Le rendu.** *Le nuanceur est traduit* (`Resources/spectrogramme.glsl`).
+   Restent la fenêtre SDL3, le téléversement des tuiles et la liaison des
+   uniformes. Critère : `RenderCheck` produit la même image hors écran — et
+   `SpectreCLI`, qui applique la même formule sur le processeur, donne déjà
+   l'arbitre. *(~2 jours)*
 4. **La lecture.** miniaudio, signalsmith-stretch, oscillateur. Les biquads sont
    faits et mesurés ; l'oscillateur (`ToneOscillator`) était déjà portable et n'a
    jamais eu à bouger. Critère : `PlaybackCheck`, et le ralenti à 50 % à
