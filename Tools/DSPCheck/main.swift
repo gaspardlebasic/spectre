@@ -33,18 +33,33 @@ func signaux(_ n: Int) -> [(String, [Float])] {
     var impulsion = [Float](repeating: 0, count: n)
     impulsion[n / 3] = 1
 
-    return [
-        ("une raie tombant dans une case",
-         (0..<n).map { sin(2 * .pi * 5 * Float($0) / Float(n)) }),
-        ("une raie entre deux cases",
-         (0..<n).map { sin(2 * .pi * 5.37 * Float($0) / Float(n)) }),
-        ("deux raies et une composante continue",
-         (0..<n).map { 0.3 + sin(2 * .pi * 11 * Float($0) / Float(n))
-                           + 0.5 * cos(2 * .pi * 40.2 * Float($0) / Float(n)) }),
-        ("une impulsion", impulsion),
-        ("du bruit", bruit),
-        ("le silence", [Float](repeating: 0, count: n)),
-    ]
+    // Chaque type est écrit, et chaque signal construit à part. Laissé à
+    // l'inférence, ce tableau de littéraux mêlant entiers, flottants et `.pi`
+    // dépasse le temps que le compilateur s'accorde — sur une machine, pas sur
+    // l'autre, ce qui est la pire façon de s'en apercevoir.
+    func raie(_ fréquence: Double, amplitude: Double = 1, décalage: Double = 0) -> [Float] {
+        var sortie = [Float](repeating: 0, count: n)
+        for i in 0..<n {
+            let phase: Double = 2 * Double.pi * fréquence * Double(i) / Double(n)
+            sortie[i] = Float(décalage + amplitude * sin(phase))
+        }
+        return sortie
+    }
+
+    var mélange = raie(11)
+    for i in 0..<n {
+        let phase: Double = 2 * Double.pi * 40.2 * Double(i) / Double(n)
+        mélange[i] += Float(0.3 + 0.5 * cos(phase))
+    }
+
+    var signaux: [(String, [Float])] = []
+    signaux.append(("une raie tombant dans une case", raie(5)))
+    signaux.append(("une raie entre deux cases", raie(5.37)))
+    signaux.append(("deux raies et une composante continue", mélange))
+    signaux.append(("une impulsion", impulsion))
+    signaux.append(("du bruit", bruit))
+    signaux.append(("le silence", [Float](repeating: 0, count: n)))
+    return signaux
 }
 
 // La transformée directe, calculée bêtement en N², en double précision. Elle est
