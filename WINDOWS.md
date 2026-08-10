@@ -372,55 +372,34 @@ que les deviner n'est pas un ornement.
 | 0. Découpage du dépôt | **fait**, comportement inchangé, mesuré |
 | 1. Socle numérique | **fait**, vérifié sur Windows |
 | 2. Entrée audio | **fait** : WAV en propre, le reste par Media Foundation, amorçage rogné |
-| 3. Rendu | **fait** : nuanceur, tuiles, fenêtre — et l'image mesurée contre celle du processeur |
-| 4. Lecture | **fait** : WASAPI par miniaudio, boucle, filtre de bande ; ralenti à venir |
-| 5. Gestes | **fait** : molette, zooms ancrés, tête de lecture, bornes de boucle |
-| 6. Interface | rien — les réglages prennent leurs valeurs automatiques |
-| 7. Séparation | rien |
-| 8. Distribution | **fait** pour ce qui existe : un dossier autonome de 31 Mo |
+| 3. Rendu | **fait** : nuanceur, tuiles, fenêtre — image mesurée contre celle du processeur |
+| 4. Lecture | **fait** : WASAPI, boucle, filtre de bande, ralenti et transposition |
+| 5. Gestes | **fait** : molette, zooms ancrés, tête de lecture, bornes, sinusoïde d'écoute |
+| 6. Interface | **fait** : barre d'outils Dear ImGui, dialogue d'ouverture, panneau d'affichage |
+| 7. Sessions | **fait** : `SessionStore` était déjà portable |
+| 8. Séparation | **rien** — la seule pièce qui manque |
+| 9. Distribution | **fait** : un dossier autonome de 46 Mo, assemblé aussi par l'intégration continue |
 
 L'application s'ouvre, montre le spectrogramme, joue le son, se navigue à la
-molette et n'entend que ce qu'elle montre. Ce qui lui manque pour être Spectre :
-les commandes d'affichage, le ralenti, et la séparation de pistes.
+molette, se ralentit sans changer de hauteur, fait sonner la raie qu'on désigne,
+et retrouve un morceau dans l'état où on l'a laissé. Ce qui lui manque pour être
+Spectre : la séparation de pistes.
 
-### Le décodeur du système ne rend pas ce qu'on croit
+### Ce que la séparation demandera
 
-Media Foundation lit MP3, AAC, WMA, FLAC et ALAC sans qu'on embarque quoi que ce
-soit — c'est le meilleur marché du portage. Mais il rend **plus** que le morceau.
+Le modèle et l'algorithme traversent tels quels — `DemucsFourier` est déjà dans
+`SpectreCore` et vérifié sous Windows par `FourierCheck`. Trois choses sont à
+apporter :
 
-Les formats à trame font précéder le signal de quelques centaines à quelques
-milliers d'échantillons d'amorçage, et le complètent à la fin. Le compte exact
-est écrit dans le conteneur ; `AVAudioFile` le retranche tout seul, Media
-Foundation non. Mesuré sur un même extrait de six secondes :
-
-| | macOS | Windows, brut | Windows, rogné |
-|---|---|---|---|
-| WAV | 264 600 | 264 600 | 264 600 |
-| FLAC, ALAC | 264 600 | 264 600 | 264 600 |
-| AAC | 264 600 | 267 264 | **264 600** |
-| MP3 (LAME) | 264 600 | 266 736 | **264 600** |
-
-Les 2 664 échantillons de trop de l'AAC font 48 ms : le morceau démarre plus
-tard, la grille de tempo glisse, et un fichier de session écrit sur un système ne
-retombe plus juste sur l'autre. C'est le genre de défaut qui ne se voit pas et
-qui se paie longtemps.
-
-`SpectreCore/Gapless.swift` lit ce que le conteneur déclare — `iTunSMPB` sur les
-fichiers d'Apple, la table d'édition `elst` ailleurs, l'en-tête `Xing` et la
-balise LAME sur un MP3 — sans rien décoder. Deux choses valent d'être notées.
-
-**Chaque décodeur en fait déjà une part, et aucun ne dit laquelle.** Media
-Foundation ôte les 529 échantillons de retard du banc de filtres d'un MP3, et
-rien d'autre. Retrancher aveuglément ce que le conteneur déclare décalerait donc
-le signal dans l'autre sens. La longueur utile, elle, ne dépend d'aucun
-décodeur : on s'en sert de point fixe, et l'écart entre l'excédent déclaré et
-l'excédent observé dit ce qui a déjà été pris — au début, forcément, puisque le
-retard d'un décodeur est un phénomène de début.
-
-**Ce lecteur est en Swift portable**, donc il se met au point sur un Mac en
-confrontant ses réponses à celles d'`AVAudioFile`. C'est le même principe que
-`SPECTRE_PORTABLE` pour la couche numérique : ramener sur la machine de
-développement tout ce qui peut y être jugé.
+1. **ONNX Runtime en C.** Le pendant macOS passe par `OnnxRuntimeBindings`, un
+   greffon Objective-C ; l'API C existe partout et se manipule comme Media
+   Foundation, derrière une enveloppe.
+2. **Un lecteur et un écrivain multicanaux.** Demucs travaille en stéréo — lui
+   donner la somme des canaux lui retirerait une partie de ce sur quoi il
+   s'appuie — et `WAVFile` ne rend aujourd'hui que du mono. `StemStore` écrit du
+   CAF par AVFoundation ; ce sera du WAV flottant.
+3. **Le modèle lui-même**, 174 Mo, qui ne voyage pas dans le dépôt et ne
+   voyagera pas non plus dans le zip.
 
 ### Le piège qui a coûté le plus cher
 
@@ -450,18 +429,29 @@ Et `prlctl exec` tourne en session SYSTEM, sans bureau : SDL y initialise son
 pilote vidéo mais ne peut pas ouvrir de fenêtre. Tout ce qui doit s'afficher se
 lance depuis la session interactive de la machine virtuelle.
 
-### Ce qui reste, par ordre de dépendance
+### La pile, telle qu'elle a fini par être
 
-1. **Les formats compressés** : Media Foundation, présent dans le système, plus
-   `dr_flac` pour ce qu'il ne lit pas. Sans cela l'application ne s'ouvre que
-   sur des WAV, ce qui est la limite la plus visible aujourd'hui.
-2. **L'interface** : Dear ImGui via `cimgui`, dans la même boucle que le rendu.
-   Les réglages existent déjà — `DisplaySettings`, `AnalysisSettings` — il n'y a
-   que des commandes à leur brancher.
-3. **Le ralenti** : signalsmith-stretch, enveloppé dans une trentaine de lignes
-   de C. C'est le risque numéro un du plan, et il ne se juge qu'à l'oreille.
-4. **La séparation** : ONNX Runtime en C. Le modèle traverse tel quel.
-5. **La session** : `SessionStore` est déjà portable ; il n'y a qu'à l'appeler.
+| couche | macOS | Windows |
+|---|---|---|
+| fenêtre, entrées, dialogues | AppKit | SDL3 |
+| interface | SwiftUI | Dear ImGui, passerelle C écrite à la main |
+| rendu | Metal | OpenGL 3.3 par SDL3 |
+| FFT et vecteurs | Accelerate | Swift pur (`SPECTRE_PORTABLE`) |
+| décodage | AVFoundation | Media Foundation, plus `GaplessTrim` |
+| sortie audio | AVAudioEngine | miniaudio (WASAPI) |
+| ralenti | AVAudioUnitTimePitch | signalsmith-stretch |
+| empreinte | CryptoKit | swift-crypto |
+| sessions | `SessionStore` | le même |
+
+Deux écarts par rapport au plan d'origine. `cimgui` a été écarté au profit d'une
+passerelle écrite à la main : trente fonctions plutôt que vingt mille lignes
+engendrées, un en-tête qui se lit d'un trait, et pas de générateur dans la
+chaîne de construction. Et `PFFFT`, gardé en réserve pour la transformée, n'a
+jamais servi — la version en Swift pur tient le budget.
+
+### Ce qui reste
+
+La séparation de pistes, ci-dessus. Rien d'autre.
 
 ## Ordre de marche
 

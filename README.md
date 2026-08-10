@@ -1,8 +1,8 @@
 # Spectre
 
-Aide à la transcription de musique à l'oreille sur macOS : on ouvre un fichier, on
-voit sa décomposition spectrale sur toute sa durée, on navigue dedans au trackpad,
-on ralentit, on transpose.
+Aide à la transcription de musique à l'oreille, sur macOS et sous Windows : on
+ouvre un fichier, on voit sa décomposition spectrale sur toute sa durée, on
+navigue dedans au trackpad, on ralentit, on transpose.
 
 Le parti pris est celui du **hors ligne**. Le fichier est analysé une fois pour
 toutes au chargement ; ensuite, plus rien ne recalcule quoi que ce soit — zoomer,
@@ -61,6 +61,7 @@ qu'un module ne connaît que ceux d'en dessous.
 | `SpectreCore` | l'analyse, le tempo, les palettes, les boucles, les sessions | **rien** |
 | `SpectreMac` | décodage, lecture, écriture des pistes, rendu Metal, séparation | AVFoundation, Metal, ONNX |
 | `Spectre` | la fenêtre, les menus, la réglette, le modèle d'application | SwiftUI, AppKit |
+| `SpectreWindows` | la fenêtre, le rendu OpenGL, la lecture, la barre d'outils | SDL3, Dear ImGui, miniaudio |
 
 `SpectreCore` n'importe que Foundation : c'est vérifiable d'un coup d'œil, et
 c'est ce qui donne son sens au découpage. Les deux tiers du code y vivent, et ne
@@ -70,8 +71,10 @@ Les vérifications de `check.sh` sont devenues des exécutables du paquet plutô
 des compilations à la main. Trois d'entre elles — analyse, Fourier, crans de
 lecture — ne tirent que le noyau et tourneront donc partout où Swift compile.
 
-Le portage sous Windows, que ce découpage prépare, est décrit dans
-[WINDOWS.md](WINDOWS.md).
+Le portage sous Windows — ce que chaque couche est devenue là-bas, et comment on
+vérifie ce qu'on ne peut pas voir — est décrit dans [WINDOWS.md](WINDOWS.md). Il
+se construit par `build.ps1`, et l'intégration continue en dépose le paquet à
+chaque poussée. Il ne lui manque que la séparation de pistes.
 
 ## L'analyse
 
