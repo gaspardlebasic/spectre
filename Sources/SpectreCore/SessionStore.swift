@@ -97,9 +97,69 @@ public enum SessionStore {
     }
 }
 
+/// Les derniers morceaux ouverts, du plus récent au plus ancien.
+///
+/// **Écrite par nous**, à côté des sessions. `NSDocumentController` tient bien une
+/// liste analogue — celle du Dock et du menu Pomme — et on continue de la nourrir,
+/// mais elle ne retient rien d'un lancement à l'autre dans une application qui n'est
+/// pas bâtie sur son architecture de documents : vérifié, `NSRecentDocumentRecords`
+/// restait vide après une ouverture et une sortie propre. Or rouvrir le dernier
+/// morceau au démarrage demande une liste sur laquelle on peut compter.
+public enum RecentFiles {
+    /// Assez pour couvrir une séance, assez peu pour tenir dans un menu.
+    public static let limit = 12
+
+    private static var file: URL? {
+        Storage.root?.appendingPathComponent("recents.json")
+    }
+
+    /// Ceux qui existent encore : on ne propose pas d'ouvrir ce qui a été déplacé.
+    public static func all() -> [URL] {
+        guard let file, let data = try? Data(contentsOf: file),
+              let paths = try? JSONDecoder().decode([String].self, from: data)
+        else { return [] }
+        return paths.map(URL.init(fileURLWithPath:))
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    /// Met un morceau en tête, sans le compter deux fois.
+    ///
+    /// La comparaison porte sur le chemin résolu : ouvrir le même fichier par un
+    /// alias ou par un chemin relatif ne doit pas fabriquer deux entrées.
+    public static func note(_ url: URL) {
+        let resolved = url.resolvingSymlinksInPath().standardizedFileURL
+        var kept = [resolved] + all().filter {
+            $0.resolvingSymlinksInPath().standardizedFileURL != resolved
+        }
+        if kept.count > limit { kept = Array(kept.prefix(limit)) }
+        write(kept)
+    }
+
+    public static func clear() { write([]) }
+
+    private static func write(_ urls: [URL]) {
+        guard let file, let data = try? JSONEncoder().encode(urls.map(\.path)) else { return }
+        try? data.write(to: file, options: .atomic)
+    }
+}
+
 /// Où l'application range ce qu'elle garde d'un morceau à l'autre.
 public enum Storage {
+    /// `SPECTRE_RANGEMENT` déplace tout le rangement ailleurs.
+    ///
+    /// C'est par là que les vérifications travaillent, et ce n'est pas un confort.
+    /// Elles écrivaient jusqu'ici dans le vrai dossier : elles y séparaient des
+    /// morceaux d'essai, ce qui **déclenchait le plafond du cache** et faisait
+    /// disparaître les pistes des vrais morceaux — des minutes de GPU effacées en
+    /// lançant `check.sh`. Un harnais qui abîme ce qu'il est censé protéger n'est pas
+    /// un harnais.
     public static var root: URL? {
+        if let ailleurs = ProcessInfo.processInfo.environment["SPECTRE_RANGEMENT"] {
+            let folder = URL(fileURLWithPath: ailleurs, isDirectory: true)
+            try? FileManager.default.createDirectory(at: folder,
+                                                     withIntermediateDirectories: true)
+            return folder
+        }
         guard let support = try? FileManager.default.url(for: .applicationSupportDirectory,
                                                          in: .userDomainMask,
                                                          appropriateFor: nil, create: true)

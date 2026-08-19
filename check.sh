@@ -2,16 +2,26 @@
 # Vérifications hors écran : aucun fichier audio, aucune fenêtre, aucun
 # périphérique — uniquement des signaux et des matrices de synthèse.
 #
-# Ce sont désormais des exécutables du paquet, compilés avec les mêmes modules que
+# Ce sont des exécutables du paquet, compilés avec les mêmes modules que
 # l'application, au lieu d'une liste de fichiers qu'il fallait tenir à jour à la
-# main à chaque déplacement. Les trois qui ne tirent que `SpectreCore` — analyse,
-# Fourier, crans de lecture — sont celles qui devront tourner à l'identique sous
-# Windows ; le rendu et la séparation passent par la couche Apple.
+# main à chaque déplacement. Celles qui ne tirent que `SpectreCore` — couche
+# numérique, WAV, analyse, batterie, Fourier — tournent partout où Swift compile,
+# et `verification.yml` les repasse sur le chemin numérique portable ; le rendu, la
+# lecture et la séparation passent par la couche Apple.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 OUT="build/check"
 mkdir -p "$OUT"
+
+# Les vérifications rangent leurs sessions et leurs pistes d'essai **ailleurs** que
+# l'application. Sans cela elles séparaient des morceaux de synthèse dans le vrai
+# dossier, ce qui déclenchait le plafond du cache et effaçait les pistes des vrais
+# morceaux — des minutes de GPU perdues en lançant ce script. Le dossier est vidé à
+# la sortie, quelle qu'en soit la cause.
+export SPECTRE_RANGEMENT="$PWD/build/check/rangement"
+rm -rf "$SPECTRE_RANGEMENT"
+trap 'rm -rf "$SPECTRE_RANGEMENT"' EXIT
 
 # Sans redirection : une compilation qui échoue doit dire pourquoi. La cacher
 # fait sortir ce script sur `set -e` sans une ligne d'explication, ce qui est
@@ -23,20 +33,16 @@ echo "=== Couche numérique ==="
 "$BIN/DSPCheck"
 
 echo
-echo "=== Filtre de bande ==="
-"$BIN/FilterCheck"
-
-echo
 echo "=== Lecture WAV ==="
 "$BIN/WAVCheck"
 
 echo
-echo "=== Chaîne de lecture ==="
-"$BIN/ChainCheck"
+echo "=== Relevé de la batterie ==="
+"$BIN/PercussionCheck"
 
 echo
-echo "=== Amorçage des formats compressés ==="
-"$BIN/GaplessCheck"
+echo "=== Relevé des accords ==="
+"$BIN/HarmonyCheck"
 
 echo
 echo "=== Analyse ==="
@@ -60,7 +66,13 @@ fi
 
 echo
 echo "=== Séparation ==="
-"$BIN/SeparationCheck"
+# Le réseau du dépôt, quand il a été fabriqué : sans lui la comparaison des deux
+# chemins de calcul se saute au lieu de se faire.
+if [ -f Resources/htdemucs.onnx ]; then
+  SPECTRE_MODELE="$PWD/Resources/htdemucs.onnx" "$BIN/SeparationCheck"
+else
+  "$BIN/SeparationCheck"
+fi
 
 echo
 echo "=== Lecture ==="

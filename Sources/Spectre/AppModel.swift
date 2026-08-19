@@ -22,7 +22,21 @@ import UniformTypeIdentifiers
     var playhead: Double = 0
     /// Position du curseur dans la vue (en points, depuis le coin haut-gauche).
     var hover: CGPoint? {
-        didSet { if hover == nil { snap = nil } }
+        didSet {
+            if hover == nil { snap = nil }
+            updateChordTone()
+        }
+    }
+    /// Vrai quand le curseur est sur les commandes flottantes.
+    ///
+    /// Elles sont posées **sur** l'image : sans cela, viser un bouton ferait
+    /// afficher par-dessous la note et la fréquence du point qu'il cache, avec son
+    /// trait et son cercle. On ne désigne pas une raie quand on vise un bouton.
+    var pointerOverControls = false {
+        didSet {
+            guard pointerOverControls else { return }
+            hover = nil
+        }
     }
     /// Raie sur laquelle le curseur s'est aimanté.
     var snap: SnapTarget?
@@ -32,7 +46,41 @@ import UniformTypeIdentifiers
     var loopEnabled = true { didSet { pushLoop() } }
 
     /// Grille métrique estimée au chargement, ajustable ensuite.
-    var tempo: TempoGrid?
+    ///
+    /// C'est elle qui découpe le relevé des accords — un accord par temps — donc en
+    /// changer le refait. Un tempo faux ou un « un » mal placé donnerait des accords
+    /// à cheval sur deux harmonies, ce qui ne ressemble à rien : corriger la grille
+    /// corrige les accords du même geste.
+    var tempo: TempoGrid? {
+        didSet {
+            guard tempo != oldValue else { return }
+            releveAccords(separated: isSeparated, fingerprint: source?.fingerprint)
+        }
+    }
+
+    /// Ce que la batterie joue : une ligne par voie, sous le spectrogramme.
+    ///
+    /// Dès que les quatre pistes existent, le relevé se fait sur la **piste de
+    /// batterie seule** — et la batterie sort de l'image du même geste. C'est le
+    /// bon régime : sur un mixage entier, tout ce qui claque dans le médium
+    /// alimente la ligne de caisse claire et l'attaque d'une note de basse s'y lit
+    /// comme un coup. Voir `relevePercussion(keeping:separated:fingerprint:mix:)`.
+    private(set) var percussion = PercussionTrack.empty
+    /// Vrai tant que le relevé du morceau courant n'est pas fini.
+    private(set) var percussionPending = false
+    /// Montrer la ligne de batterie. Volontairement **hors** des réglages conservés :
+    /// c'est une vue en cours d'essai, et lui faire une place dans le format des
+    /// sessions rendrait illisibles celles déjà écrites.
+    var showDrumLane = true
+    @ObservationIgnored private var percussionToken = 0
+
+    /// Les accords devinés, un par temps. Vide tant que la séparation n'a pas eu
+    /// lieu : il y faut la basse et l'accompagnement **séparément**.
+    private(set) var chords = ChordTrack.empty
+    private(set) var chordsPending = false
+    /// Écrire les noms d'accords sous la grille.
+    var showChords = true
+    @ObservationIgnored private var chordToken = 0
 
     /// Avancement de l'analyse (0…1), `nil` quand rien n'est en cours.
     var progress: Double?
@@ -75,8 +123,45 @@ import UniformTypeIdentifiers
         if panel.runModal() == .OK, let url = panel.url { open(url) }
     }
 
+    // MARK: Les morceaux récents
+
+    /// Ce que porte « Fichier ▸ Ouvrir récemment ».
+    ///
+    /// La liste vient de `RecentFiles`, qui est la nôtre — celle d'AppKit ne survit
+    /// pas au redémarrage ici. On la tient tout de même à jour en parallèle, pour le
+    /// menu du Dock et les « Éléments récents » du menu Pomme, qui ne connaissent
+    /// qu'elle.
+    private(set) var recentFiles: [URL] = RecentFiles.all()
+
+    func clearRecentFiles() {
+        RecentFiles.clear()
+        NSDocumentController.shared.clearRecentDocuments(nil)
+        recentFiles = []
+    }
+
+    /// Rouvre le dernier morceau consulté, au démarrage — **sauf si le lancement en
+    /// désignait déjà un**.
+    ///
+    /// Le délai n'est pas de la superstition. Un double-clic dans le Finder délivre
+    /// son fichier par un évènement qui arrive *après* l'apparition de la fenêtre :
+    /// ouvrir le morceau précédent tout de suite reviendrait à en analyser un pour
+    /// rien, puis à le remplacer sous les yeux de l'utilisatrice — et, depuis que la
+    /// séparation est automatique, à lancer une minute de GPU sur le mauvais morceau.
+    /// On laisse donc passer le temps de cet évènement, et l'on ne fait rien si
+    /// quelque chose est arrivé entre-temps.
+    func reopenLastFile() {
+        guard source == nil, progress == nil, let last = recentFiles.first else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self, self.source == nil, self.progress == nil else { return }
+            self.open(last)
+        }
+    }
+
     func open(_ url: URL) {
         guard progress == nil else { return }
+        RecentFiles.note(url)
+        NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        recentFiles = RecentFiles.all()
         status = "Lecture du fichier…"
         progress = 0
         player.stop()
@@ -133,6 +218,14 @@ import UniformTypeIdentifiers
         player.load(url: source.url)
         renderer?.layout = spectrogram.layout
         renderer?.upload(spectrogram)
+        percussionCache.removeAll()
+        // Le relevé des accords est rangé sous la grille métrique, qui n'appartient
+        // pas au morceau : deux morceaux à 120 BPM partagent la clé. Sans ce vidage,
+        // le second afficherait les accords du premier — une erreur silencieuse et
+        // parfaitement crédible à l'écran.
+        chordCache.removeAll()
+        chords = .empty
+        chordsPending = false
 
         let saved = source.fingerprint.flatMap { SessionStore.load($0) }
         if let saved {
@@ -165,6 +258,28 @@ import UniformTypeIdentifiers
         status = String(format: "%@ — %@, analysé en %.1f s (×%.0f temps réel)%@",
                         source.name, Self.format(source.duration), elapsed, ratio,
                         saved != nil ? " · réglages retrouvés" : "")
+
+        // Les pistes de ce morceau existent peut-être déjà, d'une séance
+        // précédente : la batterie sort alors de l'image et va nourrir sa ligne,
+        // sans rien avoir à demander. Sinon on s'en tient au mixage qu'on vient
+        // d'analyser — repasser par `show` ne ferait que téléverser une deuxième
+        // fois la même matrice.
+        if source.fingerprint.map(StemStore.isSeparated) == true {
+            // Rouvrir un morceau le remet en tête : le ménage du cache s'appuie sur
+            // cette date, et jeter celui sur lequel on travaille serait le comble.
+            source.fingerprint.map(StemStore.markUsed)
+            show(selection)
+        } else {
+            relevePercussion(Self.everything, from: source.mono,
+                             sampleRate: source.sampleRate)
+            // **La séparation part d'elle-même.** Elle est devenue la condition de
+            // presque tout ce que l'application sait faire — la ligne de batterie sur
+            // la piste isolée, les noms d'accords sur basse et accompagnement — si
+            // bien qu'attendre qu'on décoche une piste revenait à cacher le gros de
+            // l'outil derrière un geste que rien n'annonce. Elle tourne en fond
+            // pendant qu'on travaille, et n'a lieu qu'une fois par morceau.
+            separate()
+        }
     }
 
     // MARK: Réglages conservés
@@ -450,6 +565,11 @@ import UniformTypeIdentifiers
     /// doit être instantané, alors que les recalculer coûterait chaque fois
     /// plusieurs secondes.
     @ObservationIgnored private var stemCache: [Set<Stem>: Spectrogram] = [:]
+    /// Les relevés de batterie déjà faits, rangés comme les spectrogrammes.
+    @ObservationIgnored private var percussionCache: [Set<Stem>: PercussionTrack] = [:]
+    /// Les relevés d'accords déjà faits, rangés par grille métrique — c'est elle qui
+    /// découpe, donc en changer change le relevé, et y revenir doit être immédiat.
+    @ObservationIgnored private var chordCache: [TempoGrid: ChordTrack] = [:]
     @ObservationIgnored private var job: SeparationJob?
 
     var isSeparated: Bool {
@@ -506,6 +626,10 @@ import UniformTypeIdentifiers
 
     private func separate() {
         guard let source, let fingerprint = source.fingerprint, separating == nil else { return }
+        // Sans modèle il n'y a rien à lancer, et ce n'est pas une raison pour se
+        // plaindre à l'ouverture de chaque fichier : le manque est déjà dit quand on
+        // demande une piste explicitement.
+        guard StemStore.hasModel else { return }
         job?.cancel()
         let work = SeparationJob()
         job = work
@@ -513,7 +637,14 @@ import UniformTypeIdentifiers
         status = "Séparation des pistes…"
         work.run(fileAt: source.url, fingerprint: fingerprint,
                  separator: DemucsSeparator(),
-                 progress: { [weak self] p in self?.separating = p * 0.8 },
+                 // L'étape est reprise telle quelle : les dix premières secondes se
+                 // passent avant la première tranche, et la barre y reste à zéro sans
+                 // rien avoir à dire d'autre.
+                 progress: { [weak self] p in
+                     guard let self, self.job === work else { return }
+                     self.separating = p.fraction * 0.8
+                     self.status = p.stage
+                 },
                  completion: { [weak self] result in
                      guard let self, self.job === work else { return }
                      self.job = nil
@@ -534,34 +665,68 @@ import UniformTypeIdentifiers
     /// L'analyse est refaite sur le signal choisi plutôt que reprise du mixage :
     /// c'est tout l'intérêt de l'opération, un spectrogramme où ne restent que les
     /// partielles de ce qu'on écoute.
+    /// Ce qui reste à **voir** dans le spectrogramme.
+    ///
+    /// Dès que les quatre pistes existent, la batterie sort de l'image : elle n'y
+    /// apportait que des colonnes verticales qui traversent tout, sans hauteur à
+    /// lire, et elle masquait les attaques des instruments qu'on cherche justement à
+    /// relever. Elle a maintenant ses trois lignes en bas, qui disent d'elle ce
+    /// qu'un spectrogramme ne sait pas dire.
+    ///
+    /// Elle reparaît dans un seul cas : quand elle est la seule piste gardée. Il n'y
+    /// aurait alors rien d'autre à montrer, et une image noire ne rend service à
+    /// personne.
+    private func seen(_ wanted: Set<Stem>, separated: Bool) -> Set<Stem> {
+        guard separated else { return wanted }
+        let rest = wanted.subtracting([.drums])
+        return rest.isEmpty ? wanted : rest
+    }
+
     private func show(_ wanted: Set<Stem>) {
         guard let source else { return }
         // Un calcul encore en cours garde sa barre : revenir au mixage pendant la
         // séparation est le geste normal — on continue à travailler — et ce n'est
         // pas une raison pour perdre de vue ce qui tourne.
         let stillWorking = job != nil
-        if wanted == Self.everything {
+        let fingerprint = source.fingerprint
+        let separated = fingerprint.map(StemStore.isSeparated) ?? false
+        let visible = seen(wanted, separated: separated)
+
+        // La ligne de batterie et l'image ne viennent plus du même signal : l'une de
+        // la piste de batterie seule, l'autre de tout le reste. Elles se demandent
+        // donc séparément.
+        relevePercussion(keeping: wanted, separated: separated, fingerprint: fingerprint,
+                         mix: source)
+        releveAccords(separated: separated, fingerprint: fingerprint)
+
+        // Ce qui se joue reste ce qui est coché — décocher la batterie la fait
+        // taire, et vide sa ligne du même geste.
+        let heard: URL? = wanted == Self.everything
+            ? source.url
+            : fingerprint.flatMap { try? StemStore.combined(wanted, for: $0) }
+
+        // Rien de retiré et rien de séparé : le fichier d'origine, tel quel.
+        if visible == Self.everything, !separated {
             if !stillWorking { separating = nil }
-            adopt(spectrogram: mixSpectrogram, playing: source.url)
+            adopt(spectrogram: mixSpectrogram, playing: heard)
             return
         }
-        guard let fingerprint = source.fingerprint else { return }
-        if let ready = stemCache[wanted] {
+        guard let fingerprint else { return }
+        if let ready = stemCache[visible] {
             if !stillWorking { separating = nil }
-            adopt(spectrogram: ready,
-                  playing: try? StemStore.combined(wanted, for: fingerprint))
+            adopt(spectrogram: ready, playing: heard)
             return
         }
 
         separating = separating ?? 0.8
         let name = Stem.label(for: wanted)
-        status = "Analyse de « \(name) »…"
+        status = "Analyse de « \(Stem.label(for: visible)) »…"
         let settings = analysis
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            // La somme des pistes choisies est fabriquée ici, puis gardée : rejouer
-            // « basse + batterie » ne doit pas coûter une seconde addition sur dix
-            // millions d'échantillons.
-            guard let file = try? StemStore.combined(wanted, for: fingerprint),
+            // La somme des pistes à voir est fabriquée ici, puis gardée : y revenir
+            // ne doit pas coûter une seconde addition sur dix millions
+            // d'échantillons.
+            guard let file = try? StemStore.combined(visible, for: fingerprint),
                   let loaded = try? AudioSource.load(file) else {
                 DispatchQueue.main.async {
                     self?.separating = nil
@@ -578,10 +743,10 @@ import UniformTypeIdentifiers
             }
             DispatchQueue.main.async {
                 guard let self, self.selection == wanted else { return }
-                self.stemCache[wanted] = matrix
+                self.stemCache[visible] = matrix
                 self.separating = nil
                 self.status = name
-                self.adopt(spectrogram: matrix, playing: file)
+                self.adopt(spectrogram: matrix, playing: heard)
             }
         }
     }
@@ -591,15 +756,274 @@ import UniformTypeIdentifiers
     /// de piste, sans quoi comparer deux pistes serait insupportable.
     private func adopt(spectrogram matrix: Spectrogram, playing file: URL?) {
         spectrogram = matrix
+        forgetVoicing()
         renderer?.layout = matrix.layout
         renderer?.upload(matrix)
         snap = nil
         guard let file else { return }
+        // Cocher une piste change de fichier sans changer de morceau : le format est
+        // le même, donc le moteur audio n'a pas à être arrêté. C'est lui qu'on
+        // entendait, pas la lecture du nouveau fichier.
+        if player.replace(with: file) { return }
         let wasPlaying = player.isPlaying
         let at = playhead
         player.load(url: file)
         player.setLoop(loopEnabled ? loop : nil)
         if wasPlaying { player.play(from: at) } else { player.seek(to: at) }
+    }
+
+    /// Ce que la ligne de batterie a à dire quand elle n'a rien à montrer. Une ligne
+    /// vide sans un mot laisserait croire que le morceau n'a pas de batterie.
+    ///
+    /// C'est aussi elle qui porte l'avancement de la séparation. Cette place-là
+    /// n'est pas un pis-aller : la séparation part toute seule à l'ouverture, et
+    /// c'est précisément cette ligne qu'elle va remplir. Un relevé tiré du mixage
+    /// s'afficherait entre-temps pour être remplacé une minute plus tard par un
+    /// autre — mieux vaut une ligne vide qui dit ce qu'elle attend.
+    var drumLaneNotice: String? {
+        if let progress = separating {
+            return String(format: "Séparation des pistes : %d %%",
+                          Int((progress * 100).rounded()))
+        }
+        if percussionPending { return "Relevé de la batterie…" }
+        guard percussion.hits.isEmpty else { return nil }
+        if isSeparated, !selection.contains(.drums) { return "Batterie retirée" }
+        return spectrogram.columnCount > 0 ? "Aucun coup relevé" : nil
+    }
+
+    /// Ce qui nourrit la ligne de batterie, selon l'état des pistes.
+    ///
+    /// Trois cas, et un seul geste pour l'utilisateur — la bascule « batterie » :
+    ///
+    /// - **pistes séparées, batterie gardée** : la piste de batterie seule. C'est le
+    ///   bon régime, celui où le relevé ne se trompe presque plus : plus de basse
+    ///   pour allumer la grosse caisse, plus de guitare pour allumer la caisse
+    ///   claire.
+    /// - **pistes séparées, batterie décochée** : rien. On ne l'entend pas, on ne la
+    ///   voit pas — la ligne reste vide plutôt que de continuer à montrer un relevé
+    ///   qui ne correspond plus à ce qui sort des haut-parleurs.
+    /// - **pas encore séparé** : le mixage, faute de mieux. Le relevé y est
+    ///   approximatif, et c'est dit dans le README plutôt que caché.
+    private func relevePercussion(keeping wanted: Set<Stem>, separated: Bool,
+                                  fingerprint: String?, mix: AudioSource) {
+        guard separated else {
+            relevePercussion(Self.everything, from: mix.mono, sampleRate: mix.sampleRate)
+            return
+        }
+        guard wanted.contains(.drums), let fingerprint,
+              let file = StemStore.url(.drums, for: fingerprint) else {
+            percussionToken += 1
+            percussion = .empty
+            percussionPending = false
+            return
+        }
+        relevePercussion([.drums], loading: file)
+    }
+
+    /// Relève la batterie d'un fichier qu'il faut d'abord lire — la piste isolée.
+    private func relevePercussion(_ key: Set<Stem>, loading file: URL) {
+        percussionToken += 1
+        let token = percussionToken
+        if let ready = percussionCache[key] {
+            percussion = ready
+            percussionPending = false
+            return
+        }
+        percussion = .empty
+        percussionPending = true
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let loaded = try? AudioSource.load(file) else {
+                DispatchQueue.main.async { self?.percussionPending = false }
+                return
+            }
+            let track = PercussionDetector.detect(samples: loaded.mono,
+                                                  sampleRate: loaded.sampleRate)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.percussionCache[key] = track
+                guard self.percussionToken == token else { return }
+                self.percussion = track
+                self.percussionPending = false
+            }
+        }
+    }
+
+    // MARK: Les accords
+
+    /// Hauteur de la bande où s'écrivent les noms d'accords, en bas de l'image.
+    /// Partagée par le dessin et par la désignation à la souris — sans quoi la zone
+    /// sensible et la zone dessinée finiraient par se décoller.
+    static let chordBandHeight = 18.0
+
+    /// L'accord que la souris désigne, ou `nil`.
+    ///
+    /// Le survol porte sur **toute la durée** de l'accord, pas sur les quelques points
+    /// de son nom : viser huit caractères ne serait pas un geste, ce serait un
+    /// exercice. Le nom marque le début, la zone sensible couvre ce qu'il nomme.
+    var hoveredChord: ChordSegment? {
+        guard showChords, !chords.isEmpty, let hover, let unit = gridUnit else { return nil }
+        guard hover.y >= viewSize.height - Self.chordBandHeight,
+              hover.y <= viewSize.height else { return nil }
+        let pointed = time(atPoint: Double(hover.x))
+        return chords.labels(from: time(atPoint: 0),
+                             to: time(atPoint: Double(viewSize.width)),
+                             grouping: max(1, Int(unit.rounded())))
+            .first { pointed >= $0.start && pointed < $0.end && $0.chord != nil }
+    }
+
+    /// Les notes de l'accord survolé, telles qu'elles sonnent vraiment.
+    ///
+    /// Gardées d'un dessin à l'autre. Le spectre moyen d'un temps, c'est une
+    /// exponentiation par ligne et par colonne — vingt mille pour un temps — et
+    /// l'image se redessine soixante fois par seconde tant que la souris ne bouge
+    /// pas. Le calcul ne dépend que de l'accord désigné : il n'a aucune raison
+    /// d'être refait tant qu'on reste dessus.
+    @ObservationIgnored private var voicingCache: (key: ClosedRange<Double>,
+                                                   notes: [SoundingNote])?
+
+    var hoveredChordNotes: [SoundingNote] {
+        guard let segment = hoveredChord, let chord = segment.chord,
+              spectrogram.columnCount > 0, segment.end > segment.start else { return [] }
+        let key = segment.start...segment.end
+        if let cached = voicingCache, cached.key == key { return cached.notes }
+        let spectrum = spectrogram.averageSpectrum(from: segment.start, to: segment.end)
+        // Le noir de l'image sert de plancher : ce qu'on entoure est ce qu'on voit.
+        // C'est aussi le réglage de contraste qui commande, donc l'éclaircir dévoile
+        // des notes plus faibles — ce qui est le comportement qu'on attend.
+        let notes = ChordVoicing.sounding(chord, in: spectrum, layout: spectrogram.layout,
+                                          referenceA: display.referenceA,
+                                          visibleFloor: Float(display.floorDb))
+        voicingCache = (key, notes)
+        return notes
+    }
+
+    /// À jeter dès que l'image change : les mêmes bornes de temps ne désignent plus
+    /// le même contenu quand on passe d'une piste à l'autre.
+    func forgetVoicing() { voicingCache = nil }
+
+    // MARK: Écoute d'un accord
+
+    /// L'accord qui sonne en ce moment, pour ne pas le relancer à chaque pixel.
+    @ObservationIgnored private var soundingChord: (start: Double, chord: Chord)?
+
+    /// Survoler un nom d'accord le fait entendre.
+    ///
+    /// Ce qu'on entend est **exactement ce qu'on voit entouré** : les notes que le
+    /// relevé a trouvées dans le spectre à cet endroit, dans l'octave où elles y
+    /// sont. Jouer plutôt un accord de manuel — fondamentale, tierce, quinte au
+    /// milieu du clavier — donnerait un son plus propre et répondrait à côté : la
+    /// question posée en survolant est « est-ce bien cela que j'entends là ? », et
+    /// il faut pour y répondre le même renversement et le même registre.
+    ///
+    /// Faute de notes visibles — un passage réglé trop sombre, un accord deviné sur
+    /// une basse seule — on retombe sur l'accord de manuel, à partir de Do3. Rester
+    /// muet ne dirait pas si l'on n'a rien trouvé ou si rien ne marche.
+    private func updateChordTone() {
+        guard !probing else { return }
+        let segment = hoveredChord
+        let current = segment.flatMap { s in s.chord.map { (start: s.start, chord: $0) } }
+        guard current?.start != soundingChord?.start
+                || current?.chord != soundingChord?.chord else { return }
+        soundingChord = current
+        guard let current else { return tone.stop() }
+        tone.play(chord: chordFrequencies(current.chord))
+    }
+
+    private func chordFrequencies(_ chord: Chord) -> [Double] {
+        let notes = hoveredChordNotes
+        let midi: [Int] = notes.isEmpty
+            ? chord.quality.intervals.map { 48 + chord.root + $0 }
+            : notes.map(\.midi)
+        return midi.map { Pitch.frequency(ofMidi: Double($0),
+                                          referenceA: display.referenceA) }
+    }
+
+    /// Pourquoi la ligne d'accords est vide, quand elle l'est.
+    var chordNotice: String? {
+        guard showChords, spectrogram.columnCount > 0 else { return nil }
+        if chordsPending { return "Relevé des accords…" }
+        guard chords.isEmpty else { return nil }
+        if !isSeparated { return "Accords : séparer les pistes d'abord" }
+        if tempo == nil || (tempo?.bpm ?? 0) <= 0 { return "Accords : chercher la grille d'abord" }
+        return nil
+    }
+
+    /// Devine les accords à partir des deux pistes qui les portent.
+    ///
+    /// **Toujours la basse et le « reste », quoi qu'on ait coché.** Ce n'est pas une
+    /// vue de ce qu'on écoute mais une lecture de ce qui est joué : retirer la basse
+    /// pour travailler ne doit pas effacer les accords qu'on est en train de relever.
+    /// C'est l'inverse du choix fait pour la ligne de batterie, et pour la même
+    /// raison — là-bas, décocher la batterie *veut dire* qu'on ne veut plus la voir.
+    ///
+    /// Le relevé se refait quand la grille métrique change : c'est elle qui découpe.
+    private func releveAccords(separated: Bool, fingerprint: String?) {
+        chordToken += 1
+        let token = chordToken
+        guard separated, let fingerprint, let tempo, tempo.bpm > 0,
+              let bassFile = StemStore.url(.bass, for: fingerprint),
+              let otherFile = StemStore.url(.other, for: fingerprint) else {
+            chords = .empty
+            chordsPending = false
+            return
+        }
+        if let ready = chordCache[tempo] {
+            chords = ready
+            chordsPending = false
+            return
+        }
+        chords = .empty
+        chordsPending = true
+        let referenceA = display.referenceA
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let bass = try? AudioSource.load(bassFile),
+                  let other = try? AudioSource.load(otherFile) else {
+                DispatchQueue.main.async { self?.chordsPending = false }
+                return
+            }
+            let track = ChordDetector.detect(bass: bass.mono, harmony: other.mono,
+                                             sampleRate: other.sampleRate,
+                                             tempo: tempo, referenceA: referenceA)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.chordCache[tempo] = track
+                guard self.chordToken == token else { return }
+                self.chords = track
+                self.chordsPending = false
+            }
+        }
+    }
+
+    /// Relève la batterie du signal courant, en tâche de fond.
+    ///
+    /// À part de l'analyse plutôt qu'à sa suite : le relevé coûte à peu près autant
+    /// que le spectrogramme lui-même, et il n'y a aucune raison de retarder d'autant
+    /// l'affichage de l'image. La ligne apparaît un instant après le reste.
+    ///
+    /// Le jeton écarte le résultat d'un relevé qu'on a laissé derrière soi — changer
+    /// de piste ou de morceau pendant qu'il tourne est le geste normal. Le résultat
+    /// est tout de même rangé au passage : il aura servi si l'on y revient.
+    private func relevePercussion(_ wanted: Set<Stem>, from samples: [Float],
+                                  sampleRate: Double) {
+        percussionToken += 1
+        let token = percussionToken
+        if let ready = percussionCache[wanted] {
+            percussion = ready
+            percussionPending = false
+            return
+        }
+        percussion = .empty
+        percussionPending = true
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let track = PercussionDetector.detect(samples: samples, sampleRate: sampleRate)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.percussionCache[wanted] = track
+                guard self.percussionToken == token else { return }
+                self.percussion = track
+                self.percussionPending = false
+            }
+        }
     }
 
     /// Efface les pistes de ce morceau — de quoi refaire la séparation si le
@@ -610,6 +1034,7 @@ import UniformTypeIdentifiers
         job = nil
         separating = nil
         stemCache.removeAll()
+        percussionCache.removeAll()
         StemStore.removeStems(for: fingerprint)
         selection = Self.everything
         show(Self.everything)

@@ -19,7 +19,7 @@ guard arguments.count >= 2 else {
         Analyse un morceau et écrit son spectrogramme. Le contraste est réglé
         automatiquement sur son contenu, comme le fait ⌘K dans l'application.
 
-        Formats lus ici : \(AudioLoader.supportedExtensions.joined(separator: ", ")).
+        Format lu ici : wav.
 
         `--taille` impose les dimensions de l'image. C'est ce qui permet de
         comparer ce dessin-ci, fait sur le processeur, à celui que le GPU produit
@@ -60,12 +60,12 @@ let sortie = positionnels.count >= 2
 
 let début = Date()
 
-let fichier: AudioLoader.Contents
+let fichier: WAVFile.Contents
 do {
-    // `AudioLoader` prend le WAV lui-même et confie le reste au décodeur du
-    // système — Media Foundation sous Windows. Sur macOS ce chemin s'arrête au
-    // WAV : l'application, elle, passe par `AudioSource` et AVFoundation.
-    fichier = try AudioLoader.load(at: entrée)
+    // Le WAV et rien d'autre : ce chemin-ci ne dépend d'aucun décodeur du
+    // système, ce qui est tout son intérêt. L'application, elle, ouvre n'importe
+    // quel format par `AudioSource` et AVFoundation.
+    fichier = try WAVFile.read(at: entrée)
 } catch {
     FileHandle.standardError.write(Data("\(error)\n".utf8))
     exit(1)

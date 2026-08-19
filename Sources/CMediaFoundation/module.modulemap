@@ -1,4 +1,0 @@
-module CMediaFoundation {
-    header "include/spectre_mf.h"
-    export *
-}

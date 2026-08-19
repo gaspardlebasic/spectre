@@ -60,4 +60,31 @@ public struct DisplaySettings: Equatable, Codable {
         self.referenceA = referenceA
         self.noteSaturation = noteSaturation
     }
+
+    /// Décodage **tolérant aux champs manquants**.
+    ///
+    /// Écrit à la main, et pas par confort. Le décodage synthétisé par Swift refuse
+    /// un objet auquel il manque une clé, *même quand la propriété a une valeur par
+    /// défaut* — vérifié plutôt que supposé. Comme `SessionStore.load` avale l'échec
+    /// par un `try?`, ajouter un seul réglage ici effacerait en silence tous les
+    /// réglages déjà enregistrés, pour tous les morceaux : contraste, palette,
+    /// diapason. L'utilisatrice les retrouverait remis à zéro sans un mot.
+    ///
+    /// Chaque champ absent reprend donc sa valeur par défaut, et une session écrite
+    /// par une version plus ancienne se relit telle quelle.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = DisplaySettings()
+        floorDb = try c.decodeIfPresent(Double.self, forKey: .floorDb) ?? d.floorDb
+        ceilingDb = try c.decodeIfPresent(Double.self, forKey: .ceilingDb) ?? d.ceilingDb
+        gamma = try c.decodeIfPresent(Double.self, forKey: .gamma) ?? d.gamma
+        tiltDbPerOctave = try c.decodeIfPresent(Double.self, forKey: .tiltDbPerOctave)
+            ?? d.tiltDbPerOctave
+        colorMap = try c.decodeIfPresent(ColorMap.self, forKey: .colorMap) ?? d.colorMap
+        showGrid = try c.decodeIfPresent(Bool.self, forKey: .showGrid) ?? d.showGrid
+        useFlats = try c.decodeIfPresent(Bool.self, forKey: .useFlats) ?? d.useFlats
+        referenceA = try c.decodeIfPresent(Double.self, forKey: .referenceA) ?? d.referenceA
+        noteSaturation = try c.decodeIfPresent(Double.self, forKey: .noteSaturation)
+            ?? d.noteSaturation
+    }
 }

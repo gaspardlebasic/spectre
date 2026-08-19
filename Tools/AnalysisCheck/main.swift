@@ -310,12 +310,45 @@ if let a = zoomed.visibleBand(in: layout, height: Double(size.height)),
 // se posent est exactement ce qu'on voit.
 print("\n=== Aimantation de la boucle ===")
 let ruled = TempoGrid(bpm: 120, origin: 0.25, beatsPerBar: 4)
-check("très dézoomé, on se cale sur les mesures", ruled.unit(pointsPerBeat: 3) == 4,
-      "pas de \(ruled.unit(pointsPerBeat: 3).map { "\($0)" } ?? "—") temps")
+func pas(_ pointsPerBeat: Double) -> String {
+    ruled.unit(pointsPerBeat: pointsPerBeat).map { "pas de \($0) temps" } ?? "aucune grille"
+}
+check("le morceau entier, on se cale sur les phrases", ruled.unit(pointsPerBeat: 3) == 16,
+      pas(3))
+check("un peu moins dézoomé, sur les mesures", ruled.unit(pointsPerBeat: 8) == 4,
+      pas(8))
 check("au zoom courant, sur les temps", ruled.unit(pointsPerBeat: 30) == 1,
-      "pas de \(ruled.unit(pointsPerBeat: 30).map { "\($0)" } ?? "—") temps")
+      pas(30))
 check("bien zoomé, sur les doubles croches", ruled.unit(pointsPerBeat: 150) == 0.25,
-      "pas de \(ruled.unit(pointsPerBeat: 150).map { "\($0)" } ?? "—") temps")
+      pas(150))
+
+// La raison d'être de l'échelon des phrases : aucun échelon ne doit jamais
+// dessiner deux traits à moins de trente points l'un de l'autre. C'est ce seuil,
+// et non le nom des échelons, qui décide si l'image est lisible ou hachurée.
+var tropSerre: [Double] = []
+for centieme in 30...20000 {
+    let pointsPerBeat = Double(centieme) / 100
+    guard let unit = ruled.unit(pointsPerBeat: pointsPerBeat) else { continue }
+    // Les temps et leurs subdivisions sont fins et pâles : c'est aux échelons
+    // dessinés en trait plein — mesure et phrase — que la règle s'applique.
+    guard unit >= 4 else { continue }
+    if unit * pointsPerBeat < 30 { tropSerre.append(pointsPerBeat) }
+}
+check("jamais deux barres à moins de trente points", tropSerre.isEmpty,
+      tropSerre.isEmpty ? "sur tout l'intervalle de zoom"
+                        : "\(tropSerre.count) densités trop serrées")
+
+// En dessous, plus rien : mieux vaut pas de grille du tout qu'une trame.
+check("tout au fond du dézoom, plus de grille", ruled.unit(pointsPerBeat: 1) == nil,
+      pas(1))
+
+// Une phrase fait quatre mesures, quelle que soit la signature.
+let troisTemps = TempoGrid(bpm: 120, origin: 0, beatsPerBar: 3)
+check("une phrase suit la signature", troisTemps.beatsPerPhrase == 12,
+      "\(Int(troisTemps.beatsPerPhrase)) temps à 3/4, \(Int(ruled.beatsPerPhrase)) à 4/4")
+check("elle s'ouvre à la bonne mesure",
+      troisTemps.opensPhrase(12) && !troisTemps.opensPhrase(9) && troisTemps.opensBar(9),
+      "la mesure 4 ouvre une phrase, la mesure 3 non")
 
 // Une borne posée n'importe où doit retomber sur un multiple du pas.
 let snapped = ruled.snap(3.31, unit: 1)
@@ -586,6 +619,40 @@ check("le fondu de sortie ne claque pas",
              discontinuity(released, frequency: 3000, gain: 0.16)))
 
 print("")
+print("\n=== Rotation de la palette ===")
+// Faire commencer la série des couleurs à une autre note ne doit **rien** changer à
+// ce qui la fonde : deux notes proches dans le cycle des quintes restent proches en
+// couleur, un triton reste en opposition. La rotation s'applique dans le cycle, pas
+// sur le cercle chromatique — seul l'ancrage bouge.
+func teintes(_ origine: Int) -> [Double] {
+    (0..<12).map { NotePalette.hueTurns($0, origin: origine) }
+}
+/// Distance sur le cercle : 0,95 et 0,05 sont voisines, pas opposées. Comparer les
+/// teintes sans ce repliement donnait un faux échec, la faute étant dans le contrôle.
+func ecartCirculaire(_ x: Double, _ y: Double) -> Double {
+    let d = abs(x - y).truncatingRemainder(dividingBy: 1)
+    return min(d, 1 - d)
+}
+let teintesDo = teintes(0)
+for origine in [3, 7, 11] {
+    let tournees = teintes(origine)
+    var pire = 0.0
+    for a in 0..<12 {
+        for b in 0..<12 {
+            pire = max(pire, abs(ecartCirculaire(teintesDo[a], teintesDo[b])
+                                 - ecartCirculaire(tournees[a], tournees[b])))
+        }
+    }
+    check("la rotation sur \(Pitch.flatNames[origine]) conserve tous les écarts de teinte",
+          pire < 1e-9, String(format: "écart maximal %.2e", pire))
+    check("et \(Pitch.flatNames[origine]) reçoit bien la première teinte",
+          abs(tournees[origine] - teintesDo[0]) < 1e-9,
+          String(format: "%.3f tour", tournees[origine]))
+}
+check("les douze teintes restent distinctes après rotation",
+      Set(teintes(5).map { String(format: "%.6f", $0) }).count == 12,
+      "\(Set(teintes(5).map { String(format: "%.6f", $0) }).count) teintes")
+
 if failures == 0 {
     print("Tout est bon.")
 } else {

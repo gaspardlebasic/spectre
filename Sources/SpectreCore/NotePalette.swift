@@ -38,8 +38,18 @@ public enum NotePalette {
         ((7 * pitchClass) % 12 + 12) % 12
     }
 
-    public static func hueTurns(_ pitchClass: Int) -> Double {
-        baseHue + Double(circleOfFifthsIndex(pitchClass)) / Double(pitchClassCount)
+    /// Teinte d'une classe de hauteur, en tours.
+    ///
+    /// - Parameter origin: la note qui reçoit la **première** teinte. Do par défaut.
+    ///   Faire tourner la série ne change rien à ce qui la fonde — deux notes proches
+    ///   dans le cycle des quintes restent proches en couleur, un triton reste en
+    ///   opposition — parce que la rotation s'applique *dans* le cycle, pas sur le
+    ///   cercle chromatique. Seul l'ancrage change, et c'est affaire de goût ou de
+    ///   tonalité : jouer en mi bémol et voir son tonique en rouge plutôt qu'en bleu.
+    public static func hueTurns(_ pitchClass: Int, origin: Int = 0) -> Double {
+        let rank = circleOfFifthsIndex(pitchClass) - circleOfFifthsIndex(origin)
+        return baseHue + Double((rank % pitchClassCount + pitchClassCount) % pitchClassCount)
+            / Double(pitchClassCount)
     }
 
     // MARK: Oklch → sRGB
@@ -164,19 +174,21 @@ public enum NotePalette {
     }
 
     /// Couleur sRGB (0…1, encodée gamma) d'une note à une intensité donnée.
-    public static func color(pitchClass: Int, intensity t: Double, saturation: Double = 1)
+    public static func color(pitchClass: Int, intensity t: Double, saturation: Double = 1,
+                             origin: Int = 0)
         -> (r: Double, g: Double, b: Double) {
         let clamped = min(max(t, 0), 1)
         let step = Int((clamped * Double(steps - 1)).rounded())
         let L = maxLightness * clamped
         let C = chroma(step: step, pitchClass: pitchClass, saturation: saturation)
             * chromaFade(intensity: clamped)
-        let c = linearRGB(lightness: L, chroma: C, hueTurns: hueTurns(pitchClass))
+        let c = linearRGB(lightness: L, chroma: C,
+                          hueTurns: hueTurns(pitchClass, origin: origin))
         return (encodeGamma(c.r), encodeGamma(c.g), encodeGamma(c.b))
     }
 
     /// Table RGBA8 de `steps` colonnes (intensité) sur 12 lignes (classe de hauteur).
-    public static func makeTable(saturation: Double = 1) -> [UInt8] {
+    public static func makeTable(saturation: Double = 1, origin: Int = 0) -> [UInt8] {
         var table = [UInt8](repeating: 255, count: steps * pitchClassCount * 4)
         for i in 0..<steps {
             let t = Double(i) / Double(steps - 1)
@@ -184,7 +196,7 @@ public enum NotePalette {
             let fade = chromaFade(intensity: t)
             for p in 0..<pitchClassCount {
                 let C = chroma(step: i, pitchClass: p, saturation: saturation) * fade
-                let c = linearRGB(lightness: L, chroma: C, hueTurns: hueTurns(p))
+                let c = linearRGB(lightness: L, chroma: C, hueTurns: hueTurns(p, origin: origin))
                 let offset = (p * steps + i) * 4
                 table[offset] = UInt8((encodeGamma(c.r) * 255).rounded())
                 table[offset + 1] = UInt8((encodeGamma(c.g) * 255).rounded())

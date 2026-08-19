@@ -53,7 +53,9 @@ public struct AudioSource {
 
         var mono = [Float]()
         mono.reserveCapacity(Int(file.length))
-        let gain = Float(1) / Float(max(channels, 1))
+        // La somme des canaux, et — s'il s'agit d'une de nos pistes compressées — le
+        // rattrapage de la réserve de niveau, dans la même multiplication.
+        let gain = StemStore.gain(for: url) / Float(max(channels, 1))
 
         // `file.length` est une estimation sur les formats compressés, et `read`
         // préfère lever une erreur plutôt que de renvoyer zéro image quand on

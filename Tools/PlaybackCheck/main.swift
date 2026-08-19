@@ -127,6 +127,111 @@ check("le ralenti dure plus longtemps que la source",
       slowed.count >= Int(sampleRate * 2),
       "\(slowed.count) échantillons rendus")
 
+print("\n=== Accord entendu ===")
+// Survoler un nom d'accord le fait sonner. Ce qui se vérifie ici est le signal
+// produit, pas le geste : que les hauteurs demandées y soient toutes, qu'aucune
+// autre ne s'y invite, qu'un accord ne soit pas plus fort qu'une note seule, et
+// qu'une voix qu'on retire s'en aille sans claquer.
+
+let voiceCount = 8
+var chord = ChordOscillator(sampleRate: sampleRate, voiceCount: voiceCount)
+var posed = Set<Int>()
+
+/// Fait avancer l'accord de `seconds` sur les fréquences demandées.
+func advance(_ frequencies: [Double], seconds: Double, level: Double = 0.08) -> [Float] {
+    // Deux `Double` par voix, et ils ne veulent pas dire la même chose : une
+    // fréquence d'attente pour la première, un gain **nul** pour la seconde. Les
+    // remplir d'une seule valeur ferait jouer les voix inutilisées à plein.
+    var targets = [Double](repeating: 0, count: 2 * voiceCount)
+    for voice in 0..<voiceCount { targets[2 * voice] = 440 }
+    let perVoice = ChordOscillator.perVoiceLevel(level, voices: max(frequencies.count, 1))
+    for (voice, frequency) in frequencies.enumerated() {
+        // Une voix qu'on pose pour la première fois n'a rien à glisser.
+        if !posed.contains(voice) { chord.jump(voice: voice, to: frequency); posed.insert(voice) }
+        targets[2 * voice] = frequency
+        targets[2 * voice + 1] = perVoice
+    }
+    var output = [Float](repeating: 0, count: Int(sampleRate * seconds))
+    targets.withUnsafeBufferPointer { t in
+        output.withUnsafeMutableBufferPointer { o in
+            chord.render(targets: t, into: o, count: o.count)
+        }
+    }
+    return output
+}
+
+/// Amplitude d'une fréquence dans un bloc, par projection sur une sinusoïde.
+func amplitude(of frequency: Double, in samples: ArraySlice<Float>) -> Double {
+    var real = 0.0, imaginary = 0.0
+    for (offset, value) in samples.enumerated() {
+        let angle = 2 * .pi * frequency * Double(offset) / sampleRate
+        real += Double(value) * cos(angle)
+        imaginary += Double(value) * sin(angle)
+    }
+    return 2 * (real * real + imaginary * imaginary).squareRoot() / Double(samples.count)
+}
+
+func rms(_ samples: ArraySlice<Float>) -> Double {
+    let total = samples.reduce(0.0) { $0 + Double($1) * Double($1) }
+    return (total / Double(samples.count)).squareRoot()
+}
+
+func biggestStep(_ samples: ArraySlice<Float>) -> Double {
+    var worst = 0.0
+    var previous: Float?
+    for value in samples {
+        if let previous { worst = max(worst, Double(abs(value - previous))) }
+        previous = value
+    }
+    return worst
+}
+
+// Do4 – Mi4 – Sol4.
+let triad = [261.626, 329.628, 391.995]
+let held = advance(triad, seconds: 0.5)
+let settled = held[(held.count / 2)...]
+let expected = ChordOscillator.perVoiceLevel(0.08, voices: 3)
+let heard = triad.map { amplitude(of: $0, in: settled) }
+check("les trois notes de l'accord sont toutes là",
+      heard.allSatisfy { abs($0 - expected) < 0.1 * expected },
+      heard.map { String(format: "%.4f", $0) }.joined(separator: "  ")
+        + String(format: "  (attendu %.4f)", expected))
+// Entre Mi et Sol il n'y a rien : une voix de trop, un repli, un battement se
+// verraient ici. Le seuil n'est pas zéro — une projection sur un bloc fini laisse
+// fuir quelques pour cent de ses voisines — mais il discrimine largement ce qu'on
+// cherche : une note réellement présente y lirait une fois l'amplitude attendue,
+// pas un dixième.
+let between = amplitude(of: 360, in: settled)
+check("rien ne sonne entre les notes demandées",
+      between < 0.15 * expected,
+      String(format: "%.5f à 360 Hz, soit %.0f %% d'une note", between,
+             100 * between / expected))
+
+// Quatre sinusoïdes de même amplitude peuvent aligner leurs phases ; sans
+// correction, un accord serait plus fort qu'une note et finirait par écrêter.
+let single = advance([261.626], seconds: 0.4)
+// La quatrième note est prise loin des autres — un Si deux octaves plus haut. Ce
+// n'est pas de la coquetterie : c'est elle qu'on va retirer, et il faut pouvoir
+// mesurer son extinction sans la confondre avec ce que ses voisines laissent fuir
+// dans la projection.
+let quad = advance([261.626, 311.127, 391.995, 987.767], seconds: 0.4)
+let ratio = rms(quad[(quad.count / 2)...]) / rms(single[(single.count / 2)...])
+check("un accord ne sonne pas plus fort qu'une note seule",
+      abs(ratio - 1) < 0.05, String(format: "%.3f fois la puissance d'une note", ratio))
+check("et il ne sature jamais",
+      quad.allSatisfy { abs($0) < 1 },
+      String(format: "crête %.3f", quad.map { abs(Double($0)) }.max() ?? 0))
+
+// Passer de quatre notes à trois : la voix retirée doit s'éteindre en fondu.
+let dropped = advance([261.626, 311.127, 391.995], seconds: 0.3)
+let gone = amplitude(of: 987.767, in: dropped[(dropped.count * 2 / 3)...])
+let before = amplitude(of: 987.767, in: quad[(quad.count / 2)...])
+check("une note retirée de l'accord s'en va vraiment",
+      gone < 0.02 * before, String(format: "%.5f contre %.4f avant", gone, before))
+check("et elle s'en va sans claquer",
+      biggestStep(dropped[...]) < 0.02,
+      String(format: "plus grand écart entre deux échantillons %.4f", biggestStep(dropped[...])))
+
 print("")
 if failures == 0 {
     print("Tout est bon.")

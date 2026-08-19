@@ -1,4 +1,0 @@
-module CStretch {
-    header "include/spectre_stretch.h"
-    export *
-}

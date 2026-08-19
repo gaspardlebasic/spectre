@@ -1,7 +1,11 @@
 import Foundation
 
 /// Grille métrique : un tempo, un point de départ, une signature.
-public struct TempoGrid: Equatable, Codable {
+///
+/// `Hashable` parce qu'elle sert de clé : le relevé des accords découpe le morceau
+/// avec elle, si bien qu'en changer change le relevé — et y revenir doit être
+/// immédiat plutôt que de tout recalculer.
+public struct TempoGrid: Equatable, Hashable, Codable {
     public var bpm: Double
     /// Instant du premier temps fort, en secondes.
     public var origin: Double
@@ -24,17 +28,45 @@ public struct TempoGrid: Equatable, Codable {
     public func beat(at time: Double) -> Double { (time - origin) / beatSeconds }
     public func time(ofBeat b: Double) -> Double { origin + b * beatSeconds }
 
+    /// Longueur d'une **phrase**, en mesures.
+    ///
+    /// Quatre, quelle que soit la signature : c'est la période à laquelle presque
+    /// toute la musique qu'on relève est bâtie, et c'est déjà l'unité dans laquelle
+    /// on pense un morceau — « les quatre premières mesures », « le deuxième huit ».
+    public static let barsPerPhrase = 4
+
+    public var beatsPerPhrase: Double {
+        Double(max(beatsPerBar, 1) * Self.barsPerPhrase)
+    }
+
+    /// Vrai si ce temps ouvre une phrase, une mesure.
+    public func opensPhrase(_ beat: Double) -> Bool {
+        abs(beat.truncatingRemainder(dividingBy: beatsPerPhrase)) < 1e-6
+    }
+
+    public func opensBar(_ beat: Double) -> Bool {
+        abs(beat.truncatingRemainder(dividingBy: Double(max(beatsPerBar, 1)))) < 1e-6
+    }
+
     /// Pas de grille le plus fin qui reste lisible à une densité donnée, en temps.
-    /// `nil` quand même les mesures se marcheraient dessus.
+    /// `nil` quand même les phrases se marcheraient dessus.
     ///
     /// Une seule définition sert au tracé *et* à l'aimantation de la boucle : ce
     /// sur quoi les bornes se posent est exactement ce qu'on voit à l'écran.
+    ///
+    /// Les quatre premiers échelons sont espacés d'un facteur deux à quatre, et
+    /// tous tombent au même endroit : **trente points entre deux traits**. En
+    /// dessous, l'œil ne lit plus une grille mais une trame, et les traits de mesure
+    /// deviennent une clôture qui masque la musique. C'est pour ça que la phrase
+    /// existe : dézoomé sur un morceau entier, une mesure fait deux points, alors
+    /// que quatre mesures en font huit et qu'on continue de voir la structure.
     public func unit(pointsPerBeat: Double) -> Double? {
         let bar = Double(max(beatsPerBar, 1))
         if pointsPerBeat >= 120 { return 0.25 }
         if pointsPerBeat >= 60 { return 0.5 }
         if pointsPerBeat >= 9 { return 1 }
-        if pointsPerBeat * bar >= 7 { return bar }
+        if pointsPerBeat * bar >= 30 { return bar }
+        if pointsPerBeat * beatsPerPhrase >= 30 { return beatsPerPhrase }
         return nil
     }
 

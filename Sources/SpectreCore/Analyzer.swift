@@ -92,7 +92,10 @@ public struct BinLayout: Equatable {
 
 // MARK: - FFT réelle
 
-private final class RealFFT {
+/// Interne au module plutôt que privée au fichier : le relevé de la batterie fait
+/// sa propre transformée, à fenêtre courte et constante, et n'a aucune raison d'en
+/// réécrire une deuxième.
+final class RealFFT {
     let n: Int
     private let transform: RealFourier
     private var window: [Float]

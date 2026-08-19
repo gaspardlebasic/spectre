@@ -42,16 +42,84 @@ public struct ToneOscillator {
         self.frequency = frequency
     }
 
+    /// Un échantillon, en avançant d'un pas vers la consigne.
+    ///
+    /// C'est l'unité que partagent la sinusoïde seule et l'accord : une voix ne
+    /// sait produire qu'un échantillon à la fois, et c'est à l'appelant de décider
+    /// s'il l'écrit ou s'il l'additionne à celles des autres voix.
+    public mutating func nextSample(targetFrequency: Double, targetGain: Double) -> Double {
+        let twoPi = 2 * Double.pi
+        frequency += (targetFrequency - frequency) * glide
+        gain += (targetGain - gain) * fade
+        phase += twoPi * frequency / sampleRate
+        if phase > twoPi { phase -= twoPi }
+        return sin(phase) * gain
+    }
+
     /// Produit `count` échantillons en tendant vers la consigne.
     public mutating func render(targetFrequency: Double, targetGain: Double,
                          into output: UnsafeMutableBufferPointer<Float>, count: Int) {
-        let twoPi = 2 * Double.pi
         for i in 0..<min(count, output.count) {
-            frequency += (targetFrequency - frequency) * glide
-            gain += (targetGain - gain) * fade
-            phase += twoPi * frequency / sampleRate
-            if phase > twoPi { phase -= twoPi }
-            output[i] = Float(sin(phase) * gain)
+            output[i] = Float(nextSample(targetFrequency: targetFrequency,
+                                         targetGain: targetGain))
+        }
+    }
+}
+
+/// Plusieurs voix, pour faire entendre un accord entier.
+///
+/// Chaque voix est une `ToneOscillator` complète : elle garde sa phase, glisse
+/// vers sa fréquence et fond son gain comme la sinusoïde seule. Une voix dont la
+/// consigne de gain tombe à zéro s'éteint donc en fondu et reste disponible —
+/// c'est ce qui permet de passer d'un accord de quatre notes à un de trois sans
+/// que la note en trop claque en partant.
+///
+/// **Le niveau baisse avec le nombre de voix.** Quatre sinusoïdes de même
+/// amplitude peuvent aligner leurs phases et sommer quatre fois l'amplitude d'une
+/// seule ; sans correction, un accord serait à la fois plus fort et écrêté. La
+/// racine du nombre de voix est le compromis d'usage : la puissance reste
+/// constante, et le pire cas ne dépasse pas √n fois une voix au lieu de n.
+public struct ChordOscillator {
+    public let voiceCount: Int
+    private var voices: [ToneOscillator]
+
+    public init(sampleRate: Double, voiceCount: Int,
+                glideSeconds: Double = 0.02, fadeSeconds: Double = 0.008) {
+        self.voiceCount = max(voiceCount, 1)
+        voices = (0..<self.voiceCount).map { _ in
+            ToneOscillator(sampleRate: sampleRate, glideSeconds: glideSeconds,
+                           fadeSeconds: fadeSeconds)
+        }
+    }
+
+    /// Repose la fréquence d'une voix sans toucher à sa phase.
+    public mutating func jump(voice: Int, to frequency: Double) {
+        guard voices.indices.contains(voice) else { return }
+        voices[voice].jump(to: frequency)
+    }
+
+    /// Le niveau que doit porter **chaque** voix pour qu'un accord de `count`
+    /// notes sonne aussi fort qu'une note seule à `level`.
+    public static func perVoiceLevel(_ level: Double, voices count: Int) -> Double {
+        level / Double(max(count, 1)).squareRoot()
+    }
+
+    /// Somme les voix dans `output`.
+    ///
+    /// - Parameter targets: deux `Double` par voix — fréquence puis gain. Un
+    ///   tampon plutôt qu'un tableau de couples : ce code tourne dans le bloc de
+    ///   rendu audio, où l'on ne veut ni allocation ni comptage de références.
+    public mutating func render(targets: UnsafeBufferPointer<Double>,
+                                into output: UnsafeMutableBufferPointer<Float>,
+                                count: Int) {
+        let usable = min(voiceCount, targets.count / 2)
+        for i in 0..<min(count, output.count) {
+            var sum = 0.0
+            for voice in 0..<usable {
+                sum += voices[voice].nextSample(targetFrequency: targets[2 * voice],
+                                                targetGain: targets[2 * voice + 1])
+            }
+            output[i] = Float(sum)
         }
     }
 }

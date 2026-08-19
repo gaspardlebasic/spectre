@@ -6,10 +6,10 @@ import PackageDescription
 //
 // `SpectreDSP` isole les quelques opérations vectorielles et la transformée réelle :
 // c'est la seule frontière numérique avec la plateforme. `SpectreCore` porte
-// l'analyse, la lecture, le tempo, les palettes — tout ce qui se décide sans écran
-// ni carte son ; il ne connaît ni AppKit, ni AVFoundation, ni Metal, et compile
-// donc partout où Swift compile. `SpectreMac` porte les implémentations Apple, et
-// `Spectre` la fenêtre. Le plan de portage sous Windows est dans WINDOWS.md.
+// l'analyse, le tempo, les palettes, le relevé de la batterie — tout ce qui se
+// décide sans écran ni carte son ; il ne connaît ni AppKit, ni AVFoundation, ni
+// Metal, et compile donc partout où Swift compile. `SpectreMac` porte les
+// implémentations Apple, et `Spectre` la fenêtre.
 //
 // **Le manifeste est du code, exécuté sur la machine qui construit.** On peut donc
 // simplement ne pas déclarer la couche Apple ailleurs que sur un Mac, plutôt que
@@ -17,24 +17,25 @@ import PackageDescription
 // évite d'aller chercher un moteur d'inférence livré en xcframework Objective-C
 // sur une machine qui n'en veut pas — ce qui, autrement, fait échouer la
 // construction du noyau pour une raison qui n'a rien à voir avec lui.
+//
+// L'application ne vise plus que macOS. Le noyau, lui, reste écrit sans rien
+// connaître du système : ce n'est pas une plateforme de plus qu'on vise, c'est la
+// discipline qui garde `SpectreCore` vérifiable seul et sa couche numérique
+// comparable à elle-même — voir `SPECTRE_PORTABLE` ci-dessous.
 #if os(macOS)
 let surMac = true
 #else
 let surMac = false
 #endif
 
-// Le décodeur des formats compressés est du C qui parle COM : il n'existe que
-// sous Windows, et `SpectreCore` ne le connaît que là. La dépendance se compose
-// ici plutôt qu'avec une condition de plateforme, pour que la cible elle-même
-// ne soit pas déclarée sur un Mac — où elle ne compilerait pas.
-var dependancesNoyau: [Target.Dependency] = [
+// Le noyau ne connaît que la couche numérique. `Crypto` n'est tiré que là où
+// CryptoKit n'existe pas : le noyau compile hors des plateformes Apple, et c'est
+// cette propriété-là qu'on tient, indépendamment de toute autre plateforme visée.
+let dependancesNoyau: [Target.Dependency] = [
     "SpectreDSP",
     .product(name: "Crypto", package: "swift-crypto",
-             condition: .when(platforms: [.windows, .linux, .android])),
+             condition: .when(platforms: [.linux, .android])),
 ]
-#if os(Windows)
-dependancesNoyau.append("CMediaFoundation")
-#endif
 
 let reglagesRelease: [SwiftSetting] = [
     .unsafeFlags(["-Ounchecked"], .when(configuration: .release))
@@ -44,16 +45,16 @@ let reglagesRelease: [SwiftSetting] = [
 // d'écran ni de carte son.
 var cibles: [Target] = [
     // `SPECTRE_PORTABLE` bascule la couche numérique sur son implémentation en
-    // Swift pur. Il est posé d'office hors des plateformes Apple, où Accelerate
-    // n'existe pas ; sur macOS on peut l'exiger à la main —
-    // `swift build -Xswiftc -DSPECTRE_PORTABLE` — pour faire tourner toutes les
-    // vérifications sur le chemin portable. C'est ainsi que le socle du portage
-    // se prouve sans la machine cible.
+    // Swift pur. Il est posé d'office là où Accelerate n'existe pas ; sur macOS on
+    // peut l'exiger à la main — `swift build -Xswiftc -DSPECTRE_PORTABLE` — pour
+    // faire tourner toutes les vérifications sur ce chemin-là. C'est ce qui permet
+    // à `DSPCheck` de mesurer les deux implémentations l'une contre l'autre : une
+    // frontière qu'on ne peut pas comparer des deux côtés n'est qu'une promesse.
     .target(
         name: "SpectreDSP",
         path: "Sources/SpectreDSP",
         swiftSettings: [
-            .define("SPECTRE_PORTABLE", .when(platforms: [.windows, .linux, .android]))
+            .define("SPECTRE_PORTABLE", .when(platforms: [.linux, .android]))
         ] + reglagesRelease
     ),
     .target(
@@ -64,15 +65,10 @@ var cibles: [Target] = [
     ),
     .executableTarget(name: "DSPCheck", dependencies: ["SpectreDSP"],
                       path: "Tools/DSPCheck"),
-    .executableTarget(name: "FilterCheck", dependencies: ["SpectreCore"],
-                      path: "Tools/FilterCheck"),
-    .executableTarget(name: "ChainCheck", dependencies: ["SpectreCore"],
-                      path: "Tools/ChainCheck"),
     .executableTarget(name: "WAVCheck", dependencies: ["SpectreCore"],
                       path: "Tools/WAVCheck"),
-    // Spectre sans fenêtre : un WAV entre, une image sort. Sur une plateforme
-    // dont l'interface n'est pas encore écrite, c'est le premier endroit où l'on
-    // voit que tout le reste marche.
+    // Spectre sans fenêtre : un WAV entre, une image sort. C'est le seul endroit
+    // où l'analyse et le rendu se regardent sans écran ni carte son.
     .executableTarget(name: "SpectreCLI", dependencies: ["SpectreCore"],
                       path: "Tools/SpectreCLI"),
     .executableTarget(name: "AnalysisCheck", dependencies: ["SpectreCore"],
@@ -84,22 +80,23 @@ var cibles: [Target] = [
     // personne ne peut regarder l'écran.
     .executableTarget(name: "ImageCheck", dependencies: ["SpectreCore"],
                       path: "Tools/ImageCheck"),
-    .executableTarget(name: "GaplessCheck", dependencies: ["SpectreCore"],
-                      path: "Tools/GaplessCheck"),
+    .executableTarget(name: "PercussionCheck", dependencies: ["SpectreCore"],
+                      path: "Tools/PercussionCheck"),
+    .executableTarget(name: "HarmonyCheck", dependencies: ["SpectreCore"],
+                      path: "Tools/HarmonyCheck"),
 ]
 
 var produits: [Product] = [
     .library(name: "SpectreCore", type: .static, targets: ["SpectreCore"]),
     .library(name: "SpectreDSP", type: .static, targets: ["SpectreDSP"]),
     .executable(name: "DSPCheck", targets: ["DSPCheck"]),
-    .executable(name: "FilterCheck", targets: ["FilterCheck"]),
-    .executable(name: "ChainCheck", targets: ["ChainCheck"]),
     .executable(name: "WAVCheck", targets: ["WAVCheck"]),
     .executable(name: "SpectreCLI", targets: ["SpectreCLI"]),
     .executable(name: "AnalysisCheck", targets: ["AnalysisCheck"]),
     .executable(name: "FourierCheck", targets: ["FourierCheck"]),
     .executable(name: "ImageCheck", targets: ["ImageCheck"]),
-    .executable(name: "GaplessCheck", targets: ["GaplessCheck"]),
+    .executable(name: "PercussionCheck", targets: ["PercussionCheck"]),
+    .executable(name: "HarmonyCheck", targets: ["HarmonyCheck"]),
 ]
 
 var dependances: [Package.Dependency] = [
@@ -108,57 +105,6 @@ var dependances: [Package.Dependency] = [
     // de module ; il n'est tiré que là où CryptoKit n'existe pas.
     .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
 ]
-
-// La couche Windows. Comme la couche Apple, elle n'est déclarée que là où elle a
-// un sens — SDL3 n'existe pas sur le Mac de développement, et une cible qui le
-// réclame ferait échouer la construction du noyau.
-//
-// `Tools/sdl3.ps1` va chercher l'archive et écrit les chemins à passer au
-// compilateur ; ils ne sont pas figés ici, où ils dépendraient de l'endroit où
-// l'archive a été déballée.
-#if os(Windows)
-cibles += [
-    .systemLibrary(name: "CSDL3", path: "Sources/CSDL3"),
-    // miniaudio tient dans un en-tête ; il n'est pas versionné et arrive par
-    // `Tools/miniaudio.sh`. La cible ne porte donc que le shim et l'unique unité
-    // de compilation qui définit `MINIAUDIO_IMPLEMENTATION`.
-    .target(name: "CMiniaudio", path: "Sources/CMiniaudio",
-            cSettings: [.headerSearchPath("include")]),
-    // Media Foundation : les bibliothèques d'import se déclarent ici, faute de
-    // quoi l'édition de liens échoue sur des symboles COM introuvables. `mfuuid`
-    // n'est pas du code mais les identifiants d'interface eux-mêmes.
-    .target(name: "CMediaFoundation", path: "Sources/CMediaFoundation",
-            linkerSettings: [
-                .linkedLibrary("mfplat"),
-                .linkedLibrary("mfreadwrite"),
-                .linkedLibrary("mfuuid"),
-                .linkedLibrary("ole32"),
-            ]),
-    // signalsmith-stretch est du C++ ; comme pour ImGui, Swift n'en voit qu'un
-    // en-tête C. Les sources arrivent par `Tools/stretch.sh`.
-    .target(name: "CStretch", path: "Sources/CStretch",
-            cxxSettings: [.headerSearchPath(".")]),
-    // Dear ImGui est du C++ ; Swift n'en voit qu'un en-tête C d'une trentaine de
-    // fonctions, écrit à la main. Les sources arrivent par `Tools/imgui.sh` et ne
-    // sont pas versionnées.
-    .target(name: "CImGui", dependencies: ["CSDL3"], path: "Sources/CImGui",
-            cxxSettings: [.headerSearchPath(".")]),
-    .executableTarget(name: "SpectreWindows",
-                      dependencies: ["SpectreCore", "SpectreDSP", "CSDL3",
-                                     "CMiniaudio", "CImGui", "CStretch"],
-                      path: "Sources/SpectreWindows",
-                      swiftSettings: reglagesRelease),
-    // Le ralenti ne se juge qu'à l'oreille, dit-on — mais trois de ses
-    // propriétés se mesurent : la transparence à ×1, la durée, et la hauteur.
-    .executableTarget(name: "StretchCheck",
-                      dependencies: ["SpectreCore", "SpectreDSP", "CStretch"],
-                      path: "Tools/StretchCheck"),
-]
-produits += [
-    .executable(name: "SpectreWindows", targets: ["SpectreWindows"]),
-    .executable(name: "StretchCheck", targets: ["StretchCheck"]),
-]
-#endif
 
 if surMac {
     dependances.append(
@@ -171,8 +117,7 @@ if surMac {
     cibles += [
         // Les implémentations Apple : décodage, lecture, écriture des pistes, rendu
         // Metal, moteur de séparation. Une bibliothèque plutôt qu'un morceau de
-        // l'exécutable, pour que les vérifications puissent s'y lier — et pour que
-        // son pendant Windows s'écrive un jour à côté, sans y toucher.
+        // l'exécutable, pour que les vérifications puissent s'y lier.
         .target(
             name: "SpectreMac",
             dependencies: [
@@ -191,7 +136,7 @@ if surMac {
             swiftSettings: reglagesRelease
         ),
         // Ces trois-là touchent au rendu, à la séparation et au moteur audio
-        // d'Apple : elles auront leur pendant à écrire pour chaque plateforme.
+        // d'Apple : elles ne tournent que sur un Mac.
         .executableTarget(name: "PlaybackCheck", dependencies: ["SpectreCore", "SpectreMac"],
                           path: "Tools/PlaybackCheck"),
         .executableTarget(name: "RenderCheck", dependencies: ["SpectreCore", "SpectreMac"],
@@ -209,7 +154,15 @@ if surMac {
 
 let package = Package(
     name: "Spectre",
-    platforms: [.macOS(.v14)],
+    // macOS 26 : l'interface est bâtie sur Liquid Glass — `glassEffect`,
+    // `GlassEffectContainer`, `glassEffectUnion` — qui n'existe pas avant. On
+    // aurait pu garder macOS 14 et tout envelopper dans `if #available`, mais
+    // cela ferait vivre deux interfaces dont une seule serait regardée, et il
+    // faudrait de toute façon le SDK 26 pour compiler. Autant l'assumer.
+    // `.v26` demanderait un manifeste en tools-version 6.2, qui bascule du même
+    // coup tout le paquet en mode langage Swift 6 : on écrit donc la version à la
+    // main, ce que SwiftPM accepte depuis toujours.
+    platforms: [.macOS("26.0")],
     products: produits,
     dependencies: dependances,
     targets: cibles

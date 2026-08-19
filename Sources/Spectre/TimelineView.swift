@@ -7,6 +7,55 @@ import SwiftUI
 /// Hauteur de la réglette du haut, où se dessine et s'attrape la boucle.
 let rulerHeight = 20.0
 
+// MARK: - Les gestes, partagés
+
+/// Navigation et tracé de boucle, écrits une fois pour les deux vues qui les portent.
+///
+/// L'image et la ligne de batterie montrent **le même axe des temps** ; il n'y a
+/// aucune raison qu'un pincement marche sur l'une et pas sur l'autre — c'est la même
+/// musique, regardée un pouce plus bas. Seul l'axe vertical diffère : l'image porte
+/// les fréquences, la ligne de batterie porte trois voies. Là où il n'y a pas de
+/// fréquences, le zoom vertical s'ancre au milieu de l'image plutôt que sous un
+/// curseur qui ne désigne rien.
+enum TimelineGestures {
+    /// - Parameter anchorY: l'ordonnée sous le curseur, ou `nil` quand la vue n'a pas
+    ///   d'axe des fréquences.
+    static func scroll(_ event: NSEvent, x: Double, anchorY: Double?, model: AppModel) {
+        // Le trackpad envoie des deltas précis ; la souris à molette envoie des
+        // crans, qu'on amplifie pour que le geste ait le même effet.
+        let precise = event.hasPreciseScrollingDeltas
+        let dx = event.scrollingDeltaX * (precise ? 1 : 8)
+        let dy = event.scrollingDeltaY * (precise ? 1 : 8)
+        let flags = event.modifierFlags
+        let height = max(Double(model.viewSize.height), 1)
+
+        if flags.contains(.shift) {
+            model.viewport.zoomFrequency(factor: exp(dy * 0.006),
+                                         anchorY: anchorY ?? height / 2, height: height)
+        } else if flags.contains(.option) || flags.contains(.command) {
+            model.viewport.zoomTime(factor: exp(dy * 0.006), anchorX: x)
+        } else {
+            model.viewport.startColumn -= dx * model.viewport.columnsPerPoint
+            model.viewport.bottomBin += dy * model.viewport.binsPerPoint
+        }
+        model.cancelTurn()
+        model.clampViewport()
+    }
+
+    static func magnify(_ event: NSEvent, x: Double, anchorY: Double?, model: AppModel) {
+        let factor = 1 + event.magnification
+        let height = max(Double(model.viewSize.height), 1)
+        if event.modifierFlags.contains(.shift) {
+            model.viewport.zoomFrequency(factor: factor,
+                                         anchorY: anchorY ?? height / 2, height: height)
+        } else {
+            model.viewport.zoomTime(factor: factor, anchorX: x)
+        }
+        model.cancelTurn()
+        model.clampViewport()
+    }
+}
+
 // MARK: - Vue Metal et gestes
 
 /// La vue qui reçoit tout : molette, pincement, clic, clavier. Les coordonnées
@@ -70,38 +119,13 @@ final class TimelineMetalView: MTKView {
     override func scrollWheel(with event: NSEvent) {
         guard let model else { return }
         let p = location(event)
-        // Le trackpad envoie des deltas précis ; la souris à molette envoie des
-        // crans, qu'on amplifie pour que le geste ait le même effet.
-        let precise = event.hasPreciseScrollingDeltas
-        let dx = event.scrollingDeltaX * (precise ? 1 : 8)
-        let dy = event.scrollingDeltaY * (precise ? 1 : 8)
-        let flags = event.modifierFlags
-
-        if flags.contains(.shift) {
-            model.viewport.zoomFrequency(factor: exp(dy * 0.006), anchorY: p.y,
-                                         height: Double(bounds.height))
-        } else if flags.contains(.option) || flags.contains(.command) {
-            model.viewport.zoomTime(factor: exp(dy * 0.006), anchorX: p.x)
-        } else {
-            model.viewport.startColumn -= dx * model.viewport.columnsPerPoint
-            model.viewport.bottomBin += dy * model.viewport.binsPerPoint
-        }
-        model.cancelTurn()
-        model.clampViewport()
+        TimelineGestures.scroll(event, x: Double(p.x), anchorY: Double(p.y), model: model)
     }
 
     override func magnify(with event: NSEvent) {
         guard let model else { return }
         let p = location(event)
-        let factor = 1 + event.magnification
-        if event.modifierFlags.contains(.shift) {
-            model.viewport.zoomFrequency(factor: factor, anchorY: p.y,
-                                         height: Double(bounds.height))
-        } else {
-            model.viewport.zoomTime(factor: factor, anchorX: p.x)
-        }
-        model.cancelTurn()
-        model.clampViewport()
+        TimelineGestures.magnify(event, x: Double(p.x), anchorY: Double(p.y), model: model)
     }
 
     // MARK: Souris
@@ -172,6 +196,11 @@ final class TimelineMetalView: MTKView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        // Les commandes flottantes sont posées sur l'image, et la zone de suivi
+        // continue de recevoir les mouvements qui les survolent. Sans ce garde-fou,
+        // viser un bouton ferait afficher par-dessous la note et la fréquence du
+        // point qu'il cache.
+        guard model?.pointerOverControls != true else { return }
         let p = location(event)
         model?.hover = p
         cursor(at: p)
@@ -203,7 +232,7 @@ final class TimelineMetalView: MTKView {
         case "]": model.setLoopEnd(at: model.playhead)
         case "l", "L": model.loopEnabled.toggle()
         case "b", "B": model.snapLoopToBars()
-        case "t", "T": model.setDownbeatAtPlayhead()
+        case "1": model.setDownbeatAtPlayhead()
         case String(UnicodeScalar(NSLeftArrowFunctionKey)!):
             model.seek(to: model.playhead - (shift ? 5 : 1))
         case String(UnicodeScalar(NSRightArrowFunctionKey)!):
@@ -257,6 +286,7 @@ struct SpectrogramSurface: NSViewRepresentable {
             model.tick(viewSize: view.bounds.size)
             renderer.viewport = model.viewport
             renderer.display = model.display
+            renderer.hueOrigin = Preferences.shared.hueOrigin
             renderer.draw(in: view)
         }
     }
@@ -275,6 +305,8 @@ struct TimelineOverlay: View {
             guard model.spectrogram.columnCount > 0 else { return }
             drawTempoGrid(&context, size)
             drawOctaves(&context, size)
+            drawChords(&context, size)
+            drawChordNotes(&context, size)
             drawLoop(&context, size)
             drawRuler(&context, size)
             drawPlayhead(&context, size)
@@ -314,26 +346,188 @@ struct TimelineOverlay: View {
             let time = tempo.time(ofBeat: beat)
             guard time >= 0 else { continue }
             let x = model.point(ofTime: time)
-            let isBar = abs(beat.truncatingRemainder(dividingBy: beatsPerBar)) < 1e-6
+            // Quatre degrés de clarté pour quatre degrés de découpage. La phrase est
+            // le seul trait qu'on lise encore quand on regarde le morceau entier ;
+            // zoomé, elle donne le « un » de chaque groupe de quatre mesures, qu'on
+            // cherchait jusqu'ici en comptant.
+            let isPhrase = tempo.opensPhrase(beat)
+            let isBar = tempo.opensBar(beat)
             let isBeat = abs(beat.rounded() - beat) < 1e-6
-            let color: Color = isBar ? .white.opacity(0.4)
+            let color: Color = isPhrase ? .white.opacity(0.62)
+                : isBar ? .white.opacity(0.4)
                 : isBeat ? .white.opacity(0.18) : .white.opacity(0.08)
             vertical(&context, x: x, from: rulerHeight, to: Double(size.height),
                      color: color, width: isBar ? 1 : 0.5)
         }
 
-        // Numéros de mesure, tant qu'ils ne se marchent pas dessus.
+        // Numéros de mesure : toutes tant qu'elles ont la place, sinon une par
+        // phrase. Une grille sans un seul numéro ne dit plus où l'on est, et c'est
+        // précisément dézoomé qu'on se le demande. Le second seuil est plus bas que
+        // le premier parce qu'un numéro sur quatre mesures a quatre fois la place.
         let pointsPerBar = pointsPerBeat * beatsPerBar
-        guard pointsPerBar >= 44 else { return }
-        var bar = (tempo.beat(at: model.time(atPoint: 0)) / beatsPerBar).rounded(.down)
+        let phrase = Double(TempoGrid.barsPerPhrase)
+        let step: Double = pointsPerBar >= 44 ? 1
+            : pointsPerBar * phrase >= 32 ? phrase : 0
+        guard step > 0 else { return }
+        var bar = (tempo.beat(at: model.time(atPoint: 0)) / (beatsPerBar * step))
+            .rounded(.down) * step
         while tempo.time(ofBeat: bar * beatsPerBar) <= model.time(atPoint: Double(size.width)) {
-            defer { bar += 1 }
+            defer { bar += step }
             let time = tempo.time(ofBeat: bar * beatsPerBar)
             guard time >= 0 else { continue }
             context.draw(Text("\(Int(bar) + 1)")
                             .font(.system(size: 9, weight: .medium, design: .rounded))
                             .foregroundStyle(.white.opacity(0.55)),
                          at: CGPoint(x: model.point(ofTime: time) + 11, y: rulerHeight + 9))
+        }
+    }
+
+    // MARK: Accords
+
+    /// Hauteur de la bande où s'écrivent les accords, en bas de l'image.
+    private var chordBandHeight: Double { AppModel.chordBandHeight }
+
+    /// Les notes de l'accord survolé, entourées dans l'image et nommées.
+    ///
+    /// Ne sont montrées que les notes **jouées** : une note isolée peuple le spectre
+    /// de son octave, de sa quinte à la douzième et de sa tierce majeure deux octaves
+    /// plus haut, et entourer tout ce qui appartient aux classes de l'accord
+    /// reviendrait à entourer une forêt dont presque rien n'a été joué. Le tri se fait
+    /// dans `ChordVoicing`, qui écarte toute raie explicable par une raie plus grave.
+    private func drawChordNotes(_ context: inout GraphicsContext, _ size: CGSize) {
+        guard let segment = model.hoveredChord, let chord = segment.chord else { return }
+        let notes = model.hoveredChordNotes
+        guard !notes.isEmpty else { return }
+
+        let x0 = max(model.point(ofTime: segment.start), 0)
+        let x1 = min(model.point(ofTime: segment.end), Double(size.width))
+        guard x1 > x0 else { return }
+
+        // La durée de l'accord s'éclaire à peine : c'est le cadre de lecture, pas
+        // l'information.
+        context.fill(Path(CGRect(x: x0, y: rulerHeight, width: x1 - x0,
+                                 height: Double(size.height) - rulerHeight - chordBandHeight)),
+                     with: .color(.white.opacity(0.05)))
+
+        for note in notes {
+            let frequency = Pitch.frequency(ofMidi: Double(note.midi),
+                                            referenceA: model.display.referenceA)
+            let y = model.point(ofFrequency: frequency)
+            // La hauteur du cadre est celle d'un demi-ton à ce zoom-là : il entoure
+            // exactement ce qu'il désigne, et grandit quand on grossit l'image.
+            let half = abs(model.point(ofFrequency: Pitch.frequency(
+                ofMidi: Double(note.midi) - 0.5, referenceA: model.display.referenceA)) - y)
+            let thickness = min(max(half * 2, 3), 40)
+            guard y + thickness > rulerHeight,
+                  y - thickness < Double(size.height) - chordBandHeight else { continue }
+
+            let colour = noteColour(note.pitchClass)
+            let box = CGRect(x: x0, y: y - thickness / 2, width: x1 - x0, height: thickness)
+            context.stroke(Path(roundedRect: box, cornerRadius: 2),
+                           with: .color(colour.opacity(note.isRoot ? 0.95 : 0.7)),
+                           lineWidth: note.isRoot ? 1.5 : 1)
+
+            // Le nom se pose à gauche du cadre quand la place existe, dedans sinon.
+            let text = Text(note.name(flats: model.display.useFlats))
+                .font(.system(size: 10, weight: note.isRoot ? .bold : .medium,
+                              design: .rounded))
+                .foregroundStyle(colour)
+            let resolved = context.resolve(text)
+            let width = resolved.measure(in: size).width
+            let left = x0 - width - 5
+            let plaque = CGRect(x: left - 3, y: y - 8, width: width + 6, height: 16)
+            if left > 2 {
+                context.fill(Path(roundedRect: plaque, cornerRadius: 3),
+                             with: .color(.black.opacity(0.75)))
+                context.draw(resolved, at: CGPoint(x: left, y: y), anchor: .leading)
+            } else {
+                context.fill(Path(roundedRect: CGRect(x: x0 + 2, y: y - 8,
+                                                      width: width + 6, height: 16),
+                                  cornerRadius: 3),
+                             with: .color(.black.opacity(0.75)))
+                context.draw(resolved, at: CGPoint(x: x0 + 5, y: y), anchor: .leading)
+            }
+        }
+
+        // Et le nom de l'accord lui-même, en grand, pour qu'on sache ce qu'on regarde.
+        context.draw(Text(chord.label(flats: model.display.useFlats))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.9)),
+                     at: CGPoint(x: x0 + 4, y: rulerHeight + 12), anchor: .topLeading)
+    }
+
+    /// La teinte suit la rotation choisie dans les préférences : un cadre doit avoir
+    /// la couleur de la raie qu'il entoure, pas une autre.
+    private func noteColour(_ pitchClass: Int) -> Color {
+        let rgb = NotePalette.color(pitchClass: ((pitchClass % 12) + 12) % 12,
+                                    intensity: 0.9,
+                                    saturation: model.display.noteSaturation,
+                                    origin: Preferences.shared.hueOrigin)
+        return Color(.sRGB, red: rgb.r, green: rgb.g, blue: rgb.b, opacity: 1)
+    }
+
+
+    /// Les noms d'accords, au pied des traits de la grille.
+    ///
+    /// **En bas, et pas en haut.** La réglette du haut porte déjà la boucle et les
+    /// numéros de mesure, et surtout : ce qu'on cherche en levant les yeux d'un
+    /// instrument, c'est l'accord *sous* le passage qu'on regarde. Il est là où le
+    /// doigt se pose.
+    ///
+    /// La densité suit la grille, sans jamais la contredire. Le relevé, lui, est
+    /// toujours fait au temps : zoomer ne recalcule rien, cela dévoile seulement ce
+    /// qui n'avait pas la place de s'écrire — et un accord tenu quatre mesures reste
+    /// écrit une seule fois, à son début.
+    private func drawChords(_ context: inout GraphicsContext, _ size: CGSize) {
+        // Une bande vide sans explication passe pour une panne. Elle dit donc ce
+        // qui manque — la séparation, ou la grille — plutôt que de rester muette.
+        if let notice = model.chordNotice {
+            let top = Double(size.height) - chordBandHeight
+            context.fill(Path(CGRect(x: 0, y: top, width: size.width,
+                                     height: chordBandHeight)),
+                         with: .color(.black.opacity(0.55)))
+            context.draw(Text(notice).font(.system(size: 10, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.45)),
+                         at: CGPoint(x: size.width / 2, y: top + chordBandHeight / 2))
+            return
+        }
+        guard model.showChords, !model.chords.isEmpty,
+              let tempo = model.tempo, tempo.bpm > 0, let unit = model.gridUnit else { return }
+        // Sous le temps, on ne descend pas : personne ne change d'accord à la double
+        // croche, et quatre noms par temps seraient illisibles.
+        let grouping = max(1, Int(unit.rounded()))
+        let labels = model.chords.labels(from: model.time(atPoint: 0),
+                                         to: model.time(atPoint: Double(size.width)),
+                                         grouping: grouping)
+        guard !labels.isEmpty else { return }
+
+        // Un fond, sinon les noms se perdent dans les graves de l'image — qui sont
+        // justement la partie la plus dense, et celle qui les touche.
+        let top = Double(size.height) - chordBandHeight
+        context.fill(Path(CGRect(x: 0, y: top, width: size.width, height: chordBandHeight)),
+                     with: .color(.black.opacity(0.55)))
+
+        var occupied = -Double.infinity
+        for segment in labels {
+            guard let chord = segment.chord else { continue }
+            let x = model.point(ofTime: segment.start)
+            guard x < Double(size.width) else { break }
+            // La marge de confiance se lit sur la pâleur : un accord deviné de
+            // justesse ne doit pas s'afficher du même ton qu'un accord évident.
+            let opacity = 0.45 + 0.5 * segment.confidence
+            let text = Text(chord.label(flats: model.display.useFlats))
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(opacity))
+            let resolved = context.resolve(text)
+            let width = resolved.measure(in: size).width
+            guard x + width > 0 else { continue }
+            // Deux noms ne se chevauchent jamais : celui qui n'a pas la place est
+            // sauté, et son trait de grille reste seul. Mieux vaut un nom manquant
+            // qu'une bouillie de lettres.
+            guard x >= occupied + 6 else { continue }
+            occupied = x + width
+            context.draw(resolved, at: CGPoint(x: x + 3, y: Double(size.height) - 4),
+                         anchor: .bottomLeading)
         }
     }
 

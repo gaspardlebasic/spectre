@@ -1,8 +1,8 @@
 # Spectre
 
-Aide à la transcription de musique à l'oreille, sur macOS et sous Windows : on
-ouvre un fichier, on voit sa décomposition spectrale sur toute sa durée, on
-navigue dedans au trackpad, on ralentit, on transpose.
+Aide à la transcription de musique à l'oreille, sur macOS : on ouvre un fichier, on
+voit sa décomposition spectrale sur toute sa durée, on navigue dedans au trackpad,
+on ralentit, on transpose.
 
 Le parti pris est celui du **hors ligne**. Le fichier est analysé une fois pour
 toutes au chargement ; ensuite, plus rien ne recalcule quoi que ce soit — zoomer,
@@ -12,6 +12,9 @@ interdit : le parallélisme, la compensation du retard, et l'accès instantané 
 n'importe quel instant du morceau.
 
 ## Installer
+
+**macOS 26 ou plus récent** — l'interface est bâtie sur Liquid Glass, qui n'existe
+pas avant ; voir « Les commandes, posées sur l'image ».
 
 Une application prête à l'emploi est publiée dans les
 [releases](../../releases). Elle n'est **pas signée par un identifiant Apple**,
@@ -61,20 +64,23 @@ qu'un module ne connaît que ceux d'en dessous.
 | `SpectreCore` | l'analyse, le tempo, les palettes, les boucles, les sessions | **rien** |
 | `SpectreMac` | décodage, lecture, écriture des pistes, rendu Metal, séparation | AVFoundation, Metal, ONNX |
 | `Spectre` | la fenêtre, les menus, la réglette, le modèle d'application | SwiftUI, AppKit |
-| `SpectreWindows` | la fenêtre, le rendu OpenGL, la lecture, la barre d'outils | SDL3, Dear ImGui, miniaudio |
 
 `SpectreCore` n'importe que Foundation : c'est vérifiable d'un coup d'œil, et
 c'est ce qui donne son sens au découpage. Les deux tiers du code y vivent, et ne
 dépendent d'aucune plateforme.
 
-Les vérifications de `check.sh` sont devenues des exécutables du paquet plutôt que
-des compilations à la main. Trois d'entre elles — analyse, Fourier, crans de
-lecture — ne tirent que le noyau et tourneront donc partout où Swift compile.
+Les vérifications de `check.sh` sont des exécutables du paquet plutôt que des
+compilations à la main. Celles qui ne tirent que le noyau — couche numérique, WAV,
+analyse, relevé de la batterie, Fourier — tournent partout où Swift compile.
 
-Le portage sous Windows — ce que chaque couche est devenue là-bas, et comment on
-vérifie ce qu'on ne peut pas voir — est décrit dans [WINDOWS.md](WINDOWS.md). Il
-se construit par `build.ps1`, et l'intégration continue en dépose le paquet à
-chaque poussée. Il ne lui manque que la séparation de pistes.
+**Il y a eu un portage Windows** (SDL3, OpenGL, Dear ImGui, miniaudio, Media
+Foundation) ; il est abandonné et retiré du dépôt, tenir les deux à la fois coûtant
+plus que ce que la version Windows rendait. Il reste dans l'historique, à
+`577c6a8`. Ce qu'il laisse est ce qu'il avait de meilleur : `SpectreCore` ne
+connaît toujours aucun système, et sa couche numérique garde ses deux
+implémentations — Accelerate et Swift pur — que `DSPCheck` mesure l'une contre
+l'autre. Ce n'est plus une plateforme qu'on vise, c'est ce qui garde le noyau
+vérifiable seul.
 
 ## L'analyse
 
@@ -128,6 +134,7 @@ regarde le morceau en entier.
 
 | Geste | Effet |
 |-------|-------|
+| Survol d'un nom d'accord | **L'entendre**, entourer ses notes dans l'image et les nommer |
 | Deux doigts | Défiler dans le temps et dans les fréquences |
 | Pincement | Zoom temporel, ancré sous le curseur |
 | ⇧ + pincement, ⇧ + molette | Zoom fréquentiel, ancré lui aussi |
@@ -140,24 +147,102 @@ regarde le morceau en entier.
 | ← → (⇧ pour 5 s) | Reculer, avancer |
 | `[` `]` | Poser le début, la fin de la boucle |
 | `L` / `B` / échap | Boucler / caler sur les mesures / effacer |
-| `T` | Poser le premier temps ici |
+| `1` | Poser le premier temps ici |
+| ⌘⌥R | Déplier ou replier le panneau de réglages |
+
+Les gestes marchent **aussi au-dessus de la ligne de batterie** : molette, pincement,
+clic, ⇧ + glisser pour tracer une boucle. Les deux vues partagent le même axe des
+temps, et il n'y avait aucune raison qu'un zoom cesse parce que la souris est descendue
+d'un pouce. Le seul écart tient à l'axe vertical, que la ligne n'a pas : le zoom
+fréquentiel s'y ancre au milieu de l'image plutôt que sous un curseur qui ne désigne
+rien.
+
+## Préférences
+
+⌘, ouvre un panneau pour les réglages qui valent pour l'application entière, et non
+pour un morceau — ils ne sont donc pas dans la session, qui est enregistrée par
+fichier.
+
+**Taille du cache des pistes séparées**, de 500 Mo à 10 Go, avec ce qu'il occupe et
+de quoi le vider (on demande confirmation : ce sont des minutes de GPU). Baisser le
+plafond fait le ménage tout de suite, en tâche de fond — le baisser sans effet avant
+la prochaine séparation n'aurait servi à rien, c'est justement là qu'on voulait de la
+place.
+
+**Première teinte du cycle des quintes.** Les douze couleurs sont réparties selon le
+cycle des quintes ; on choisit désormais quelle note reçoit la première. La rotation
+s'applique **dans le cycle**, pas sur le cercle chromatique : deux notes proches
+harmoniquement restent proches en couleur, un triton reste en opposition. Seul
+l'ancrage change — jouer en mi bémol et voir son tonique en rouge plutôt qu'en bleu.
+`AnalysisCheck` le vérifie comme une propriété : tous les écarts de teinte, pris deux
+à deux, sont conservés au 10⁻¹⁶ près.
+
+**Fichier ▸ Ouvrir récemment**, et le dernier morceau consulté **se rouvre au
+démarrage** — sauf, bien sûr, si le lancement en désignait déjà un. La réouverture
+attend une demi-seconde : un double-clic dans le Finder délivre son fichier par un
+évènement qui arrive *après* l'apparition de la fenêtre, et ouvrir le morceau
+précédent tout de suite reviendrait à en analyser un pour rien, puis à lancer une
+minute de GPU sur le mauvais.
+
+La liste est tenue par l'application, dans `Application Support`. `NSDocumentController`
+en tient bien une — celle du Dock et du menu Pomme, qu'on continue de nourrir — mais
+elle ne retient rien d'un lancement à l'autre dans une application qui n'est pas bâtie
+sur son architecture de documents : vérifié, `NSRecentDocumentRecords` restait vide
+après une ouverture et une sortie propre. Ce qui a été déplacé ou effacé depuis ne
+figure dans aucune des deux.
 
 Les deux axes se zooment séparément : le temps au pincement, les fréquences avec
 ⇧. Dans les deux cas le point sous le curseur ne bouge pas — c'est la seule façon
 qu'un zoom au trackpad ne donne pas l'impression de glisser.
 
-## La barre de commandes
+## Les commandes, posées sur l'image
 
-Les commandes sont groupées par ce à quoi elles servent — **lecture**, **boucle**,
-**tempo**, **affichage** — chaque groupe portant son nom. Cela coûte une dizaine
-de points de hauteur et fait gagner la question « où se règle le tempo, déjà ? ».
+Une barre en pied de fenêtre prend sa hauteur en permanence, pour des réglages
+qu'on touche une fois par morceau ; le spectrogramme, lui, se lit d'autant mieux
+qu'il est grand. D'où le partage : ce qui sert à chaque instant — **quelle piste
+on écoute** — flotte en permanence au bord droit de l'image, et tout le reste vit
+dans un panneau qu'on déplie (⌘⌥R) et qu'on referme.
+
+Ce partage n'est tenable que grâce au verre de macOS 26. Un panneau opaque posé
+sur un spectrogramme le cacherait ; du verre laisse voir ce qu'il couvre. Le
+sélecteur de pistes est en verre **clair** et non *régulier* : le régulier dépolit
+ce qu'il couvre, et ce qu'il couvre ici est justement l'image qu'on est en train
+de lire. Le clair n'en garde que la réfraction et un liseré, si bien que les raies
+continuent de passer dessous — la seule raison acceptable de poser quelque chose
+sur un spectrogramme.
+
+Le bouton rond et le panneau partagent un même `glassEffectID` : ouvrir ne fait
+pas apparaître une seconde forme à côté de la première, cela **déplie** celle qui
+était là. Et le panneau ne fait que la hauteur de ce qu'il contient, quitte à
+défiler quand la fenêtre est courte : du verre à moitié vide sur tout un bord se
+lirait comme une colonne, pas comme un panneau.
+
+Les commandes du panneau restent groupées par ce à quoi elles servent — la
+**détection du tempo** d'abord, puis **lecture**, **boucle**, **affichage**. Le tempo
+vient en tête parce que tout le reste en dépend : sans grille, ni barres de mesure, ni
+accords, ni boucle calée. Chaque groupe porte son nom, une phrase qui dit à quoi il
+sert, et les touches qui font la même chose au clavier — une infobulle ne se lit que
+si l'on sait déjà qu'il y a quelque chose à survoler.
+
+L'avancement de la séparation ne s'affiche pas près du sélecteur mais **dans la ligne
+de batterie**, qui reste vide en attendant. Cette place n'est pas un pis-aller : la
+séparation part seule à l'ouverture, et c'est précisément cette ligne qu'elle va
+remplir. Montrer entre-temps un relevé tiré du mixage reviendrait à faire lire deux
+rythmes différents à une minute d'intervalle.
+
+C'est ce choix qui fixe le plancher du projet à **macOS 26** : `glassEffect`,
+`GlassEffectContainer` et `glassEffectUnion` n'existent pas avant. On aurait pu
+garder macOS 14 en enveloppant tout dans `if #available`, mais cela ferait vivre
+deux interfaces dont une seule serait jamais regardée — et il faudrait de toute
+façon le SDK 26 pour compiler. Le noyau, lui, ne bouge pas : il ne connaît aucun
+système, et `SPECTRE_PORTABLE` continue de le vérifier.
 
 Chaque champ explique au survol ce qu'il fait, y compris ce qui n'a pas de
 commande visible : le curseur de zoom vertical dit le raccourci du trackpad
 (⇧ + pincement), celui du contraste dit qu'il agit aussi sur l'aimantation, celui
 de la vitesse dit qu'un cran ramène exactement à ×1,00.
 
-Le zoom vertical a son curseur, gradué en **octaves visibles** plutôt qu'en
+Le zoom vertical a son curseur, dans le panneau, gradué en **octaves visibles** plutôt qu'en
 facteur — c'est l'unité dans laquelle on pense quand on regarde de la musique. Il
 zoome autour du milieu de la vue, seul point fixe qui ait un sens pour un geste
 qui ne désigne aucun endroit de l'image, là où le pincement s'ancre sous le doigt.
@@ -264,9 +349,11 @@ une punition disproportionnée.
 
 Les bornes s'aimantent sur la grille, et **⌘ pendant le geste les libère**, comme
 dans les séquenceurs. Le pas d'aimantation est celui de la grille *dessinée* :
-mesures, temps ou subdivisions selon le zoom, si bien que ce sur quoi les bornes
-se posent est exactement ce qu'on voit. Trop dézoomé pour qu'une grille
-s'affiche, on se cale quand même sur les mesures.
+phrases, mesures, temps ou subdivisions selon le zoom, si bien que ce sur quoi les
+bornes se posent est exactement ce qu'on voit — au cadrage d'ensemble, une boucle se
+pose donc sur quatre mesures, ce qui est de toute façon la seule précision qu'un
+geste ait là-bas. Trop dézoomé pour qu'une grille s'affiche, on se cale quand même
+sur les mesures.
 
 Les tours sont **programmés d'avance dans la file du lecteur** (trois d'avance,
 réalimentés à mesure) plutôt que déclenchés à l'arrivée sur la fin : la reprise
@@ -284,9 +371,22 @@ attaque. Son autocorrélation donne la période, pondérée par un a priori cent
 corrèlent presque aussi bien. Une parabole sur le sommet affine sous la colonne,
 puis deux recherches de phase placent les temps, et parmi eux le premier.
 
-Selon le zoom, la grille montre les **mesures**, les **temps**, ou les
-**subdivisions** — le pas le plus fin qui reste lisible, jamais une bouillie de
-traits. Les mesures sont numérotées dès qu'elles ont la place.
+Selon le zoom, la grille montre les **phrases** (quatre mesures), les **mesures**,
+les **temps** ou les **subdivisions** — le pas le plus fin qui reste lisible, jamais
+une bouillie de traits. Les quatre degrés se distinguent par la clarté du trait, si
+bien que zoomé on lit d'un coup d'œil le « un » de chaque groupe de quatre mesures,
+qu'il fallait compter jusque-là.
+
+Le seuil est le même pour tous les échelons dessinés en trait plein : **trente
+points entre deux traits**, en dessous desquels l'œil ne lit plus une grille mais
+une trame. C'est ce qui rend la phrase nécessaire — sur un morceau de quatre minutes
+vu en entier, une mesure fait dix points, et la clôture de cent vingt barres masquait
+la musique ; quatre mesures en font quarante, et il reste trente traits qui disent
+la structure.
+
+Les mesures sont numérotées dès qu'elles ont la place ; trop serrées pour cela, seule
+la première de chaque phrase l'est — 1, 5, 9 — plutôt qu'aucune, car c'est justement
+dézoomé qu'on se demande où l'on est.
 
 L'estimation reste une estimation : quand le pic d'autocorrélation n'est pas
 franc, un « ≈ » s'affiche devant le tempo plutôt que de faire croire à une
@@ -385,6 +485,12 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
   d'écart doivent *se voir* simultanées malgré des fenêtres de 683 ms et 43 ms, et
   une analyse en tranches de 0,7 s doit être identique au bit près à une analyse
   d'un seul tenant.
+- **Relevé de la batterie** — un motif de synthèse (grosse caisse sur 1 et 3, caisse
+  claire sur 2 et 4, charleston sur les croches) passe par le détecteur : les
+  quatre-vingt-seize coups doivent être retrouvés, à moins de 2 ms de biais, sans
+  qu'aucune caisse claire n'allume la ligne de la grosse caisse ni l'inverse, un
+  coup joué moitié moins fort doit se dessiner plus pâle, et un souffle seul ne doit
+  rien donner du tout.
 - **Tempo** — un click-track de synthèse à 132 BPM, accentué sur le premier temps,
   passe par toute la chaîne : le tempo doit ressortir à moins d'un BPM près, les
   temps tomber sur les clicks, et le premier temps sur l'accent.
@@ -402,13 +508,25 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
   le début, la boucle s'arrête au bout du fichier, et une borne ne traverse pas
   sa voisine.
 - **Réglages conservés** — aller-retour fidèle, position de lecture exclue de la
-  comparaison, et une empreinte qui suit le contenu et non le chemin.
+  comparaison, et une empreinte qui suit le contenu et non le chemin. Le décodage de
+  `DisplaySettings` est écrit à la main et **tolère les champs manquants** : le
+  décodage synthétisé par Swift refuse un objet auquel il manque une clé, *même quand
+  la propriété a une valeur par défaut* — vérifié plutôt que supposé. Comme le
+  chargement d'une session avale l'échec, ajouter un seul réglage effaçait en silence
+  tous ceux déjà enregistrés, pour tous les morceaux.
+- **Rotation de la palette** — faire commencer la série des couleurs à une autre note
+  conserve tous les écarts de teinte pris deux à deux, au 10⁻¹⁶ près, et la note
+  choisie reçoit bien la première teinte. C'est la propriété qui compte, pas les
+  valeurs : la rotation s'applique dans le cycle des quintes, pas sur le cercle
+  chromatique.
 - **Bande écoutée** — tout le spectre visible ne demande aucun filtrage, un zoom
   de deux octaves donne une bande de deux octaves, et déplacer la vue déplace la
   bande d'autant.
-- **Aimantation de la boucle** — le pas suit le zoom (mesures, temps, doubles
-  croches), une borne retombe sur le multiple le plus proche, et un pas nul la
-  laisse libre.
+- **Aimantation de la boucle** — le pas suit le zoom (phrases, mesures, temps,
+  doubles croches), aucun échelon plein ne dessine jamais deux traits à moins de
+  trente points l'un de l'autre — vérifié sur tout l'intervalle de zoom, et non aux
+  seuls seuils —, une phrase suit la signature, une borne retombe sur le multiple le
+  plus proche, et un pas nul la laisse libre.
 - **Sinusoïde d'écoute** — fréquence sortie, arrivée du glissando, et absence de
   saut à l'attaque, au bond d'octave et à l'extinction : l'écart entre deux
   échantillons ne doit jamais dépasser ce qu'exige la sinusoïde elle-même.
@@ -416,6 +534,39 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
   franche à une raie pâle plus proche, ne rien accrocher au-delà de son rayon, et
   surtout ne rien accrocher du tout dans une région que les réglages rendent
   noire.
+- **Notes entourées** — un spectre fabriqué ligne à ligne, sur le vrai découpage du
+  banc, où l'on pose des notes avec leurs harmoniques : une note seule ne doit donner
+  qu'elle-même et non sa série, une triade jouée doit donner ses trois notes, une
+  octave jouée plus fort que l'harmonique doit se voir, et un spectre plat ne doit
+  rien donner du tout — le seuil relatif seul se moque de l'échelle et faisait
+  entourer trois notes dans un silence.
+- **Relevé des accords** — une grille fabriquée, aux accords connus, jouée sur un
+  timbre à six harmoniques : c'est le timbre riche qui fait le problème, une
+  sinusoïde pure ne prouverait rien. Les pièges sont choisis, pas trouvés au hasard :
+  majeur contre mineur (la tierce majeure fantôme), un renversement qui ne doit pas
+  devenir l'accord de sa basse, une pédale de basse sous un accord qui change, et
+  Do contre La- qui partagent deux notes. Plus l'écriture des symboles, le
+  regroupement à l'affichage, et le fait qu'une triade tenue ne devienne pas une
+  septième. Deux contrôles portent sur la ponctualité, qui est ce qui s'est révélé le
+  plus fragile : un changement d'accord doit basculer pile sur son temps, et les
+  étiquettes doivent tomber sur les barres de mesure même quand le morceau commence
+  avant le premier temps fort.
+- **Fréquence des pistes** — un moteur d'essai qui rééchantillonne, comme le fait
+  Demucs, sur un fichier à 48 kHz : les pistes écrites doivent porter la fréquence du
+  *moteur* et non celle du fichier, et durer aussi longtemps que le morceau. Plus le
+  garde-fou : des pistes à la mauvaise fréquence ne comptent pas comme calculées.
+- **Rangement des pistes** — qu'un nom en `.flac` donne bien un FLAC, plus petit
+  qu'un CAF flottant, et que l'aller-retour rende le signal réserve comprise ; qu'une
+  crête au-delà de la réserve retombe sur le CAF exact plutôt que d'être écrêtée ; et
+  qu'un FLAC hors du dossier des pistes ne se voie appliquer aucun gain. Puis le
+  ménage du cache : sur trois jeux d'essai datés, le plus ancien part, celui qu'on
+  écoute reste.
+- **Séparation** — l'ossature d'abord, avec un moteur d'essai : rangement, écriture,
+  relecture, combinaisons, annulation, et le fait qu'une panne ne laisse pas derrière
+  elle un jeu de pistes incomplet que l'application prendrait pour un travail fait.
+  Puis Demucs lui-même, sur ses deux routes — le GPU et les cœurs —, qui doivent
+  rendre la même chose. Cette dernière partie se saute quand le réseau n'est pas
+  installé, ce qui est le cas sur la machine d'intégration.
 - **Rendu** — une matrice de synthèse passe par la vraie chaîne (téléversement →
   shader → image hors écran) et les pixels sont relus : la raie tombe-t-elle où la
   fenêtre visible le prévoit, les graves sont-ils en bas, une colonne isolée
@@ -432,11 +583,15 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
 | `Spectrogram.swift` | La matrice temps × fréquence et ses conversions |
 | `Viewport.swift` | Fenêtre visible, zoom ancré (temps et fréquences), recadrage |
 | `Tempo.swift` | Flux spectral, autocorrélation, phase des temps et des mesures |
+| `Percussion.swift` | Relevé de la batterie : instants, voies, forces |
+| `Harmony.swift` | Relevé des accords : chromagrammes, gabarits harmoniques, Viterbi |
+| `DrumLaneView.swift` | Les trois lignes de batterie sous l'image |
 | `Snapping.swift` | Aimantation du curseur sur les raies |
 | `LoopEditing.swift` | Tracer, déplacer, étendre la boucle |
 | `Detent.swift` | Crans des curseurs de lecture |
 | `AutoContrast.swift` | Noir, clair et pente déduits du contenu |
-| `SessionStore.swift` | Empreinte d'un fichier, réglages conservés |
+| `SessionStore.swift` | Empreinte d'un fichier, réglages conservés, morceaux récents |
+| `Preferences.swift` | Le panneau ⌘, : cache, ancrage des couleurs |
 | `ToneOscillator.swift` | Sinusoïde : glissando, fondus, continuité de phase |
 | `ToneGenerator.swift` | Branchement du moteur audio, consignes du thread audio |
 | `Renderer.swift` | Tuiles Metal + shader (fenêtre, palettes, max par pixel) |
@@ -454,15 +609,26 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
 ## Séparation de pistes
 
 Quatre bascules dans la barre — batterie, basse, voix, reste — toutes allumées au
-départ, ce qui est le morceau tel qu'il est. On **retire** ce dont on ne veut pas :
+départ, ce qui est le morceau tel qu'il est. La batterie fait bande à part une fois
+les pistes calculées : elle quitte le spectrogramme pour ses trois lignes du bas
+(voir plus bas). On **retire** ce dont on ne veut pas :
 sans la voix pour travailler l'accompagnement, sans la batterie pour entendre
 l'harmonie. Ce qui reste est joué ensemble, et le spectrogramme est recalculé
 dessus — c'est là le vrai gain, un spectrogramme de basse seule n'ayant presque
 plus de partielles qui se croisent, si bien que l'aimantation du curseur tombe
 enfin sur la bonne raie.
 
-Le calcul se fait en tâche de fond, une fois par morceau, à environ un quart de sa
-durée. On continue à travailler pendant.
+**La séparation part d'elle-même à l'ouverture d'un fichier.** Elle est devenue la
+condition de presque tout ce que l'application sait faire — la ligne de batterie sur
+la piste isolée, les noms d'accords sur basse et accompagnement, un spectrogramme
+débarrassé des percussions — si bien qu'attendre qu'on décoche une piste revenait à
+cacher le gros de l'outil derrière un geste que rien n'annonce.
+
+Le calcul se fait en tâche de fond, une fois par morceau, **à un dixième de sa
+durée** : cinq minutes de musique en vingt-six secondes. On continue à travailler
+pendant — et c'est là le second effet du GPU, plus important que la montre : le
+calcul mobilise 45 s de temps de cœur au lieu de 304, si bien que la machine reste
+à peu près libre pendant qu'il tourne.
 
 Le moteur est **Demucs v4** (`htdemucs`) exécuté par ONNX Runtime, sans Python ni
 PyTorch à l'exécution. `./modele.sh` fabrique le réseau : il reprend le
@@ -472,12 +638,369 @@ tenseurs réels — ONNX ne sait pas représenter les complexes — puis y appli
 les confier à Accelerate. On y gagne 128 Mo de tables figées et un quart du temps
 de calcul.
 
+### Le GPU
+
+Le réseau tourne sur le **GPU**, par CoreML. Il n'y tournait pas : CoreML calcule en
+demi-précision, et le graphe portait une constante de 4,1 × 10¹¹ — la normalisation
+de la transformée inverse — qui déborde des 65 504 que ce format supporte. Elle
+devenait infinie, et toute la piste avec.
+
+Cette constante **a quitté le graphe** le jour où les transformées sont passées
+côté Swift : le réseau reçoit le spectre et rend le spectre, il n'a plus d'inverse
+à normaliser. Le plus grand nombre qu'il porte encore vaut 10⁴. Le verrou est tombé
+avec cette refonte-là, sans qu'on y pense sur le moment.
+
+Sur M2 Max, une tranche de 7,8 s :
+
+| | tranche | cinq minutes de musique |
+|---|---|---|
+| douze cœurs | 1,03 s | 58 s, 304 s de temps de cœur |
+| GPU | **0,27 s** | **26 s**, 45 s de temps de cœur |
+| moteur neuronal | 0,70 s | — |
+
+Le moteur neuronal a été mesuré, pas supposé : deux fois et demie plus lent que le
+GPU sur ce réseau-là. `MLComputeUnits` est donc réglé sur `CPUAndGPU` et non sur
+`All`, qui rend le même temps de calcul pour trente secondes de compilation de plus.
+
+Le calcul se fait en demi-précision : les pistes ne sont donc pas identiques à
+celles des cœurs, elles en diffèrent de **−68 à −90 dB** selon la piste, sur cinq
+minutes de musique. `SeparationCheck` compare les deux routes à chaque vérification,
+avec une tolérance volontairement large — un pour cent de l'amplitude : il est là
+pour attraper une panne franche, pas pour figer un chiffre. Les deux routes se
+comparent aussi à la main, sur un vrai morceau :
+
+```bash
+Spectre --separer morceau.wav --vers pistes/
+Spectre --separer morceau.wav --vers pistes-lentes/ --processeur
+```
+
+Le GPU se retire de lui-même si quoi que ce soit s'y oppose — CoreML absent, cache
+impossible à écrire, graphe refusé. Séparer reste alors possible, seulement quatre
+fois plus long.
+
+**Ce que ça coûte, et ce que l'écran en dit.** CoreML compile le réseau pour la
+machine, une fois : une trentaine de secondes avant la première séparation, puis
+huit à chaque reprise. Ces secondes-là tombent **avant la première tranche**, donc
+avant tout pourcentage. Sur un morceau de sept minutes et demie :
+
+| | |
+|---|---|
+| lecture et rééchantillonnage | 0,6 s |
+| ouverture du réseau compilé | 8,6 s |
+| première tranche | 0,8 s |
+| → premier pourcentage | **10 s** |
+| les quatre-vingts tranches | 35 s |
+
+Rien là-dedans ne se mesure : l'ouverture est un seul appel qui rend la main quand
+il a fini. Une barre immobile à zéro passerait alors pour une panne, et c'est
+pourquoi l'avancement porte le **nom de l'étape** en plus de la fraction —
+« Lecture du morceau… », « Ouverture du réseau… », et, la toute première fois,
+« Compilation du réseau pour cette machine — une seule fois… ». Laquelle des deux
+se sait d'avance : il suffit de regarder si une compilation attend déjà.
+
+Le réseau compilé occupe 625 Mo dans `Application Support`. Le dossier est ramené à ses deux compilations les
+plus récemment servies — au-delà, il ne ferait que grossir. Il porte l'empreinte du
+modèle, parce qu'ONNX Runtime range la sienne sous le condensé du *chemin* et
+prévient qu'il ne vérifie jamais que le fichier n'a pas changé depuis : poser
+d'autres poids sous le même nom lui ferait resservir l'ancienne compilation, en
+silence.
+
+### Deux pistes explorées et écartées
+
+**Mener deux tranches de front.** Le GPU n'est pas saturé par une seule : deux
+ensemble ramènent la tranche de 0,27 s à 0,16 s. Mais elles ne peuvent pas partager
+une session — le fournisseur CoreML de cette version d'ONNX Runtime n'est pas sûr en
+concurrence, et deux appels simultanés rendent des valeurs fausses, jusqu'à 3,9 % de
+l'échelle et jamais deux fois les mêmes (mesuré des deux côtés : le défaut est réparé
+en amont, mais le paquet Swift s'arrête à la 1.24). Deux sessions, elles, coûtent
+chacune leur jeu de poids compilés : neuf secondes de chargement de plus et 5,5 Go
+de mémoire vive, pour un gain qui ne rembourse ces neuf secondes qu'au-delà de cinq
+minutes et demie de musique. Sur trois minutes c'est une perte sèche.
+
+**Replier l'arithmétique de formes.** Le graphe recalcule ses tailles à chaque
+passage — 157 `Shape`, des `Mod`, des `ScatterND` — alors qu'elles sont toutes
+connues d'avance. Les figer d'avance ne change rien : ONNX Runtime le fait déjà au
+chargement.
+
+### Ce qui reste sur la table
+
+Un tiers du temps de réseau ne va **pas** sur le GPU : 0,09 s des 0,27 s restent au
+processeur, et ce sont les convolutions de la branche temporelle. ONNX Runtime les
+refuse — `Input shape: {1,2,343980} exceeds CoreML convolution memory limit of
+16384` — si bien que le réseau se retrouve coupé en trente-deux morceaux : la
+branche spectrale sur le GPU, la branche temporelle sur les cœurs, et un
+aller-retour entre les deux à chaque couture. Le moteur l'annonce lui-même au
+chargement : `number of partitions supported by CoreML: 32`, pour 1448 nœuds pris
+sur 1504. Ce ne sont donc pas les nœuds refusés qui sont nombreux — cinquante-six —
+mais leur dispersion tout au long du graphe. Les faire passer voudrait dire replier
+l'axe des échantillons en deux dimensions dans le patch d'export, en traitant les
+recouvrements aux plis. C'est là qu'est le prochain facteur, et il vaut environ 1,4.
+
+### Où les pistes sont rangées
+
+En **FLAC**, dans Application Support. Sans perte — il n'est pas question d'ajouter
+des artefacts de codec à ceux de la séparation, dans un signal qu'on va relire au
+spectrogramme — mais deux fois et demie plus petit : les quatre pistes d'un morceau
+de sept minutes et demie passent de 660 Mo à **261 Mo**.
+
+Un piège, et il n'est pas théorique : FLAC est un format **entier**, donc tout ce qui
+dépasse ±1,0 y serait écrêté — et une piste séparée dépasse, 1,19 mesuré sur la
+batterie comme sur le reste du fichier témoin, soit 361 échantillons abîmés sur la
+seule batterie. Les pistes sont donc écrites six décibels plus bas et remontées à la
+lecture : il reste vingt-deux bits utiles, un plancher à −132 dB, et l'aller-retour
+est exact à 1,2 × 10⁻⁷ près — la précision d'un flottant. Ce qui déborderait quand
+même cette réserve n'est pas écrêté en silence : cette piste-là s'écrit en CAF
+flottant, exact, et l'application lit indifféremment les deux.
+
+La réserve ne s'applique qu'à **nos** fichiers, reconnus à leur extension *et* à leur
+emplacement : un FLAC de la discothèque n'a pas été écrit par nous et n'a aucune
+raison d'être remonté de six décibels. Les exports de `--separer --vers` n'en ont pas
+non plus — ils sont faits pour être emportés.
+
+Le dossier est plafonné à **un gigaoctet**, soit trois ou quatre morceaux. Au-delà,
+les moins récemment ouverts s'en vont entiers — jamais celui qu'on écoute — et ce qui
+est jeté se recalcule en une demi-minute. Les anciennes pistes en CAF, elles, ne sont
+pas réécrites : elles représentent du temps de GPU, et changer de format n'est pas une
+raison de les jeter.
+
+`SPECTRE_RANGEMENT` déplace tout ce rangement ailleurs, et c'est par là que passent
+les vérifications. Ce n'est pas un confort : elles séparaient des morceaux d'essai
+dans le vrai dossier, ce qui déclenchait le plafond et **effaçait les pistes des vrais
+morceaux** — des minutes de GPU perdues en lançant `check.sh`. Un harnais qui abîme ce
+qu'il est censé protéger n'en est pas un.
+
+### La fréquence des pistes
+
+Les pistes sont à **44,1 kHz, quel que soit le fichier d'origine** : le réseau a appris
+là et y ramène tout ce qu'on lui donne. Cela paraît anodin et ne l'est pas — c'est un
+défaut qui a vécu longtemps. Les pistes étaient écrites en leur collant la fréquence du
+*fichier d'entrée*, si bien qu'un morceau à 48 kHz produisait des pistes à 44,1 kHz
+étiquetées 48 kHz : jouées 8,8 % trop vite, un demi-ton et demi trop haut, et une durée
+annoncée de 299 s pour 325 s de musique.
+
+Il ne se voyait pas, et pour deux raisons qui se cumulaient : seuls les fichiers qui ne
+sont pas à 44,1 kHz sont touchés, et seulement une fois une piste décochée — tant que
+tout est coché, c'est le fichier d'origine qui est joué. Il fallait donc un morceau à
+48 kHz *et* retirer une voix pour l'entendre.
+
+La fréquence voyage désormais **avec** les échantillons, dans un même type, plutôt
+que d'être retrouvée de son côté par celui qui écrit : la confusion n'a plus d'endroit
+où exister. Et un jeu de pistes qui n'est pas à la bonne fréquence ne compte plus comme
+calculé — les fichiers déjà écrits de travers sont ignorés et refaits, faute de quoi ils
+resserviraient indéfiniment sans que rien dans leur contenu ne trahisse l'erreur.
+
 **Licence des poids.** Le code de Demucs est sous MIT, mais
 [son auteur précise](https://github.com/facebookresearch/demucs/issues/327) que
 les poids ne le sont pas : « fournis à des fins scientifiques uniquement », parce
 qu'entraînés sur MUSDB18. Ils sont ici embarqués dans l'application par commodité ;
 qui préfère les obtenir de la source lance `./modele.sh`, qui les télécharge chez
 Meta et les convertit sur place.
+
+## La ligne de batterie *(première version)*
+
+Un spectrogramme ne dit rien d'une batterie. Son axe vertical porte la hauteur, et
+une percussion n'en a pas : une grosse caisse est une tache basse et large, une
+caisse claire une barre qui traverse toute l'image, un charleston un brouillard en
+haut. L'axe qui porte toute l'information sur une mélodie n'en porte presque aucune
+ici, et la palette « notes » distribue des teintes qui ne veulent rien dire.
+
+Pire, le banc multi-résolution est **fait pour l'inverse** de ce qu'il faudrait : il
+allonge la fenêtre à mesure qu'on descend, et à 60 Hz elle dure une seconde et
+demie. Une grosse caisse s'y étale sur plus d'une mesure.
+
+Les trois voies portent des teintes **choisies** — violet `9200ED`, turquoise
+`00E0BA`, jaune `FFCF00` — et non calculées. La version précédente les répartissait
+sur le cercle chromatique à clarté et chroma égales en Oklch, comme la palette des
+notes, pour qu'aucune ligne ne paraisse jouer plus fort qu'une autre à force égale ;
+celles-ci ne suivent pas cette règle, le jaune étant nettement plus clair que le
+violet. Elles se distinguent mieux sur fond noir, et sur trois lignes nommées en
+marge la confusion n'a pas lieu d'être : le compromis est assumé dans ce sens-là.
+
+Les trois questions qu'on se pose devant une batterie sont **quand**, **quoi**,
+**combien fort**. Elles tiennent sur trois lignes, sous l'image, au même axe des
+temps et à la même grille métrique — c'est-à-dire dans la forme où on l'écrirait
+sur le papier. Une bascule dans la barre l'affiche ou la retire.
+
+Le relevé ne relit donc pas la matrice, il repart du signal :
+
+- **Quand** — une courbe de flux spectral à fenêtre courte (21 ms) sur tout le
+  spectre utile, dont on cueille les sommets. Sur un motif de synthèse, les instants
+  ressortent à moins de 2 ms de l'attaque jouée.
+- **Quoi** — surtout pas la répartition de cette montée entre les bandes. Une
+  attaque est brève, donc large : au moment précis du coup, *toutes* les bandes
+  montent, et une première version comptait chaque caisse claire comme une grosse
+  caisse. On regarde ce qui **reste** une fois la bavure passée, chaque bande avec
+  la fenêtre qu'il lui faut — 85 ms pour séparer 60 Hz de 200 Hz, 21 ms là-haut où
+  une ligne de 47 Hz est déjà fine. C'est le compromis du banc multi-résolution,
+  mais il ne coûte rien ici : l'instant, lui, vient d'ailleurs.
+- **Combien fort** — la force se compte **depuis le haut**, sur les dix-huit
+  décibels où vivent les accents, et non depuis le silence : le fond d'une bande,
+  c'est le silence entre deux coups, et le silence numérique est à −90 dB comme il
+  pourrait être à −140.
+
+Derrière les coups se dessine le **niveau de la bande**, à la même échelle. C'est
+délibéré : un détecteur se trompe, et une ligne de traits seule aurait l'air d'une
+vérité. Un coup manqué se voit comme une bosse sans trait, un coup inventé comme un
+trait sans bosse.
+
+**Elle se nourrit de la piste de batterie, et la retire de l'image.** Dès que les
+quatre pistes existent, la batterie sort du spectrogramme — elle n'y apportait que
+des colonnes verticales sans hauteur à lire, qui masquent les attaques des
+instruments qu'on cherche justement à relever — et va alimenter ces trois lignes.
+Rien à régler : c'est la bascule « batterie » qui commande, et décochée, on ne
+l'entend plus et les lignes restent vides.
+
+Ce branchement n'est pas un confort, c'est ce qui fait marcher le relevé. Sur un
+motif de douze mesures passé par les deux chemins :
+
+| | sur la piste isolée | sur le mixage entier |
+|---|---|---|
+| grosse caisse | juste | juste |
+| caisse claire | juste | un coup sur deux, et un faux par mesure |
+| charleston | neuf sur dix | neuf sur dix |
+
+Le faux tombe sur les changements d'accord : l'attaque d'une note de basse monte
+dans le médium exactement comme une caisse claire, et rien dans deux cents à mille
+deux cents hertz ne les distingue. Aucun seuil ne répond à ça — la séparation, si.
+Les charlestons manqués sont les plus doux, ceux qui suivent de trop près un coup
+fort ; la bosse reste visible en fond, sans son trait.
+
+Tant que les pistes n'existent pas, le relevé se fait sur le mixage, avec les
+défauts de la colonne de droite. C'est un pis-aller, et il est dit comme tel.
+
+Le calcul se fait en tâche de fond, à part de l'analyse pour ne pas retarder
+l'image, à environ trois cents fois le temps réel.
+
+Ce qui manque encore, par ordre d'utilité : les toms et le charleston ouvert, que
+trois lignes ne distinguent pas ; l'aimantation des coups sur la grille, qui dirait
+si le batteur pousse ou traîne ; et l'export en tablature.
+
+## Les noms d'accords *(première version)*
+
+Au pied de la grille, un nom par temps, par mesure ou par phrase selon le zoom — et
+en bas plutôt qu'en haut, parce que ce qu'on cherche en levant les yeux d'un
+instrument, c'est l'accord *sous* le passage qu'on regarde.
+
+L'écriture est celle des grilles de jazz, sur des fondamentales françaises :
+`La-`, `DoΔ`, `Sol7`, `Ré-7`, `Siø`, `Si°`, `Fa+`. Le symbole plutôt que la lettre,
+parce qu'une grille se lit d'un coup d'œil et que `Lam7` prend le temps de se lire.
+
+**Deux pistes, deux rôles.** La basse donne la fondamentale, l'accompagnement donne
+la couleur. C'est ce partage qui distingue ce relevé d'un détecteur d'accords
+ordinaire : Do/Mi et Mi-, La-7 et Do6 ont les mêmes notes et rien dans un
+chromagramme ne les sépare — seule la note la plus grave tranche. La voix est
+écartée exprès : elle porte des notes de passage qui n'appartiennent pas à l'accord.
+
+Le relevé repart du signal, comme celui de la batterie et pour la raison inverse :
+la matrice affichée allonge sa fenêtre en descendant, et à 130 Hz — le bas de
+l'accompagnement — elle dure 743 ms, soit une mesure et demie à 120 BPM. Deux
+fenêtres constantes la remplacent, 186 ms pour l'accompagnement et 372 pour la
+basse, choisies pour la hauteur et non pour l'instant.
+
+**Les gabarits portent leurs propres harmoniques**, et c'est le point qui fait tout
+marcher. Un gabarit binaire — « Do majeur, c'est Do, Mi, Sol » — est faux dans le
+monde réel : la 3ᵉ harmonique d'une note tombe sur sa quinte et la 5ᵉ sur sa tierce
+majeure. Une note seule pèse ainsi 0,97 sur elle-même, 0,23 sur sa quinte et 0,07 sur
+sa tierce majeure — un Do mineur joué seul *fabrique* un Mi que personne ne joue, et
+un détecteur naïf le lit majeur. Les gabarits d'ici contiennent ce fantôme : celui de
+Do mineur porte 0,036 de tierce majeure, celui de Do majeur en porte 0,546. On ne
+corrige plus le mensonge après coup, on l'attend.
+
+**Un passage de Viterbi** décide ensuite de la suite entière plutôt que de chaque
+temps isolément : rester coûte zéro, changer coûte, et changer vers une quinte ou un
+relatif coûte moins que vers un accord lointain. Sans lui, Do et La- clignotent d'un
+temps sur l'autre — le symptôme le plus visible d'un détecteur sans mémoire.
+
+Le relevé est **toujours fait au temps**, quel que soit le zoom ; seul l'affichage se
+raréfie, en fusionnant les voisins identiques. Un accord tenu quatre mesures s'écrit
+une fois, à son début. C'est la discipline de la grille et de l'aimantation : ce
+qu'on voit est un sous-ensemble de ce qui est calculé, jamais un autre calcul.
+
+**La ponctualité a demandé deux corrections, toutes deux trouvées à l'oreille.**
+
+La première est une faute franche : les temps étaient regroupés en mesures depuis le
+début du *fichier*, qui n'a aucune raison de tomber sur un « un ». Les noms
+s'écrivaient donc à côté des barres, en avance de ce qui sépare les deux — deux temps
+entiers sur un morceau dont la grille commence à 1,637 s.
+
+La seconde est musicale. Un bassiste pose très souvent la fondamentale du prochain
+accord **avant** la barre : 370 ms mesurées sur le fichier témoin, là où l'on entend
+pourtant le changement sur le temps fort. Le temps qui précède la barre contenait
+alors majoritairement l'accord suivant, et le relevé annonçait le changement un temps
+trop tôt. Or ce qu'une grille doit dire, c'est l'accord **au moment où l'on pose les
+doigts** : l'anticipation appartient à l'accord qu'elle annonce, pas au temps où elle
+tombe. La basse n'est donc lue que sur la première moitié de chaque temps — pas
+l'accompagnement, qui ne s'anticipe pas et qui perdrait la moitié de ses preuves. Le
+tonique s'est équilibré du même coup : `Do` majeur parasite est tombé de 39 à 29
+occurrences, et `Fa°` de 27 à 16, sur un morceau en do mineur.
+
+Sur le fichier témoin — sept minutes et demie, 755 temps, relevés en 0,3 s :
+
+```
+La♭ | Fa- | Sol7 | Do-      VI – iv – V7 – i
+```
+
+La cadence mineure de manuel, retrouvée telle quelle et répétée tout du long. Ce que
+la basse apporte se mesure : la lui retirer change **16 % des temps**, et toujours
+dans le même sens — La♭ majeur devient Do mineur, ses deux relatifs partageant deux
+notes sur trois. C'est moins spectaculaire que je ne l'annonçais et c'est la vraie
+valeur : une étiquette fausse toutes les quelques mesures.
+
+**Survoler un nom d'accord entoure ses notes dans l'image**, nommées, à l'octave où
+elles sonnent — et **les fait entendre**. Le survol porte sur toute la durée de
+l'accord et non sur les quelques points de son nom : viser huit caractères ne serait
+pas un geste.
+
+Ce qu'on entend est exactement ce qu'on voit entouré : les notes relevées dans le
+spectre à cet endroit, dans l'octave où elles y sont. Jouer plutôt un accord de
+manuel — fondamentale, tierce, quinte au milieu du clavier — donnerait un son plus
+propre et répondrait à côté. La question posée en survolant est « est-ce bien cela que
+j'entends là ? », et il faut pour y répondre le même renversement et le même registre.
+Faute de notes visibles, on retombe sur l'accord de manuel : rester muet ne dirait pas
+si l'on n'a rien trouvé ou si rien ne marche.
+
+Les voix sont des sinusoïdes indépendantes, chacune avec sa phase, son glissando et
+son fondu — une note retirée s'éteint donc au lieu de claquer. Leur niveau est divisé
+par la racine du nombre de voix : quatre sinusoïdes peuvent aligner leurs phases, et
+sans cette correction un accord sonnerait plus fort qu'une note et finirait par
+saturer. `PlaybackCheck` mesure les quatre propriétés sur le signal produit.
+
+Ne sont entourées que les notes **jouées**. C'est là toute la difficulté : une note
+isolée peuple le spectre bien au-delà d'elle-même — son octave, sa quinte à la
+douzième, sa tierce majeure deux octaves plus haut — et pour un accord majeur, dont
+les harmoniques tombent justement sur ses propres notes, entourer tout ce qui
+appartient aux classes de l'accord reviendrait à entourer une forêt dont presque rien
+n'a été joué. La règle est celle qu'on emploierait à l'oreille : **une raie qui
+s'explique par une raie plus grave n'est pas une note**. Pour chaque candidate on
+regarde les hauteurs dont elle serait la 2ᵉ, 3ᵉ… 6ᵉ harmonique ; si l'une d'elles
+sonne assez fort, la candidate en est la conséquence.
+
+« Assez fort » vaut neuf décibels, et le chiffre vient de la mesure. À zéro — c'est-à-dire
+en se contentant de « plus forte que sa fondamentale supposée » — un accord de trois
+notes s'entourait de sept cercles, la même note revenant à quatre octaves : sur un
+vrai mixage, l'octave et la douzième d'une note grave sont *couramment* plus fortes
+que sa fondamentale, une basse rayonnant mal son premier partiel. Il faut un écart
+franc pour croire que quelqu'un joue là aussi.
+
+Le seuil de présence est celui de **l'image**, pas un seuil abstrait. Il ne l'était
+pas, et le défaut s'est vu à l'usage : sur un morceau dont le demi-ton le plus fort
+valait −41 dB, l'ancienne plage de 42 dB laissait passer tout ce qui dépassait −83 dB.
+Un Sol♭1 à −80 dB — parfaitement noir à l'écran — était entouré et nommé ; pire, il
+expliquait ensuite comme sa propre harmonique le Sol♭3 deux octaves plus haut, la
+vraie note, qui disparaissait du même coup. Le plancher est donc maintenant le noir
+de l'image, celui que règle le contraste : ce qu'on entoure est ce qu'on voit, et
+éclaircir l'image dévoile des notes plus faibles.
+
+Conséquence assumée : une note de l'accord dont toutes les occurrences s'expliquent
+n'est pas entourée du tout. Sur le fichier d'essai, un `Fa-` montre son Fa et son Do
+et pas sa tierce. C'est une information — cette note-là ne s'entend pas d'elle-même —
+et non un oubli à masquer en entourant une harmonique.
+
+Ce qui manque, par ordre d'utilité : la **tonalité**, qui trancherait l'orthographe
+enharmonique (l'application écrit les bémols par défaut, faute de mieux) et
+écarterait les accords hors du ton ; les **renversements notés** (`Do/Mi`), reconnus
+mais pas écrits ; et un relevé qui **ne dépende pas de la grille métrique** — il n'y
+a aujourd'hui ni découpage ni endroit où écrire sans elle, et la bande le dit.
 
 ## Ce qui n'est pas encore là
 

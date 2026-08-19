@@ -1,19 +1,9 @@
-# Le compilateur Windows, mis dans la boucle.
+# Ce que la construction vérifie.
 #
-# Le portage se fait depuis un Mac : personne ici ne peut compiler pour Windows,
-# et du code jamais compilé n'est pas du code. Ce flux est donc l'instrument de
-# mesure du portage autant que sa distribution — c'est lui qui dit si le noyau
-# tient réellement sur la plateforme cible, et non si l'on croit qu'il tient.
-#
-# Ce qu'il construit sous Windows aujourd'hui : `SpectreDSP` et `SpectreCore`,
-# c'est-à-dire les deux tiers du code, plus les quatre vérifications qui n'ont
-# besoin ni d'écran ni de carte son. La couche Apple et l'interface restent hors
-# du champ — leur pendant Windows n'existe pas encore.
-#
-# Le portage a d'abord été mené dans une machine virtuelle locale, ce qui donne
-# une boucle de quelques secondes là où celle-ci en demande quelques minutes.
-# Cette CI reste la mesure qui fait foi : elle part d'une machine vierge, donc
-# elle attrape ce qu'un poste déjà configuré laisse passer.
+# L'application ne vise que macOS. Le noyau, lui, ne connaît aucun système : ce
+# flux le compile et le fait tourner deux fois — une fois par le chemin
+# d'Accelerate, une fois par le chemin en Swift pur — parce qu'une frontière qu'on
+# ne mesure que d'un côté n'est qu'une promesse.
 
 name: Vérification
 
@@ -26,15 +16,18 @@ on:
 jobs:
   macos:
     name: macOS — tout
-    runs-on: macos-15
+    # macOS 26 : le paquet vise cette version depuis que l'interface est en
+    # Liquid Glass. Un coureur plus ancien n'a pas le SDK qui la connaît.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - name: Vérifications
         run: ./check.sh
-      - name: Le chemin portable, sur macOS
+      - name: Le chemin portable
         # Les mêmes contrôles, mais en forçant la couche numérique sur son
-        # implémentation en Swift pur : c'est ce qui prouve ici ce qui tournera
-        # là-bas, sans attendre la machine cible.
+        # implémentation en Swift pur. C'est ce qui garde les deux implémentations
+        # comparables : celle d'Accelerate n'est une référence que tant que l'autre
+        # tourne sur les mêmes signaux.
         #
         # `FourierCheck` manque à l'appel : sa référence vient de PyTorch et n'est
         # pas versionnée (elle pèse, et se refabrique par `Tools/Fourier`). Elle
@@ -44,52 +37,7 @@ jobs:
           swift build -c release -Xswiftc -DSPECTRE_PORTABLE
           BIN="$(swift build -c release -Xswiftc -DSPECTRE_PORTABLE --show-bin-path)"
           "$BIN/DSPCheck"
-          "$BIN/FilterCheck"
-          "$BIN/ChainCheck"
           "$BIN/WAVCheck"
-          "$BIN/GaplessCheck"
           "$BIN/AnalysisCheck"
-
-  windows:
-    name: Windows — le noyau
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      # Le couple branche/étiquette doit être mis à jour ensemble : l'action va
-      # chercher une archive précise, et une paire dépareillée échoue au
-      # téléchargement plutôt qu'à la compilation, ce qui égare.
-      #
-      # 6.3.3 et pas moins : la 6.0.3 échoue sur « cyclic dependency in module
-      # 'ucrt' » avant même de lire le manifeste — un désaccord entre la chaîne et
-      # le SDK Windows, qui n'a rien à voir avec ce dépôt.
-      - uses: compnerd/gha-setup-swift@main
-        with:
-          branch: swift-6.3.3-release
-          tag: 6.3.3-RELEASE
-
-      - name: Version de la chaîne
-        run: swift --version
-
-      # `build.ps1` plutôt que `swift build` : c'est lui qui va chercher SDL3,
-      # miniaudio, Dear ImGui et signalsmith-stretch, et qui sait quels drapeaux
-      # passer au compilateur. Le lancer ici vérifie donc la construction *et* le
-      # chemin de distribution, au lieu d'une variante qui lui ressemble et qui
-      # dérive.
-      #
-      # `FourierCheck` est compilé mais pas exécuté : sa référence vient de
-      # PyTorch et n'est pas versionnée. Le compiler prouve tout de même que la
-      # STFT de Demucs tient sous Windows.
-      #
-      # `AnalysisCheck` est celui qui compte : il porte les deux propriétés
-      # difficiles — le découpage en tranches identique au bit près à l'analyse
-      # d'un seul tenant, et le recalage des octaves les unes sur les autres.
-      - name: Construire, vérifier, assembler
-        run: .\build.ps1 -Verifier
-
-      # Le paquet complet, prêt à essayer : c'est la seule façon d'obtenir une
-      # version Windows sans machine Windows sous la main.
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Spectre-windows
-          path: build/Spectre-windows.zip
+          "$BIN/PercussionCheck"
+          "$BIN/HarmonyCheck"

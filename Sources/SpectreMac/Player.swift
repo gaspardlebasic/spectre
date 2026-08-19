@@ -80,7 +80,18 @@ import SpectreCore
     }
 
     public var volume: Double = 1 {
-        didSet { node.volume = Float(min(max(volume, 0), 1)) }
+        didSet { applyVolume() }
+    }
+
+    /// Rattrape la réserve de niveau des pistes compressées.
+    ///
+    /// Elles sont écrites six décibels plus bas pour ne pas écrêter ; sans ce
+    /// rattrapage, passer du mixage à une piste ferait baisser le son de six
+    /// décibels, ce qui s'entendrait comme un défaut de la séparation.
+    private var fileGain: Float = 1 { didSet { applyVolume() } }
+
+    private func applyVolume() {
+        node.volume = Float(min(max(volume, 0), 1)) * fileGain
     }
 
     public init() {
@@ -126,8 +137,47 @@ import SpectreCore
         }
     }
 
+    /// Change de fichier **sans arrêter le moteur**, quand le format s'y prête.
+    ///
+    /// Toutes les combinaisons de pistes d'un même morceau partagent leur fréquence,
+    /// leur nombre de canaux et leur durée : le graphe qui les joue est le même, et le
+    /// démonter pour le remonter à l'identique est très exactement ce qu'on entendait
+    /// en cochant une piste. Ce n'est pas le fichier qui coûte — il s'ouvre en cinq
+    /// millisecondes, mesuré — c'est `engine.stop()` puis `engine.start()`, qui
+    /// détruisent et refont la chaîne de rendu audio.
+    ///
+    /// Il reste le temps de reprogrammer le nœud, une poignée de millisecondes : un
+    /// accroc, plus une pause.
+    ///
+    /// - Returns: faux si le format diffère — l'appelant doit alors passer par
+    ///   `load(url:)`, qui refait tout.
+    @discardableResult
+    public func replace(with url: URL) -> Bool {
+        guard let current = file, engine.isRunning,
+              let f = try? AVAudioFile(forReading: url),
+              f.processingFormat == current.processingFormat else { return false }
+        // La position vient de l'horloge du nœud, pas de la tête de lecture affichée :
+        // celle-ci est rafraîchie soixante fois par seconde et peut avoir jusqu'à
+        // seize millisecondes de retard, qui s'entendraient comme un petit bond en
+        // arrière à chaque bascule.
+        let resume = currentTime
+        let playing = isPlaying
+        file = f
+        fileGain = StemStore.gain(for: url)
+        fileSampleRate = f.processingFormat.sampleRate
+        duration = Double(f.length) / fileSampleRate
+        if playing {
+            play(from: resume)          // reprogramme le nœud, moteur toujours en marche
+        } else {
+            pausedAt = min(max(resume, 0), duration)
+            segmentStart = pausedAt
+        }
+        return true
+    }
+
     public func load(url: URL) {
         stop()
+        fileGain = StemStore.gain(for: url)
         do {
             let f = try AVAudioFile(forReading: url)
             file = f

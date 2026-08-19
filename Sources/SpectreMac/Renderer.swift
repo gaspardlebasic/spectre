@@ -190,6 +190,10 @@ public final class SpectrogramRenderer: NSObject, MTKViewDelegate {
     private var tiles: MTLTexture?
     private var noteColorTable: MTLTexture?
     private var tableSaturation = Double.nan
+    private var tableOrigin = Int.min
+    /// Note qui reçoit la première teinte du cycle des quintes. Posée par
+    /// l'application depuis les préférences.
+    public var hueOrigin = 0
 
     /// Hauteur d'une tuile, en colonnes.
     private let tileRows = 4096
@@ -217,7 +221,7 @@ public final class SpectrogramRenderer: NSObject, MTKViewDelegate {
             NSLog("Spectre : compilation du shader impossible — \(error)")
             return nil
         }
-        buildNoteColorTable(saturation: display.noteSaturation)
+        buildNoteColorTable(saturation: display.noteSaturation, origin: hueOrigin)
     }
 
     // MARK: Téléversement
@@ -281,7 +285,7 @@ public final class SpectrogramRenderer: NSObject, MTKViewDelegate {
         self.bins = bins
     }
 
-    private func buildNoteColorTable(saturation: Double) {
+    private func buildNoteColorTable(saturation: Double, origin: Int) {
         if noteColorTable == nil {
             let desc = MTLTextureDescriptor.texture2DDescriptor(
                 pixelFormat: .rgba8Unorm,
@@ -294,7 +298,8 @@ public final class SpectrogramRenderer: NSObject, MTKViewDelegate {
         }
         guard let tex = noteColorTable else { return }
         tableSaturation = saturation
-        let table = NotePalette.makeTable(saturation: saturation)
+        tableOrigin = origin
+        let table = NotePalette.makeTable(saturation: saturation, origin: origin)
         table.withUnsafeBytes { raw in
             tex.replace(region: MTLRegionMake2D(0, 0, NotePalette.steps, NotePalette.pitchClassCount),
                         mipmapLevel: 0,
@@ -333,8 +338,9 @@ public final class SpectrogramRenderer: NSObject, MTKViewDelegate {
             return
         }
 
-        if display.colorMap == .notes, tableSaturation != display.noteSaturation {
-            buildNoteColorTable(saturation: display.noteSaturation)
+        if display.colorMap == .notes,
+           tableSaturation != display.noteSaturation || tableOrigin != hueOrigin {
+            buildNoteColorTable(saturation: display.noteSaturation, origin: hueOrigin)
         }
 
         let columnsPerPixel = viewport.columnsPerPoint / Double(scale)

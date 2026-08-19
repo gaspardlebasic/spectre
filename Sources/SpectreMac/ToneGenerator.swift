@@ -23,10 +23,14 @@ import SpectreCore
 /// alignés, sans verrou ni allocation — les deux choses qu'on ne peut pas se
 /// permettre là où un retard s'entend.
 public final class ToneGenerator {
+    /// Assez pour l'accord le plus fourni que le relevé sait entourer.
+    public static let maxVoices = 8
+
     private let engine = AVAudioEngine()
     private var source: AVAudioSourceNode?
-    /// [0] = fréquence visée, [1] = gain visé.
-    private let controls = UnsafeMutablePointer<Double>.allocate(capacity: 2)
+    /// Deux `Double` par voix : fréquence visée, puis gain visé.
+    private let controls =
+        UnsafeMutablePointer<Double>.allocate(capacity: 2 * ToneGenerator.maxVoices)
     private var release: DispatchWorkItem?
 
     /// Niveau de la sinusoïde. Assez pour s'entendre par-dessus rien, assez peu
@@ -38,15 +42,17 @@ public final class ToneGenerator {
     private let level = 0.08
 
     /// État du thread audio, touché nulle part ailleurs.
-    private var oscillator: ToneOscillator
+    private var oscillator: ChordOscillator
 
     public init() {
-        controls[0] = 440
-        controls[1] = 0
+        for voice in 0..<Self.maxVoices {
+            controls[2 * voice] = 440
+            controls[2 * voice + 1] = 0
+        }
 
         let rate = engine.outputNode.outputFormat(forBus: 0).sampleRate
         let sampleRate = rate > 0 ? rate : 48000
-        oscillator = ToneOscillator(sampleRate: sampleRate)
+        oscillator = ChordOscillator(sampleRate: sampleRate, voiceCount: Self.maxVoices)
         guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)
         else { return }
 
@@ -56,8 +62,9 @@ public final class ToneGenerator {
                   let samples = first.mData?.assumingMemoryBound(to: Float.self)
             else { return noErr }
             let count = Int(frameCount)
-            self.oscillator.render(targetFrequency: self.controls[0],
-                                   targetGain: self.controls[1],
+            let targets = UnsafeBufferPointer(start: self.controls,
+                                              count: 2 * Self.maxVoices)
+            self.oscillator.render(targets: targets,
                                    into: UnsafeMutableBufferPointer(start: samples, count: count),
                                    count: count)
             // Les autres canaux reçoivent la copie du premier.
@@ -80,15 +87,35 @@ public final class ToneGenerator {
     /// Fait sonner une fréquence, ou fait taire si elle est nulle. Appeler aussi
     /// souvent qu'on veut : c'est le glissando qui absorbe les écarts.
     public func play(_ frequency: Double?) {
+        guard let frequency, frequency > 0 else { return stopImmediately() }
+        play(chord: [frequency])
+    }
+
+    /// Fait sonner plusieurs hauteurs ensemble.
+    ///
+    /// Les voix en trop ne sont pas coupées mais **ramenées à zéro** : elles
+    /// s'éteignent alors dans le même fondu que tout le reste. Couper net une voix
+    /// qui sonnait s'entendrait comme un clic, exactement au moment où l'on passe
+    /// d'un accord à un autre.
+    public func play(chord frequencies: [Double]) {
         release?.cancel()
         release = nil
-        guard let frequency, frequency > 0 else { return silence() }
+        let wanted = frequencies.filter { $0 > 0 }.prefix(Self.maxVoices)
+        guard !wanted.isEmpty else { return silence() }
 
-        // Un saut de plus d'une octave ne se glisse pas, il se repose : sinon on
-        // entend une sirène en traversant l'image de bas en haut.
-        if abs(log2(frequency / controls[0])) > 1 { oscillator.jump(to: frequency) }
-        controls[0] = frequency
-        controls[1] = level
+        let perVoice = ChordOscillator.perVoiceLevel(level, voices: wanted.count)
+        for (voice, frequency) in wanted.enumerated() {
+            // Un saut de plus d'une octave ne se glisse pas, il se repose : sinon
+            // on entend une sirène en traversant l'image de bas en haut. Une voix
+            // muette n'a rien à glisser non plus — elle se pose où on la veut.
+            if controls[2 * voice + 1] == 0
+                || abs(log2(frequency / controls[2 * voice])) > 1 {
+                oscillator.jump(voice: voice, to: frequency)
+            }
+            controls[2 * voice] = frequency
+            controls[2 * voice + 1] = perVoice
+        }
+        for voice in wanted.count..<Self.maxVoices { controls[2 * voice + 1] = 0 }
         start()
     }
 
@@ -100,7 +127,14 @@ public final class ToneGenerator {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
     }
 
-    private func silence() { controls[1] = 0 }
+    private func silence() {
+        for voice in 0..<Self.maxVoices { controls[2 * voice + 1] = 0 }
+    }
+
+    /// Comme `stop()`, mais sans changer l'état d'une extinction déjà programmée :
+    /// c'est le chemin de la sinusoïde d'écoute, appelée à chaque mouvement de
+    /// souris et qui n'a pas à relancer un compte à rebours à chaque fois.
+    private func stopImmediately() { silence() }
 
     private func start() {
         guard source != nil, !engine.isRunning else { return }
