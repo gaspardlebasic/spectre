@@ -536,11 +536,13 @@ print("\n=== Sinusoïde d'écoute ===")
 let toneRate = 48000.0
 
 func renderTone(_ oscillator: inout ToneOscillator,
-                frequency: Double, gain: Double, seconds: Double) -> [Float] {
+                frequency: Double, gain: Double, seconds: Double,
+                waveform: ToneWaveform = .sine) -> [Float] {
     let count = Int(seconds * toneRate)
     var out = [Float](repeating: 0, count: count)
     out.withUnsafeMutableBufferPointer {
-        oscillator.render(targetFrequency: frequency, targetGain: gain, into: $0, count: count)
+        oscillator.render(targetFrequency: frequency, targetGain: gain,
+                          waveform: waveform, into: $0, count: count)
     }
     return out
 }
@@ -617,6 +619,97 @@ check("le fondu de sortie ne claque pas",
       discontinuity(released, frequency: 3000, gain: 0.16) < 1.05,
       String(format: "×%.2f de l'écart attendu",
              discontinuity(released, frequency: 3000, gain: 0.16)))
+
+// MARK: Le triangle des accords
+//
+// Survoler un nom d'accord le fait entendre, et pas en sinusoïdes : un empilement
+// de sinusoïdes pures n'a pas de timbre et ne ressemble à aucun instrument qui
+// aurait pu jouer l'accord. Ce qu'on vérifie ici, c'est que la forme est bien un
+// triangle — harmoniques impaires en 1/n² — sans les deux défauts qui guettent une
+// forme anguleuse produite échantillon par échantillon : le repliement, et le
+// changement de niveau en passant d'une forme à l'autre.
+print("\n=== Triangle des accords ===")
+
+/// Amplitude à une fréquence donnée, par produit scalaire avec sinus et cosinus.
+func amplitude(_ x: [Float], at frequency: Double) -> Double {
+    var re = 0.0, im = 0.0
+    for (i, v) in x.enumerated() {
+        let phase = 2 * Double.pi * frequency * Double(i) / toneRate
+        re += Double(v) * cos(phase)
+        im += Double(v) * sin(phase)
+    }
+    return 2 * (re * re + im * im).squareRoot() / Double(x.count)
+}
+
+var triangleOscillator = ToneOscillator(sampleRate: toneRate, frequency: 220)
+let triangleAttack = renderTone(&triangleOscillator, frequency: 220, gain: 0.16,
+                                seconds: 0.05, waveform: .triangle)
+let triangleSteady = renderTone(&triangleOscillator, frequency: 220, gain: 0.16,
+                                seconds: 1, waveform: .triangle)
+
+check("le triangle sonne à la fréquence demandée",
+      abs(measuredFrequency(triangleSteady) - 220) < 0.5,
+      String(format: "%.2f Hz pour 220", measuredFrequency(triangleSteady)))
+check("il part de zéro comme la sinusoïde", abs(triangleAttack[0]) < 1e-4,
+      String(format: "premier échantillon à %.5f", abs(triangleAttack[0])))
+
+// Le sommet, et c'est ce qui compte à l'usage : passer de la sinusoïde au triangle
+// ne doit pas changer le volume de l'écoute.
+let sommetTriangle = Double(triangleSteady.suffix(20000).map { abs($0) }.max() ?? 0)
+// Le manque est la queue des harmoniques qu'on ne calcule pas : elle ne pèse qu'au
+// sommet de la forme, et 2,5 % de sommet ne s'entendent pas.
+let ecartSommet = abs(sommetTriangle - 0.16) / 0.16
+check("son sommet est celui d'une sinusoïde de même gain, à 3 % près",
+      ecartSommet < 0.03,
+      String(format: "%.3f pour 0,160", sommetTriangle))
+
+// Le spectre : impaires en 1/n², paires absentes.
+let fondamentale = amplitude(triangleSteady, at: 220)
+let troisieme = amplitude(triangleSteady, at: 660)
+let cinquieme = amplitude(triangleSteady, at: 1100)
+let deuxieme = amplitude(triangleSteady, at: 440)
+check("la 3ᵉ harmonique vaut le neuvième de la fondamentale",
+      abs(troisieme / fondamentale - 1.0 / 9) < 0.01,
+      String(format: "%.4f pour %.4f", troisieme / fondamentale, 1.0 / 9))
+check("la 5ᵉ en vaut le vingt-cinquième",
+      abs(cinquieme / fondamentale - 1.0 / 25) < 0.005,
+      String(format: "%.4f pour %.4f", cinquieme / fondamentale, 1.0 / 25))
+check("et les harmoniques paires sont absentes",
+      deuxieme / fondamentale < 0.01,
+      String(format: "%.5f de la fondamentale", deuxieme / fondamentale))
+
+// Le repliement : une note aiguë n'a plus la place de porter ses harmoniques. Elles
+// doivent disparaître, et non revenir se poser dans le grave sur des hauteurs qui
+// n'ont rien à voir avec la note — ce que ferait un triangle calculé par sa formule
+// géométrique.
+var aigu = ToneOscillator(sampleRate: toneRate, frequency: 9000)
+_ = renderTone(&aigu, frequency: 9000, gain: 0.16, seconds: 0.05, waveform: .triangle)
+let aiguSteady = renderTone(&aigu, frequency: 9000, gain: 0.16, seconds: 0.5,
+                            waveform: .triangle)
+// Toutes les hauteurs sondées de 300 Hz en 300 Hz, sauf la note elle-même.
+var replie = 0.0
+for k in 1...40 {
+    let f = Double(k) * 300
+    if abs(f - 9000) < 400 { continue }
+    replie = max(replie, amplitude(aiguSteady, at: f))
+}
+let partReplie = replie / amplitude(aiguSteady, at: 9000)
+check("une note aiguë ne replie aucune harmonique ailleurs dans le spectre",
+      partReplie < 0.01,
+      String(format: "%.5f de la fondamentale, au plus fort des autres hauteurs",
+             partReplie))
+
+// Et la sinusoïde, elle, n'a pas changé : c'est le son de la raie qu'on désigne
+// dans le spectre, et une raie est une fréquence unique.
+// Un oscillateur neuf : celui d'au-dessus vient de glisser d'une octave, et une
+// fréquence qui bouge étale son spectre — on mesurerait le glissando, pas la forme.
+var raie = ToneOscillator(sampleRate: toneRate, frequency: 440)
+_ = renderTone(&raie, frequency: 440, gain: 0.16, seconds: 0.05)
+let sinusoide = renderTone(&raie, frequency: 440, gain: 0.16, seconds: 0.5)
+check("la raie désignée reste une sinusoïde pure",
+      amplitude(sinusoide, at: 1320) / amplitude(sinusoide, at: 440) < 0.01,
+      String(format: "3ᵉ harmonique à %.5f de la fondamentale",
+             amplitude(sinusoide, at: 1320) / amplitude(sinusoide, at: 440)))
 
 print("")
 print("\n=== Rotation de la palette ===")

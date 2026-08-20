@@ -134,7 +134,7 @@ regarde le morceau en entier.
 
 | Geste | Effet |
 |-------|-------|
-| Survol d'un nom d'accord | **L'entendre**, entourer ses notes dans l'image et les nommer |
+| Survol d'un nom d'accord | **L'entendre**, entourer dans l'image les raies qui l'ont décidé, à toutes leurs octaves |
 | Deux doigts | Défiler dans le temps et dans les fréquences |
 | Pincement | Zoom temporel, ancré sous le curseur |
 | ⇧ + pincement, ⇧ + molette | Zoom fréquentiel, ancré lui aussi |
@@ -168,6 +168,13 @@ de quoi le vider (on demande confirmation : ce sont des minutes de GPU). Baisser
 plafond fait le ménage tout de suite, en tâche de fond — le baisser sans effet avant
 la prochaine séparation n'aurait servi à rien, c'est justement là qu'on voulait de la
 place.
+
+**Le relevé des accords**, en entier : la portée (par mesure ou par temps), le
+vocabulaire qu'on s'autorise, et les huit nombres dont dépend ce qu'une raie doit
+être pour compter — voir plus bas. Ils vivent ici et non dans la session parce que
+ce sont des réglages d'*algorithme* : on les tourne en écoutant, on trouve ce qui
+marche pour la musique qu'on relève, et l'on veut le retrouver au morceau suivant.
+Un bouton remet tout d'origine.
 
 **Première teinte du cycle des quintes.** Les douze couleurs sont réparties selon le
 cycle des quintes ; on choisit désormais quelle note reçoit la première. La rotation
@@ -542,15 +549,19 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
   entourer trois notes dans un silence.
 - **Relevé des accords** — une grille fabriquée, aux accords connus, jouée sur un
   timbre à six harmoniques : c'est le timbre riche qui fait le problème, une
-  sinusoïde pure ne prouverait rien. Les pièges sont choisis, pas trouvés au hasard :
-  majeur contre mineur (la tierce majeure fantôme), un renversement qui ne doit pas
-  devenir l'accord de sa basse, une pédale de basse sous un accord qui change, et
-  Do contre La- qui partagent deux notes. Plus l'écriture des symboles, le
-  regroupement à l'affichage, et le fait qu'une triade tenue ne devienne pas une
-  septième. Deux contrôles portent sur la ponctualité, qui est ce qui s'est révélé le
-  plus fragile : un changement d'accord doit basculer pile sur son temps, et les
-  étiquettes doivent tomber sur les barres de mesure même quand le morceau commence
-  avant le premier temps fort.
+  sinusoïde pure ne prouverait rien. **Le banc part du son et va jusqu'au nom**, en
+  passant par la vraie analyse et la vraie matrice : c'est la seule façon d'éprouver
+  un relevé qui lit l'image. Les pièges sont choisis, pas trouvés au hasard : majeur
+  contre mineur (la tierce majeure fantôme), un renversement qui ne doit pas devenir
+  l'accord de sa basse, `Do6` contre `La-7` qui sont le même jeu de notes, une
+  broderie d'un temps et une basse qui marche — dont aucune ne doit entrer dans
+  l'accord — et la même note, tenue, qui doit y entrer. Deux contrôles portent sur
+  l'adéquation elle-même : aucune raie retenue ne doit rester inexpliquée par le nom,
+  et toutes doivent appartenir à l'accord quelle que soit leur octave. Plus la carte
+  des notes (une note tenue seule ne doit donner qu'une raie, et rien à un demi-ton
+  d'elle), l'écriture des symboles, le regroupement à l'affichage, et le fait que les
+  étiquettes tombent sur les barres de mesure même quand le morceau commence avant le
+  premier temps fort.
 - **Fréquence des pistes** — un moteur d'essai qui rééchantillonne, comme le fait
   Demucs, sur un fichier à 48 kHz : les pistes écrites doivent porter la fréquence du
   *moteur* et non celle du fichier, et durer aussi longtemps que le morceau. Plus le
@@ -584,7 +595,7 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
 | `Viewport.swift` | Fenêtre visible, zoom ancré (temps et fréquences), recadrage |
 | `Tempo.swift` | Flux spectral, autocorrélation, phase des temps et des mesures |
 | `Percussion.swift` | Relevé de la batterie : instants, voies, forces |
-| `Harmony.swift` | Relevé des accords : chromagrammes, gabarits harmoniques, Viterbi |
+| `Harmony.swift` | Relevé des accords : carte des notes, raies tenues, nommage |
 | `DrumLaneView.swift` | Les trois lignes de batterie sous l'image |
 | `Snapping.swift` | Aimantation du curseur sur les raies |
 | `LoopEditing.swift` | Tracer, déplacer, étendre la boucle |
@@ -620,8 +631,8 @@ enfin sur la bonne raie.
 
 **La séparation part d'elle-même à l'ouverture d'un fichier.** Elle est devenue la
 condition de presque tout ce que l'application sait faire — la ligne de batterie sur
-la piste isolée, les noms d'accords sur basse et accompagnement, un spectrogramme
-débarrassé des percussions — si bien qu'attendre qu'on décoche une piste revenait à
+la piste isolée, un spectrogramme débarrassé des percussions, et des accords relevés
+sur une image qu'aucun coup de caisse ne brouille — si bien qu'attendre qu'on décoche une piste revenait à
 cacher le gros de l'outil derrière un geste que rien n'annonce.
 
 Le calcul se fait en tâche de fond, une fois par morceau, **à un dixième de sa
@@ -875,132 +886,152 @@ Ce qui manque encore, par ordre d'utilité : les toms et le charleston ouvert, q
 trois lignes ne distinguent pas ; l'aimantation des coups sur la grille, qui dirait
 si le batteur pousse ou traîne ; et l'export en tablature.
 
-## Les noms d'accords *(première version)*
+## Les noms d'accords *(deuxième version)*
 
-Au pied de la grille, un nom par temps, par mesure ou par phrase selon le zoom — et
-en bas plutôt qu'en haut, parce que ce qu'on cherche en levant les yeux d'un
-instrument, c'est l'accord *sous* le passage qu'on regarde.
+Au pied de la grille, un nom par mesure — et en bas plutôt qu'en haut, parce que ce
+qu'on cherche en levant les yeux d'un instrument, c'est l'accord *sous* le passage
+qu'on regarde.
 
 L'écriture est celle des grilles de jazz, sur des fondamentales françaises :
-`La-`, `DoΔ`, `Sol7`, `Ré-7`, `Siø`, `Si°`, `Fa+`. Le symbole plutôt que la lettre,
-parce qu'une grille se lit d'un coup d'œil et que `Lam7` prend le temps de se lire.
+`La-`, `DoΔ`, `Sol7`, `Ré-7`, `Do6`, `Siø`, `Si°`, `Fa+`, et les enrichissements
+`Doadd9`, `Do9`, `Do-9`, `DoΔ9`, `Do11`, `Do-11`, `Do13`. Le symbole plutôt que la
+lettre, parce qu'une grille se lit d'un coup d'œil et que `Lam7` prend le temps de se
+lire.
 
-**Deux pistes, deux rôles.** La basse donne la fondamentale, l'accompagnement donne
-la couleur. C'est ce partage qui distingue ce relevé d'un détecteur d'accords
-ordinaire : Do/Mi et Mi-, La-7 et Do6 ont les mêmes notes et rien dans un
-chromagramme ne les sépare — seule la note la plus grave tranche. La voix est
-écartée exprès : elle porte des notes de passage qui n'appartiennent pas à l'accord.
+Dix-neuf couleurs sur douze fondamentales, soit 228 accords possibles — mais le
+vocabulaire se règle, et le restreindre est souvent ce qui améliore le plus un
+relevé.
 
-Le relevé repart du signal, comme celui de la batterie et pour la raison inverse :
-la matrice affichée allonge sa fenêtre en descendant, et à 130 Hz — le bas de
-l'accompagnement — elle dure 743 ms, soit une mesure et demie à 120 BPM. Deux
-fenêtres constantes la remplacent, 186 ms pour l'accompagnement et 372 pour la
-basse, choisies pour la hauteur et non pour l'instant.
+### Le relevé lit l'image
 
-**Les gabarits portent leurs propres harmoniques**, et c'est le point qui fait tout
-marcher. Un gabarit binaire — « Do majeur, c'est Do, Mi, Sol » — est faux dans le
-monde réel : la 3ᵉ harmonique d'une note tombe sur sa quinte et la 5ᵉ sur sa tierce
-majeure. Une note seule pèse ainsi 0,97 sur elle-même, 0,23 sur sa quinte et 0,07 sur
-sa tierce majeure — un Do mineur joué seul *fabrique* un Mi que personne ne joue, et
-un détecteur naïf le lit majeur. Les gabarits d'ici contiennent ce fantôme : celui de
-Do mineur porte 0,036 de tierce majeure, celui de Do majeur en porte 0,546. On ne
-corrige plus le mensonge après coup, on l'attend.
+La première version comparait un chromagramme — le spectre replié en douze nombres —
+à cent huit gabarits d'accords. Elle marchait, et elle avait un défaut qu'aucun
+réglage ne pouvait corriger : **on ne pouvait pas montrer sur quoi elle avait
+décidé**. Le nom apparaissait sous une image pleine de traits sans qu'on puisse dire
+lequel l'avait produit, ni pourquoi tel autre avait été ignoré. Une grille qu'on ne
+peut pas vérifier des yeux ne se corrige qu'en tâtonnant.
 
-**Un passage de Viterbi** décide ensuite de la suite entière plutôt que de chaque
-temps isolément : rester coûte zéro, changer coûte, et changer vers une quinte ou un
-relatif coûte moins que vers un accord lointain. Sans lui, Do et La- clignotent d'un
-temps sur l'autre — le symptôme le plus visible d'un détecteur sans mémoire.
+Celle-ci part des **raies** — les traits horizontaux de l'image, à l'octave où on les
+voit — et le principe tient en une phrase : *l'accord est fait des raies qu'on voit,
+et de rien d'autre*.
 
-Le relevé est **toujours fait au temps**, quel que soit le zoom ; seul l'affichage se
-raréfie, en fusionnant les voisins identiques. Un accord tenu quatre mesures s'écrit
-une fois, à son début. C'est la discipline de la grille et de l'aimantation : ce
-qu'on voit est un sous-ensemble de ce qui est calculé, jamais un autre calcul.
+1. **La carte des notes.** Un balayage de la matrice affichée relève, colonne par
+   colonne et demi-ton par demi-ton, le sommet de la raie qui s'y trouve. Un sommet,
+   pas une somme : une raie est un maximum local le long de l'axe des fréquences,
+   comme pour l'aimantation du curseur.
+2. **Les raies tenues.** Sur chaque mesure, on compte le temps pendant lequel chaque
+   demi-ton est **visible** — au seuil de l'image, celui que règle le contraste. Ce
+   qui occupe les sept dixièmes de la mesure est une note de l'accord ; ce qui passe
+   ne l'est pas.
+3. **L'explication par le grave.** Une note isolée peuple le spectre bien au-delà
+   d'elle-même : son octave, sa quinte à la douzième, sa tierce majeure deux octaves
+   plus haut. Une raie qu'une raie plus grave explique — tenue elle aussi, et assez
+   forte pour cela — est sa conséquence, pas un choix du musicien.
+4. **Le nom.** Chaque classe de hauteur tenue qui est dans l'accord rapporte un
+   point ; chaque classe tenue que l'accord ne contient pas en coûte un ; chaque note
+   de l'accord qu'on ne voit pas coûte un demi-point. La raie tenue la plus grave est
+   la basse, et c'est elle qui sépare `Do6` de `La-7`, mêmes notes.
 
-**La ponctualité a demandé deux corrections, toutes deux trouvées à l'oreille.**
+Ce demi-point est ce qui empêche le vocabulaire riche de tout gagner : une treizième
+dont on ne voit que la triade coûte trois demi-points, et c'est la triade qui
+l'emporte. Les enrichissements — `add9`, `9`, `-9`, `Δ9`, `11`, `-11`, `13` — ne sont
+donc pas un risque de sur-nommer : ils ne gagnent que là où leurs notes sont
+réellement tenues à l'écran. Sur le fichier témoin, les écrire fait tomber les raies
+sans explication de 7,2 % à 4,3 %, et les mesures qui en portent une de 27 % à 16 % :
+ce n'étaient pas des erreurs du relevé, c'étaient des notes que le vocabulaire ne
+savait pas nommer.
 
-La première est une faute franche : les temps étaient regroupés en mesures depuis le
-début du *fichier*, qui n'a aucune raison de tomber sur un « un ». Les noms
-s'écrivaient donc à côté des barres, en avance de ce qui sépare les deux — deux temps
-entiers sur un morceau dont la grille commence à 1,637 s.
+**Trois propriétés en découlent, qu'une corrélation ne peut pas offrir.**
 
-La seconde est musicale. Un bassiste pose très souvent la fondamentale du prochain
-accord **avant** la barre : 370 ms mesurées sur le fichier témoin, là où l'on entend
-pourtant le changement sur le temps fort. Le temps qui précède la barre contenait
-alors majoritairement l'accord suivant, et le relevé annonçait le changement un temps
-trop tôt. Or ce qu'une grille doit dire, c'est l'accord **au moment où l'on pose les
-doigts** : l'anticipation appartient à l'accord qu'elle annonce, pas au temps où elle
-tombe. La basse n'est donc lue que sur la première moitié de chaque temps — pas
-l'accompagnement, qui ne s'anticipe pas et qui perdrait la moitié de ses preuves. Le
-tonique s'est équilibré du même coup : `Do` majeur parasite est tombé de 39 à 29
-occurrences, et `Fa°` de 27 à 16, sur un morceau en do mineur.
+*Tout ce qui a compté peut être montré.* Survoler un nom entoure les raies retenues,
+à toutes leurs octaves, et les fait entendre. Il n'y a pas de traduction entre ce qui
+a décidé et ce qui s'affiche : c'est le même objet, rangé avec le segment.
 
-Sur le fichier témoin — sept minutes et demie, 755 temps, relevés en 0,3 s :
+*Ce qui n'a pas compté s'explique en un mot.* Une raie franche que le nom ignore n'a
+que trois raisons de l'être : elle n'a pas duré la mesure (note de passage,
+anticipation de la basse), une raie plus grave l'explique, ou elle est tenue mais
+étrangère à l'accord — et dans ce dernier cas elle est **entourée en pointillés**,
+suivie d'un point d'interrogation. Ce que le relevé a dû laisser de côté se voit.
 
-```
-La♭ | Fa- | Sol7 | Do-      VI – iv – V7 – i
-```
+*Régler le contraste change le relevé*, et c'est voulu. Le noir de l'image est la
+frontière entre ce qui est joué et ce qui ne l'est pas ; le monter, c'est décider que
+les traits pâles ne comptent pas. Les noms changent sous les doigts pendant qu'on
+tire le curseur.
 
-La cadence mineure de manuel, retrouvée telle quelle et répétée tout du long. Ce que
-la basse apporte se mesure : la lui retirer change **16 % des temps**, et toujours
-dans le même sens — La♭ majeur devient Do mineur, ses deux relatifs partageant deux
-notes sur trois. C'est moins spectaculaire que je ne l'annonçais et c'est la vraie
-valeur : une étiquette fausse toutes les quelques mesures.
+La contrepartie est assumée : le relevé lit **les pistes affichées**. Masquer la voix
+retire ses tenues, ce qui est souvent ce qu'on veut ; montrer le mixage entier les y
+remet. L'ancien relevé lisait toujours basse et accompagnement séparés, quoi qu'on
+affiche — c'était défendable, et incompatible avec la promesse d'ici. Il n'exige plus
+la séparation : un morceau qu'on vient d'ouvrir a ses accords.
 
-**Survoler un nom d'accord entoure ses notes dans l'image**, nommées, à l'octave où
-elles sonnent — et **les fait entendre**. Le survol porte sur toute la durée de
-l'accord et non sur les quelques points de son nom : viser huit caractères ne serait
-pas un geste.
+### Deux artefacts, et ce qu'ils ont appris
 
-Ce qu'on entend est exactement ce qu'on voit entouré : les notes relevées dans le
-spectre à cet endroit, dans l'octave où elles y sont. Jouer plutôt un accord de
-manuel — fondamentale, tierce, quinte au milieu du clavier — donnerait un son plus
-propre et répondrait à côté. La question posée en survolant est « est-ce bien cela que
-j'entends là ? », et il faut pour y répondre le même renversement et le même registre.
-Faute de notes visibles, on retombe sur l'accord de manuel : rester muet ne dirait pas
-si l'on n'a rien trouvé ou si rien ne marche.
+Une note de synthèse tenue, seule, suffit à faire apparaître ce qu'on ne soupçonne
+pas. Un `Do4` à −14 dB laisse un demi-ton au-dessus un vrai maximum local à −48,
+encadré de creux à −63 et −58 : un sommet franc, saillant de dix décibels, que
+personne ne joue. C'est la traînée de la fenêtre d'analyse, qui n'est pas une pente
+lisse mais une ondulation. Sur le fichier témoin, cette illusion faisait de la
+neuvième bémol la deuxième « note inexpliquée » la plus fréquente — ce qu'aucune
+musique ne justifie.
 
-Les voix sont des sinusoïdes indépendantes, chacune avec sa phase, son glissando et
-son fondu — une note retirée s'éteint donc au lieu de claquer. Leur niveau est divisé
-par la racine du nombre de voix : quatre sinusoïdes peuvent aligner leurs phases, et
-sans cette correction un accord sonnerait plus fort qu'une note et finirait par
-saturer. `PlaybackCheck` mesure les quatre propriétés sur le signal produit.
+Deux règles l'écartent, et aucune ne suffit seule. La **netteté** : un sommet doit
+redescendre de cinq décibels des deux côtés avant le demi-ton voisin. L'**écart à la
+voisine** : une raie plus de vingt décibels sous son voisin d'un ou deux demi-tons
+n'est que son flanc — deux notes réellement jouées ensemble ne sont jamais si loin
+l'une de l'autre. La seconde n'est pas réglable : ce n'est pas un goût musical mais
+une propriété de la fenêtre, la même pour toute la musique.
 
-Ne sont entourées que les notes **jouées**. C'est là toute la difficulté : une note
-isolée peuple le spectre bien au-delà d'elle-même — son octave, sa quinte à la
-douzième, sa tierce majeure deux octaves plus haut — et pour un accord majeur, dont
-les harmoniques tombent justement sur ses propres notes, entourer tout ce qui
-appartient aux classes de l'accord reviendrait à entourer une forêt dont presque rien
-n'a été joué. La règle est celle qu'on emploierait à l'oreille : **une raie qui
-s'explique par une raie plus grave n'est pas une note**. Pour chaque candidate on
-regarde les hauteurs dont elle serait la 2ᵉ, 3ᵉ… 6ᵉ harmonique ; si l'une d'elles
-sonne assez fort, la candidate en est la conséquence.
+Mesuré sur le fichier témoin, ces deux règles font passer les raies inexpliquées de
+33 % à 7 %, et les noms sûrs de 20 % à 59 %.
 
-« Assez fort » vaut neuf décibels, et le chiffre vient de la mesure. À zéro — c'est-à-dire
-en se contentant de « plus forte que sa fondamentale supposée » — un accord de trois
-notes s'entourait de sept cercles, la même note revenant à quatre octaves : sur un
-vrai mixage, l'octave et la douzième d'une note grave sont *couramment* plus fortes
-que sa fondamentale, une basse rayonnant mal son premier partiel. Il faut un écart
-franc pour croire que quelqu'un joue là aussi.
+### Ce qui se règle
 
-Le seuil de présence est celui de **l'image**, pas un seuil abstrait. Il ne l'était
-pas, et le défaut s'est vu à l'usage : sur un morceau dont le demi-ton le plus fort
-valait −41 dB, l'ancienne plage de 42 dB laissait passer tout ce qui dépassait −83 dB.
-Un Sol♭1 à −80 dB — parfaitement noir à l'écran — était entouré et nommé ; pire, il
-expliquait ensuite comme sa propre harmonique le Sol♭3 deux octaves plus haut, la
-vraie note, qui disparaissait du même coup. Le plancher est donc maintenant le noir
-de l'image, celui que règle le contraste : ce qu'on entoure est ce qu'on voit, et
-éclaircir l'image dévoile des notes plus faibles.
+Tout, dans ⌘, — et dans la langue de l'image plutôt que dans celle de la formule :
+la clarté à partir de laquelle un trait compte, la part de la mesure qu'une raie doit
+occuper, la netteté d'un sommet, la décroissance supposée des harmoniques, le prix
+d'une raie inexpliquée et celui d'une note absente, ce que la basse impose, le
+vocabulaire qu'on s'autorise. Un bouton remet tout d'origine.
 
-Conséquence assumée : une note de l'accord dont toutes les occurrences s'expliquent
-n'est pas entourée du tout. Sur le fichier d'essai, un `Fa-` montre son Fa et son Do
-et pas sa tierce. C'est une information — cette note-là ne s'entend pas d'elle-même —
-et non un oubli à masquer en entourant une harmonique.
+Deux portées sont offertes. **Par mesure**, la valeur par défaut : la décision porte
+sur la mesure entière et sur rien d'autre, sans lissage ni contagion — et dès qu'une
+boucle est tracée, elle devient la seule portée du relevé, un accord pour ce
+passage-là. **Par temps**, l'ancienne découpe, avec le passage de Viterbi qui recoud
+la suite : elle sait montrer un changement au milieu d'une mesure, au prix de
+décisions prises sur trop peu de matière. Sur le fichier témoin, découper au temps
+laisse deux fois plus de raies inexpliquées et un tiers de noms sûrs en moins.
 
-Ce qui manque, par ordre d'utilité : la **tonalité**, qui trancherait l'orthographe
-enharmonique (l'application écrit les bémols par défaut, faute de mieux) et
-écarterait les accords hors du ton ; les **renversements notés** (`Do/Mi`), reconnus
-mais pas écrits ; et un relevé qui **ne dépende pas de la grille métrique** — il n'y
-a aujourd'hui ni découpage ni endroit où écrire sans elle, et la bande le dit.
+`Spectre --accords morceau.mp3` écrit la grille dans le terminal, avec les raies qui
+ont décidé de chaque nom et les compteurs qui servent à régler — c'est le seul moyen
+d'éprouver sur de la vraie musique un relevé qui dépend de l'image.
+
+### Ce qu'on entend
+
+Survoler un nom fait sonner **toutes les raies entourées**, à leur octave, y compris
+celles que l'accord ne contient pas. Ne jouer que les notes du nom rendrait l'écoute
+plus jolie et la réponse fausse : la question posée en survolant est « est-ce bien
+cela qui est là ? », et il faut pour y répondre entendre ce qui est là.
+
+Les voix sont des triangles à bande limitée — harmoniques impaires en 1/n², jamais
+au-delà de Nyquist — et non des sinusoïdes : un empilement de sinusoïdes pures n'a
+pas de timbre, se confond avec la musique qu'il commente et ne ressemble à aucun
+instrument qui aurait pu jouer l'accord. La raie qu'on désigne dans le spectre, elle,
+reste une sinusoïde : une raie *est* une fréquence unique. Chaque voix garde sa
+phase, son glissando et son fondu — une note retirée s'éteint au lieu de claquer — et
+leur niveau est divisé par la racine du nombre de voix, sans quoi un accord sonnerait
+plus fort qu'une note et finirait par saturer. `PlaybackCheck` mesure tout cela sur le
+signal produit.
+
+### Ce qui manque
+
+Par ordre d'utilité : la **tonalité**, qui trancherait l'orthographe enharmonique
+(l'application écrit les bémols par défaut, faute de mieux) et écarterait les accords
+hors du ton ; les **renversements notés** (`Do/Mi`), reconnus mais pas écrits ; les
+**dominantes altérées** (`7♭9`, `7♯11`) — sur le fichier témoin, ce qui reste
+inexpliqué est presque uniquement une seconde mineure au-dessus de la fondamentale,
+et il faudrait décider au cas par cas si c'est une altération, une inflexion
+microtonale ou une note étrangère, ce qu'on ne peut pas faire sans connaître le ton ;
+et un relevé qui **ne dépende pas de la grille métrique** — il n'y a aujourd'hui ni
+découpage ni endroit où écrire sans elle, et la bande le dit.
 
 ## Ce qui n'est pas encore là
 

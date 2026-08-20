@@ -2,14 +2,22 @@ import Foundation
 import SpectreCore
 
 // Vérifie le relevé des accords sur une grille fabriquée : on sait ce qui est joué,
-// donc on sait ce qui doit être lu. Les pièges sont choisis, pas trouvés au hasard —
-// ce sont ceux sur lesquels un détecteur d'accords se casse toujours :
+// donc on sait ce qui doit être lu.
+//
+// **Le banc part du son et va jusqu'au nom**, en passant par la vraie analyse et la
+// vraie matrice — c'est la seule façon d'éprouver un relevé qui lit l'image plutôt
+// que le signal. Ce qui est vérifié n'est donc pas une formule mais une chaîne :
+// synthétiser, analyser, relever les sommets, compter les tenues, écarter les
+// harmoniques, nommer.
+//
+// Les pièges sont choisis, pas trouvés au hasard — ce sont ceux sur lesquels un
+// détecteur d'accords se casse toujours :
 //
 //   - majeur contre mineur sur un timbre riche, parce que la tierce majeure est déjà
 //     dans les harmoniques de la fondamentale ;
 //   - un renversement, parce que la note la plus grave n'est pas la fondamentale ;
-//   - une pédale de basse sous un accord qui change ;
-//   - Do majeur contre La mineur, qui partagent deux notes sur trois.
+//   - une sixte contre son mineur septième, qui sont le même jeu de notes ;
+//   - une note de passage à la basse, qui ne doit pas entrer dans l'accord.
 
 var failures = 0
 
@@ -26,10 +34,9 @@ let beat = 60 / bpm
 
 /// Une note, avec assez d'harmoniques pour que le problème soit réel.
 ///
-/// Le timbre est volontairement riche : une sinusoïde pure rendrait la tâche
-/// facile et ne prouverait rien. Six harmoniques décroissantes, c'est à peu près un
-/// piano ou une guitare — et c'est ce qui met la tierce majeure fantôme dans le
-/// chromagramme.
+/// Le timbre est volontairement riche : une sinusoïde pure rendrait la tâche facile
+/// et ne prouverait rien. Six harmoniques décroissantes, c'est à peu près un piano ou
+/// une guitare — et c'est ce qui met la tierce majeure fantôme dans le spectre.
 func note(midi: Int, from start: Double, seconds: Double, gain: Double,
           into buffer: inout [Float]) {
     let f0 = Pitch.frequency(ofMidi: Double(midi))
@@ -55,41 +62,76 @@ struct Bar {
     var pitches: [Int]      // ce que joue l'accompagnement, en MIDI
     var bass: Int           // ce que joue la basse, en MIDI
     var expected: Chord
+    /// Une note qui ne dure qu'un temps, posée au troisième : c'est une broderie, et
+    /// elle ne doit pas entrer dans l'accord.
+    var passing: Int?
+    /// Vrai pour une basse qui marche : deux notes d'un demi-temps chacune.
+    var walking: Int?
+
+    init(pitches: [Int], bass: Int, expected: Chord, passing: Int? = nil,
+         walking: Int? = nil) {
+        self.pitches = pitches
+        self.bass = bass
+        self.expected = expected
+        self.passing = passing
+        self.walking = walking
+    }
 }
 
-func render(_ bars: [Bar]) -> (bass: [Float], harmony: [Float]) {
+/// Rend la grille en un seul signal — celui qu'on afficherait.
+///
+/// Un seul, et c'est le changement de fond : le relevé ne lit plus deux pistes
+/// séparées mais l'image, et l'image est un mixage. La basse y est un peu plus forte,
+/// comme dans la vraie vie.
+func render(_ bars: [Bar]) -> [Float] {
     let seconds = Double(bars.count) * 4 * beat + 1
-    var bass = [Float](repeating: 0, count: Int(seconds * rate))
-    var harmony = [Float](repeating: 0, count: Int(seconds * rate))
+    var mix = [Float](repeating: 0, count: Int(seconds * rate))
     for (index, bar) in bars.enumerated() {
         let start = Double(index) * 4 * beat
         for pitch in bar.pitches {
-            note(midi: pitch, from: start, seconds: 4 * beat - 0.02, gain: 1, into: &harmony)
+            note(midi: pitch, from: start, seconds: 4 * beat - 0.02, gain: 1, into: &mix)
+        }
+        if let passing = bar.passing {
+            note(midi: passing, from: start + 2 * beat, seconds: beat - 0.03, gain: 1,
+                 into: &mix)
         }
         // La basse rejoue à chaque temps : c'est ce que fait une basse.
         for b in 0..<4 {
-            note(midi: bar.bass, from: start + Double(b) * beat,
-                 seconds: beat - 0.03, gain: 1.4, into: &bass)
+            let midi = (bar.walking != nil && b >= 2) ? bar.walking! : bar.bass
+            note(midi: midi, from: start + Double(b) * beat, seconds: beat - 0.03,
+                 gain: 1.4, into: &mix)
         }
     }
-    return (bass, harmony)
+    return mix
 }
 
 let tempo = TempoGrid(bpm: bpm, origin: 0, beatsPerBar: 4, confidence: 10)
 
-/// Ce que le relevé donne pour chaque mesure, au temps le plus central.
-func read(_ bars: [Bar]) -> [Chord?] {
-    let (bass, harmony) = render(bars)
-    let track = ChordDetector.detect(bass: bass, harmony: harmony,
-                                     sampleRate: rate, tempo: tempo)
-    return bars.indices.map { index in
-        // Le troisième temps : loin des deux coutures.
-        let t = Double(index) * 4 * beat + 2.5 * beat
-        return track.segment(at: t)?.chord
-    }
+/// Le chemin complet : le son, la matrice, le contraste, la carte, le relevé.
+func read(_ bars: [Bar], settings: ChordSettings = defaults) -> ChordTrack {
+    let mix = render(bars)
+    let spectrogram = OfflineAnalysis.run(samples: mix, sampleRate: rate,
+                                          settings: AnalysisSettings())
+    var display = DisplaySettings()
+    display = AutoContrast.settings(basedOn: display, in: spectrogram) ?? display
+    let map = NoteMap.build(spectrogram, referenceA: display.referenceA,
+                            prominence: settings.prominence)
+    return ChordDetector.detect(map: map, display: display, tempo: tempo,
+                                settings: settings)
 }
 
+/// Les réglages du banc : la portée « mesure », puisque c'est une mesure qu'on joue.
+var defaults: ChordSettings = {
+    var s = ChordSettings()
+    s.scope = .span
+    return s
+}()
+
 func nom(_ c: Chord?) -> String { c?.label() ?? "—" }
+func noms(_ notes: [SoundingNote]) -> String {
+    notes.map { $0.name() + ($0.role == .extra ? "?" : ($0.role == .root ? "*" : "")) }
+        .joined(separator: " ")
+}
 
 // MARK: - L'écriture des noms
 
@@ -106,34 +148,15 @@ check(Chord(root: 2, quality: .minor7).label() == "Ré-7", "le mineur septième"
       Chord(root: 2, quality: .minor7).label())
 check(Chord(root: 11, quality: .halfDiminished).label() == "Siø", "le demi-diminué",
       Chord(root: 11, quality: .halfDiminished).label())
-check(Chord(root: 11, quality: .diminished).label() == "Si°", "le diminué",
-      Chord(root: 11, quality: .diminished).label())
+check(Chord(root: 0, quality: .major6).label() == "Do6", "la sixte",
+      Chord(root: 0, quality: .major6).label())
 check(Chord(root: 10, quality: .major).label() == "Si♭", "les bémols par défaut",
       Chord(root: 10, quality: .major).label())
-check(Chord.vocabulary.count == 108, "douze fondamentales et neuf couleurs",
-      "\(Chord.vocabulary.count) accords")
-
-// MARK: - Les gabarits
-
-print()
-print("=== Gabarits harmoniques ===")
-let doSeul = ChordDetector.noteTemplate(0)
-check(doSeul[0] > doSeul[7] && doSeul[7] > doSeul[4] && doSeul[4] > 0,
-      "une note seule porte déjà sa quinte puis sa tierce majeure",
-      String(format: "Do %.2f, Sol %.2f, Mi %.2f", doSeul[0], doSeul[7], doSeul[4]))
-check(doSeul[1] == 0 && doSeul[6] == 0,
-      "et rien sur les degrés qu'aucune harmonique n'atteint")
-// C'est la propriété qui fait tout marcher : le gabarit de Do mineur contient un Mi
-// fantôme, donc la présence d'un Mi dans le signal ne suffit plus à conclure majeur.
-let doMineur = ChordDetector.template(Chord(root: 0, quality: .minor))
-let doMajeur = ChordDetector.template(Chord(root: 0, quality: .major))
-check(doMineur[4] > 0, "le gabarit mineur contient la tierce majeure fantôme",
-      String(format: "%.3f", doMineur[4]))
-check(doMajeur[4] > doMineur[4] * 3, "mais bien moins que le majeur ne la porte",
-      String(format: "%.3f contre %.3f", doMajeur[4], doMineur[4]))
-check(ChordDetector.cosine(doMajeur, doMineur) < 0.95,
-      "les deux gabarits restent distincts",
-      String(format: "cosinus %.3f", ChordDetector.cosine(doMajeur, doMineur)))
+check(Chord(root: 0, quality: .major6).pitchClasses == [0, 4, 7, 9],
+      "et la sixte porte bien ses quatre notes",
+      Chord(root: 0, quality: .major6).pitchClasses.map(String.init).joined(separator: " "))
+check(Chord.vocabulary.count == 12 * ChordQuality.allCases.count,
+      "douze fondamentales par couleur", "\(Chord.vocabulary.count) accords")
 
 // MARK: - Le découpage
 
@@ -149,6 +172,57 @@ let decalees = ChordDetector.beatBounds(tempo: decale, duration: 10)
 check(decalees.allSatisfy { $0 >= 0 }, "aucune frontière avant le début du fichier")
 check(abs(decalees[0] - 0.3) < 1e-9, "elles suivent l'origine de la grille",
       String(format: "%.2f s", decalees[0]))
+let mesures = ChordDetector.barSpans(tempo: tempo, duration: 9)
+check(mesures.count == 4, "quatre mesures entières tiennent dans neuf secondes",
+      "\(mesures.count)")
+check(mesures.last.map { $0.upperBound <= 9 } ?? false,
+      "et la dernière ne déborde pas")
+
+// MARK: - La carte des notes
+
+print()
+print("=== La carte des notes ===")
+// Une note tenue, seule. Ce qu'on doit retrouver dans la carte : elle, et pas ses
+// harmoniques une fois le tri fait.
+var seule = [Float](repeating: 0, count: Int(rate * 3))
+note(midi: 60, from: 0.2, seconds: 2.6, gain: 1, into: &seule)
+let matriceSeule = OfflineAnalysis.run(samples: seule, sampleRate: rate,
+                                       settings: AnalysisSettings())
+var affichage = DisplaySettings()
+affichage = AutoContrast.settings(basedOn: affichage, in: matriceSeule) ?? affichage
+let carteSeule = NoteMap.build(matriceSeule, referenceA: affichage.referenceA)
+check(!carteSeule.isEmpty, "la carte se relève sur une vraie matrice",
+      "\(carteSeule.columnCount) colonnes, \(carteSeule.noteCount) demi-tons")
+
+let tenuesSeule = ChordVoicing.held(in: carteSeule, from: 0.5, to: 2.5,
+                                    display: affichage, settings: defaults)
+check(tenuesSeule.contains { $0.midi == 60 }, "la note jouée y est",
+      noms(tenuesSeule))
+check(tenuesSeule.count == 1,
+      "et elle seule : ses six harmoniques sont expliquées par elle",
+      "\(tenuesSeule.count) raies — \(noms(tenuesSeule))")
+// Le voisinage immédiat, qui est le défaut qu'on a vu sur de la vraie musique : la
+// traînée d'une note forte ne doit pas devenir une note un demi-ton à côté.
+check(!tenuesSeule.contains { abs($0.midi - 60) == 1 },
+      "et rien à un demi-ton d'elle")
+
+// La netteté exigée est bien ce qui l'écarte : à zéro, la traînée revient.
+var molle = defaults
+molle.prominence = 0
+let carteMolle = NoteMap.build(matriceSeule, referenceA: affichage.referenceA,
+                               prominence: 0)
+let tenuesMolles = ChordVoicing.held(in: carteMolle, from: 0.5, to: 2.5,
+                                     display: affichage, settings: molle)
+check(tenuesMolles.count >= tenuesSeule.count,
+      "sans exigence de netteté, la carte retient au moins autant de raies",
+      "\(tenuesMolles.count) contre \(tenuesSeule.count)")
+
+// Le contraste commande : monter le noir au-dessus de la note l'efface.
+var sombre = affichage
+sombre.floorDb = 0
+check(ChordVoicing.held(in: carteSeule, from: 0.5, to: 2.5, display: sombre,
+                        settings: defaults).isEmpty,
+      "une image réglée toute noire ne tient aucune raie")
 
 // MARK: - Une grille simple
 
@@ -162,14 +236,34 @@ let grille: [Bar] = [
     Bar(pitches: [53, 57, 60], bass: 29, expected: Chord(root: 5, quality: .major)),
     Bar(pitches: [55, 59, 62], bass: 31, expected: Chord(root: 7, quality: .major)),
 ]
-let lus = read(grille)
-for (bar, chord) in zip(grille, lus) {
-    check(chord?.root == bar.expected.root,
-          "la fondamentale de \(bar.expected.label()) est trouvée", "lu \(nom(chord))")
+let lue = read(grille)
+check(lue.segments.count == grille.count, "une mesure jouée donne un segment",
+      "\(lue.segments.count) segments")
+for (bar, segment) in zip(grille, lue.segments) {
+    check(segment.chord?.root == bar.expected.root,
+          "la fondamentale de \(bar.expected.label()) est trouvée",
+          "lu \(nom(segment.chord)) sur \(noms(segment.notes))")
 }
-check(zip(grille, lus).allSatisfy { $0.expected == $1 },
+check(zip(grille, lue.segments).allSatisfy { $0.expected == $1.chord },
       "les quatre accords sont nommés exactement",
-      lus.map(nom).joined(separator: " "))
+      lue.segments.map { nom($0.chord) }.joined(separator: " "))
+
+// L'adéquation, qui est tout le propos : ce qui a été retenu est dans l'accord.
+let inexpliquees = lue.segments.flatMap { $0.notes.filter { $0.role == .extra } }
+check(inexpliquees.isEmpty,
+      "aucune raie tenue ne reste inexpliquée par le nom retenu",
+      inexpliquees.isEmpty ? "" : noms(inexpliquees))
+check(lue.segments.allSatisfy { !$0.notes.isEmpty },
+      "et chaque nom s'appuie sur des raies qu'on peut montrer",
+      lue.segments.map { "\($0.notes.count)" }.joined(separator: " "))
+// Les raies retenues portent toutes une classe de l'accord, à leur octave.
+check(lue.segments.allSatisfy { segment in
+          guard let chord = segment.chord else { return false }
+          return segment.notes.allSatisfy { chord.pitchClasses.contains($0.pitchClass) }
+      },
+      "toutes appartiennent à l'accord, quelle que soit l'octave")
+check(lue.segments.allSatisfy { $0.notes.contains { $0.role == .root } },
+      "et la fondamentale est marquée dans chacune")
 
 // MARK: - Majeur contre mineur
 
@@ -182,216 +276,196 @@ let couleurs: [Bar] = [
     Bar(pitches: [62, 65, 69], bass: 38, expected: Chord(root: 2, quality: .minor)),
 ]
 let teintes = read(couleurs)
-for (bar, chord) in zip(couleurs, teintes) {
-    check(chord == bar.expected, "\(bar.expected.label()) sur un timbre à six harmoniques",
-          "lu \(nom(chord))")
+for (bar, segment) in zip(couleurs, teintes.segments) {
+    check(segment.chord == bar.expected,
+          "\(bar.expected.label()) sur un timbre à six harmoniques",
+          "lu \(nom(segment.chord)) sur \(noms(segment.notes))")
 }
 
-// MARK: - Renversement et pédale
+// MARK: - Ce que la basse tranche
 
 print()
 print("=== Ce que la basse tranche ===")
-// Do majeur premier renversement : la basse joue Mi. Sans la piste de basse on
-// hésiterait ; avec elle, il faut justement ne PAS conclure Mi mineur — les notes
-// jouées sont celles de Do, et Mi- demanderait un Sol♯.
+// Do majeur premier renversement : la basse joue Mi. Sans elle on hésiterait ; avec
+// elle, il faut justement ne PAS conclure Mi mineur — les notes jouées sont celles de
+// Do, et Mi- demanderait un Sol♯.
 let renverse: [Bar] = [
     Bar(pitches: [64, 67, 72], bass: 40, expected: Chord(root: 0, quality: .major)),
     Bar(pitches: [60, 64, 67], bass: 36, expected: Chord(root: 0, quality: .major)),
 ]
 let renverses = read(renverse)
-check(renverses[0]?.root == 0,
+check(renverses.segments[0].chord?.root == 0,
       "un renversement reste l'accord de sa fondamentale, pas de sa basse",
-      "lu \(nom(renverses[0]))")
+      "lu \(nom(renverses.segments[0].chord)) sur \(noms(renverses.segments[0].notes))")
 
-// Pédale : la basse reste sur Do pendant que l'accompagnement change. La basse ne
-// doit pas imposer sa note à un accord qui ne la contient pas.
-let pedale: [Bar] = [
-    Bar(pitches: [60, 64, 67], bass: 36, expected: Chord(root: 0, quality: .major)),
-    Bar(pitches: [65, 69, 72], bass: 36, expected: Chord(root: 5, quality: .major)),
+// La sixte et le mineur septième : **exactement les mêmes notes**, seule la basse les
+// sépare. C'est le cas qui a fait entrer les sixtes au vocabulaire.
+let sixtes: [Bar] = [
+    Bar(pitches: [60, 64, 67, 69], bass: 36, expected: Chord(root: 0, quality: .major6)),
+    Bar(pitches: [60, 64, 67, 69], bass: 33, expected: Chord(root: 9, quality: .minor7)),
 ]
-let pedales = read(pedale)
-check(pedales[0]?.root == 0, "sous la pédale, le premier accord est le sien",
-      "lu \(nom(pedales[0]))")
-check(pedales[1]?.pitchClasses.contains(5) == true,
-      "et le second contient toujours ce qui est joué au-dessus",
-      "lu \(nom(pedales[1]))")
+let lues = read(sixtes)
+check(lues.segments[0].chord?.root == 0 && lues.segments[1].chord?.root == 9,
+      "les mêmes notes se nomment selon leur basse",
+      "\(nom(lues.segments[0].chord)) puis \(nom(lues.segments[1].chord))")
 
-// MARK: - Septièmes
+// MARK: - Ce qui ne dure pas
 
 print()
-print("=== Septièmes ===")
-let septiemes: [Bar] = [
-    Bar(pitches: [62, 65, 69, 72], bass: 38, expected: Chord(root: 2, quality: .minor7)),
-    Bar(pitches: [55, 59, 62, 65], bass: 31, expected: Chord(root: 7, quality: .dominant7)),
-    Bar(pitches: [60, 64, 67, 71], bass: 36, expected: Chord(root: 0, quality: .major7)),
-    Bar(pitches: [60, 64, 67, 71], bass: 36, expected: Chord(root: 0, quality: .major7)),
+print("=== Notes de passage ===")
+// Une broderie d'un temps sur quatre au-dessus, et une basse qui marche en dessous :
+// ni l'une ni l'autre ne doit entrer dans l'accord, et c'est la seule explication
+// qu'on doive à quelqu'un qui les voit à l'écran.
+let passages: [Bar] = [
+    Bar(pitches: [60, 64, 67], bass: 36, expected: Chord(root: 0, quality: .major),
+        passing: 62),
+    Bar(pitches: [60, 64, 67], bass: 36, expected: Chord(root: 0, quality: .major),
+        walking: 38),
 ]
-let lues = read(septiemes)
-for (bar, chord) in zip(septiemes, lues) {
-    check(chord?.root == bar.expected.root,
-          "la fondamentale de \(bar.expected.label())", "lu \(nom(chord))")
-}
-check(zip(septiemes, lues).filter { $0.expected == $1 }.count >= 3,
-      "au moins trois des quatre septièmes sont nommées entièrement",
-      lues.map(nom).joined(separator: " "))
-// Et l'inverse : une triade ne doit pas s'écrire en septième.
-let triades: [Bar] = Array(repeating:
-    Bar(pitches: [60, 64, 67], bass: 36, expected: Chord(root: 0, quality: .major)), count: 4)
-check(read(triades).allSatisfy { $0?.quality == .major },
-      "une triade tenue quatre mesures ne devient pas une septième",
-      read(triades).map(nom).joined(separator: " "))
+let broderies = read(passages)
+check(broderies.segments[0].chord == Chord(root: 0, quality: .major),
+      "une broderie d'un temps ne change pas le nom de la mesure",
+      "lu \(nom(broderies.segments[0].chord)) sur \(noms(broderies.segments[0].notes))")
+check(!broderies.segments[0].notes.contains { $0.pitchClass == 2 },
+      "et elle n'est pas retenue : elle n'a pas tenu la mesure")
+check(broderies.segments[1].chord == Chord(root: 0, quality: .major),
+      "une basse qui marche ne change pas le nom non plus",
+      "lu \(nom(broderies.segments[1].chord)) sur \(noms(broderies.segments[1].notes))")
+check(!broderies.segments[1].notes.contains { $0.pitchClass == 2 },
+      "et la note de passage de la basse n'est pas retenue")
 
-// MARK: - Les notes qu'on entoure
-
-print()
-print("=== Fondamentales, pas harmoniques ===")
-
-// Un spectre fabriqué, ligne à ligne, sur le vrai découpage du banc : 36 lignes par
-// octave. On y pose des notes avec leurs harmoniques et l'on demande lesquelles ont
-// été jouées. C'est le seul moyen de savoir si la règle marche — sur un vrai morceau,
-// on ne sait pas ce qui a été joué, c'est précisément la question.
-let plan = BinLayout(binCount: 343, minFrequency: 25, maxFrequency: 18000,
-                     binsPerOctave: 36, sampleRate: 44100)
-
-/// Pose une note et ses harmoniques dans un spectre en dB.
-func pose(_ midi: Int, at level: Float, harmonics: Int = 6, into spectre: inout [Float]) {
-    for h in 1...harmonics {
-        let f = Pitch.frequency(ofMidi: Double(midi)) * Double(h)
-        guard f > plan.minFrequency, f < plan.maxFrequency else { continue }
-        let centre = Int(plan.bin(of: f).rounded())
-        // Une raie occupe trois lignes, comme dans le vrai banc.
-        for d in -1...1 where centre + d >= 0 && centre + d < spectre.count {
-            // Décroissance de 8 dB par rang : un timbre ordinaire.
-            let value = level - 8 * Float(h - 1) - Float(abs(d)) * 3
-            spectre[centre + d] = max(spectre[centre + d], value)
-        }
-    }
-}
-
-func noms(_ notes: [SoundingNote]) -> String {
-    notes.map { $0.name() }.joined(separator: " ")
-}
-
-// Une seule note, richement harmonique. Do3 = 48. Ses harmoniques tombent sur Do4
-// (2ᵉ), Sol4 (3ᵉ), Do5 (4ᵉ), Mi5 (5ᵉ) — donc sur les trois notes de Do majeur.
-// C'est le pire cas, et celui qu'on rencontre tout le temps.
-var seule = [Float](repeating: -120, count: plan.binCount)
-pose(48, at: -20, into: &seule)
-let seulement = ChordVoicing.sounding(Chord(root: 0, quality: .major), in: seule, layout: plan)
-check(seulement.count == 1, "une note seule ne donne qu'une note, pas sa série",
-      noms(seulement).isEmpty ? "aucune" : noms(seulement))
-check(seulement.first?.midi == 48, "et c'est bien la fondamentale", noms(seulement))
-check(seulement.first?.isRoot == true, "reconnue comme fondamentale de l'accord")
-
-// Trois notes réellement jouées : Do3, Mi3, Sol3. Chacune traîne ses harmoniques,
-// qui retombent sur les mêmes classes — il faut les trois, et rien de plus.
-var triade = [Float](repeating: -120, count: plan.binCount)
-pose(48, at: -20, into: &triade)
-pose(52, at: -22, into: &triade)
-pose(55, at: -24, into: &triade)
-let troisNotes = ChordVoicing.sounding(Chord(root: 0, quality: .major), in: triade, layout: plan)
-check(troisNotes.map(\.midi) == [48, 52, 55], "une triade jouée donne ses trois notes",
-      noms(troisNotes))
-
-// Le cas inverse, celui que la règle doit épargner : un doublement à l'octave. Do4
-// est joué *plus fort* que ne le voudrait la seule harmonique de Do3, donc quelqu'un
-// joue là.
-var doublee = [Float](repeating: -120, count: plan.binCount)
-pose(48, at: -30, into: &doublee)
-pose(60, at: -18, into: &doublee)
-let deux = ChordVoicing.sounding(Chord(root: 0, quality: .major), in: doublee, layout: plan)
-check(deux.map(\.midi).contains(60) && deux.map(\.midi).contains(48),
-      "une octave jouée plus fort que l'harmonique se voit", noms(deux))
-
-// Une note étrangère à l'accord n'est pas montrée, même forte.
-var etrangere = [Float](repeating: -120, count: plan.binCount)
-pose(49, at: -18, harmonics: 1, into: &etrangere)   // Do♯3
-let hors = ChordVoicing.sounding(Chord(root: 0, quality: .major), in: etrangere, layout: plan)
-check(hors.isEmpty, "ce qui n'appartient pas à l'accord n'est pas entouré",
-      noms(hors).isEmpty ? "rien" : noms(hors))
-
-// Le noir de l'image fait plancher. Le défaut, trouvé à l'usage : une raie très en
-// dessous de ce que l'écran montre était entourée et nommée à un endroit
-// parfaitement noir — et, pire, elle expliquait ensuite comme sa propre harmonique la
-// vraie note deux octaves plus haut, qui disparaissait du même coup.
-//
-// Les niveaux sont ceux qu'il faut pour que le **plancher visible soit le seul** à
-// trancher : le fantôme est à 27 dB sous la note la plus forte, donc dans la plage
-// dynamique, mais 17 dB sous le noir de l'écran. Sans cette précaution le contrôle
-// serait creux — l'écart relatif suffirait à l'écarter et l'on ne vérifierait rien.
-var fantome = [Float](repeating: -120, count: plan.binCount)
-pose(30, at: -68, harmonics: 1, into: &fantome)   // Sol♭1, invisible à l'écran
-pose(54, at: -41, harmonics: 4, into: &fantome)   // Sol♭3, la vraie note
-let sansPlancher = ChordVoicing.sounding(Chord(root: 6, quality: .major),
-                                         in: fantome, layout: plan)
-let avecPlancher = ChordVoicing.sounding(Chord(root: 6, quality: .major),
-                                         in: fantome, layout: plan, visibleFloor: -51)
-check(avecPlancher.allSatisfy { $0.level > -51 },
-      "rien n'est entouré sous le noir de l'image", noms(avecPlancher))
-check(avecPlancher.map(\.midi).contains(54),
-      "et la vraie note, elle, reste entourée", noms(avecPlancher))
-check(sansPlancher.count >= avecPlancher.count,
-      "sans plancher, il y en aurait davantage — c'était le défaut",
-      "\(noms(sansPlancher)) contre \(noms(avecPlancher))")
-
-// Le silence ne produit rien.
-let vide2 = [Float](repeating: -120, count: plan.binCount)
-check(ChordVoicing.sounding(Chord(root: 0, quality: .major), in: vide2, layout: plan).isEmpty,
-      "un spectre plat ne donne aucune note")
-check(ChordVoicing.sounding(Chord(root: 0, quality: .major), in: [], layout: plan).isEmpty,
-      "et un spectre absent non plus")
-
-// Les noms sont ceux du reste de l'application, octave comprise.
-check(SoundingNote(midi: 60, level: 0, isRoot: true).name() == "Do4",
-      "les notes sont nommées comme partout ailleurs",
-      SoundingNote(midi: 60, level: 0, isRoot: true).name())
-check(SoundingNote(midi: 58, level: 0, isRoot: false).name() == "Si♭3",
-      "bémols compris", SoundingNote(midi: 58, level: 0, isRoot: false).name())
-
-// MARK: - Ponctualité
-
-print()
-print("=== Ponctualité ===")
-// Les fenêtres sont longues — 186 ms pour l'accompagnement, 372 pour la basse — et
-// centrées sur leur trame. Une trame posée juste avant un changement voit donc déjà
-// un peu de l'accord suivant. La question est de savoir si ça suffit à faire basculer
-// le temps d'avant : un accord annoncé un temps trop tôt est pire qu'inutile, on
-// pose les doigts au mauvais moment.
-let ponctuel: [Bar] = [
-    Bar(pitches: [60, 64, 67], bass: 36, expected: Chord(root: 0, quality: .major)),
-    Bar(pitches: [60, 64, 67], bass: 36, expected: Chord(root: 0, quality: .major)),
-    Bar(pitches: [53, 57, 60], bass: 29, expected: Chord(root: 5, quality: .major)),
-    Bar(pitches: [53, 57, 60], bass: 29, expected: Chord(root: 5, quality: .major)),
+// La preuve par l'inverse : la même note, tenue toute la mesure, entre dans le relevé.
+let tenue: [Bar] = [
+    Bar(pitches: [60, 62, 64, 67], bass: 36, expected: Chord(root: 0, quality: .major)),
 ]
-let (bassePonctuelle, harmoniePonctuelle) = render(ponctuel)
-let pistePonctuelle = ChordDetector.detect(bass: bassePonctuelle,
-                                           harmony: harmoniePonctuelle,
-                                           sampleRate: rate, tempo: tempo)
-// Le changement tombe au début de la troisième mesure, soit le temps 8.
-let changement = 8 * beat
-let avant = pistePonctuelle.segment(at: changement - beat / 2)?.chord
-let apres = pistePonctuelle.segment(at: changement + beat / 2)?.chord
-check(avant?.root == 0, "le dernier temps avant le changement porte encore l'ancien accord",
-      "lu \(nom(avant))")
-check(apres?.root == 5, "le premier temps après porte le nouveau", "lu \(nom(apres))")
-// Et l'instant exact du basculement, mesuré : le premier temps qui porte Fa.
-let premierFa = pistePonctuelle.segments.first { $0.chord?.root == 5 }
-check(premierFa.map { abs($0.start - changement) < 1e-6 } ?? false,
-      "le basculement tombe pile sur le temps du changement",
-      premierFa.map { String(format: "%.3f s au lieu de %.3f", $0.start, changement) } ?? "jamais")
+let avecRe = read(tenue)
+check(avecRe.segments[0].notes.contains { $0.pitchClass == 2 },
+      "la même note, tenue, est retenue — c'est bien la durée qui tranche",
+      noms(avecRe.segments[0].notes))
+// Et le vocabulaire sait maintenant l'écrire : c'est un `add9`, pas un majeur avec
+// une note en trop. C'est exactement ce que les enrichissements ont apporté.
+check(avecRe.segments[0].chord == Chord(root: 0, quality: .add9),
+      "et le vocabulaire sait l'écrire : c'est une neuvième ajoutée",
+      nom(avecRe.segments[0].chord))
+check(avecRe.segments[0].notes.allSatisfy { $0.role != .extra },
+      "plus rien n'y reste inexpliqué", noms(avecRe.segments[0].notes))
+// Sans les enrichissements, la même mesure retombe sur sa triade et montre la
+// neuvième en pointillés : le relevé ne cache pas ce qu'il ne sait pas nommer.
+var sansEnrichissements = defaults
+sansEnrichissements.vocabulary = .all
+let sansNeuvieme = read(tenue, settings: sansEnrichissements)
+check(sansNeuvieme.segments[0].chord == Chord(root: 0, quality: .major),
+      "un vocabulaire sans enrichissements retombe sur la triade",
+      nom(sansNeuvieme.segments[0].chord))
+check(sansNeuvieme.segments[0].notes.contains { $0.pitchClass == 2 && $0.role == .extra },
+      "et montre la neuvième comme inexpliquée plutôt que de la taire",
+      noms(sansNeuvieme.segments[0].notes))
 
-// MARK: - Silence
+// MARK: - Le silence
 
 print()
 print("=== Silence ===")
 let vide = [Float](repeating: 0, count: Int(rate * 4))
-let rien = ChordDetector.detect(bass: vide, harmony: vide, sampleRate: rate, tempo: tempo)
+let matriceVide = OfflineAnalysis.run(samples: vide, sampleRate: rate,
+                                      settings: AnalysisSettings())
+let carteVide = NoteMap.build(matriceVide, referenceA: 440)
+let rien = ChordDetector.detect(map: carteVide, display: DisplaySettings(), tempo: tempo,
+                                settings: defaults)
 check(!rien.segments.isEmpty, "le silence produit quand même des segments",
       "\(rien.segments.count)")
 check(rien.segments.allSatisfy { $0.chord == nil }, "mais aucun n'est nommé")
-let sansGrille = ChordDetector.detect(bass: vide, harmony: vide, sampleRate: rate,
-                                      tempo: TempoGrid(bpm: 0, origin: 0))
+check(rien.segments.allSatisfy { $0.notes.isEmpty }, "et aucune raie n'est montrée")
+let sansGrille = ChordDetector.detect(map: carteVide, display: DisplaySettings(),
+                                      tempo: TempoGrid(bpm: 0, origin: 0),
+                                      settings: defaults)
 check(sansGrille.isEmpty, "sans grille métrique, aucun relevé — il n'y aurait où l'écrire")
+
+// MARK: - La portée « sélection »
+
+print()
+print("=== Le passage sélectionné ===")
+// La deuxième mesure, seule : de 2 à 4 secondes, c'est La mineur.
+let choisi = 2.0...4.0
+let mix = render(grille)
+let matrice = OfflineAnalysis.run(samples: mix, sampleRate: rate, settings: AnalysisSettings())
+var vue = DisplaySettings()
+vue = AutoContrast.settings(basedOn: vue, in: matrice) ?? vue
+let carte = NoteMap.build(matrice, referenceA: vue.referenceA)
+let selection = ChordDetector.detect(map: carte, display: vue, tempo: tempo,
+                                     settings: defaults, selection: choisi)
+check(selection.segments.count == 1,
+      "une sélection ne donne qu'un seul accord, pour tout le passage",
+      "\(selection.segments.count) segments")
+check(selection.segments.first.map {
+          abs($0.start - choisi.lowerBound) < 1e-9 && abs($0.end - choisi.upperBound) < 1e-9
+      } ?? false,
+      "posé exactement sur les bornes choisies",
+      selection.segments.first.map { String(format: "%.2f–%.2f s", $0.start, $0.end) } ?? "—")
+check(selection.segments.first?.chord == Chord(root: 9, quality: .minor),
+      "et c'est bien ce qui s'y joue",
+      "\(nom(selection.segments.first?.chord)) sur \(noms(selection.segments[0].notes))")
+
+// En portée « temps », la sélection ne change rien : elle sert à travailler un
+// passage, pas à découper le relevé.
+var parTemps = defaults
+parTemps.scope = .beat
+let ignoree = ChordDetector.detect(map: carte, display: vue, tempo: tempo,
+                                   settings: parTemps, selection: choisi)
+check(ignoree.segments.count > grille.count,
+      "la portée « temps » ignore la sélection et découpe toujours au temps",
+      "\(ignoree.segments.count) segments")
+
+// MARK: - Le vocabulaire
+
+print()
+print("=== Vocabulaire ===")
+var triades = defaults
+triades.vocabulary = .triads
+check(triades.chords.count == 36, "le vocabulaire restreint aux triades",
+      "\(triades.chords.count) accords")
+check(ChordSettings.Vocabulary.allCases.map { $0.qualities.count }
+        == ChordSettings.Vocabulary.allCases.map { $0.qualities.count }.sorted(),
+      "les paliers vont du plus pauvre au plus riche",
+      ChordSettings.Vocabulary.allCases.map { "\($0.qualities.count)" }
+        .joined(separator: " < "))
+check(ChordSettings().vocabulary == .extended,
+      "et les enrichissements sont là par défaut")
+check(triades.chords.allSatisfy { $0.quality != .dominant7 },
+      "et il ne contient plus de septièmes")
+let septiemes: [Bar] = [
+    Bar(pitches: [62, 65, 69, 72], bass: 38, expected: Chord(root: 2, quality: .minor7)),
+    Bar(pitches: [55, 59, 62, 65], bass: 31, expected: Chord(root: 7, quality: .dominant7)),
+]
+let enrichis: [Bar] = [
+    // Do neuvième : Do Mi Sol Si♭ Ré. La neuvième est jouée haut, comme on la joue.
+    Bar(pitches: [60, 64, 67, 70, 74], bass: 36,
+        expected: Chord(root: 0, quality: .ninth)),
+    // Fa treizième : Fa La Mi♭ Sol Ré, la quinte omise comme on l'omet. Les notes
+    // sont étalées — un voicing qui empilerait la neuvième et la septième sur des
+    // demi-tons voisins ne se joue pas, et l'une masquerait l'autre dans l'image.
+    Bar(pitches: [53, 57, 63, 67, 74], bass: 41,
+        expected: Chord(root: 5, quality: .thirteenth)),
+]
+let lusEnrichis = read(enrichis)
+for (bar, segment) in zip(enrichis, lusEnrichis.segments) {
+    check(segment.chord == bar.expected, "\(bar.expected.label()) est nommée entièrement",
+          "lu \(nom(segment.chord)) sur \(noms(segment.notes))")
+}
+
+let riches = read(septiemes)
+for (bar, segment) in zip(septiemes, riches.segments) {
+    check(segment.chord == bar.expected, "\(bar.expected.label()) est nommée entièrement",
+          "lu \(nom(segment.chord)) sur \(noms(segment.notes))")
+}
+let pauvres = read(septiemes, settings: triades)
+check(pauvres.segments.allSatisfy {
+          $0.chord == nil || triades.vocabulary.qualities.contains($0.chord!.quality)
+      },
+      "lue en triades, la même grille n'écrit plus une seule septième",
+      pauvres.segments.map { nom($0.chord) }.joined(separator: " "))
+check(pauvres.segments.allSatisfy { $0.notes.contains { $0.role == .extra } },
+      "et la septième qu'on ne peut plus nommer est montrée comme inexpliquée",
+      pauvres.segments.map { noms($0.notes) }.joined(separator: " | "))
 
 // MARK: - Regroupement à l'affichage
 
@@ -399,29 +473,34 @@ print()
 print("=== Regroupement ===")
 let track = ChordTrack(segments: (0..<16).map { k in
     ChordSegment(start: Double(k) * beat, end: Double(k + 1) * beat,
-                 chord: Chord(root: k < 8 ? 0 : 5, quality: .major), confidence: 1)
+                 chord: Chord(root: k < 8 ? 0 : 5, quality: .major), confidence: 1,
+                 notes: [SoundingNote(midi: 60 + (k < 8 ? 0 : 5), level: -20, role: .root),
+                         SoundingNote(midi: 72 + k, level: -30, role: .chord)])
 })
-let parTemps = track.labels(from: 0, to: 8, grouping: 1)
+let parTempsEcrit = track.labels(from: 0, to: 8, grouping: 1)
 let parMesure = track.labels(from: 0, to: 8, grouping: 4)
-check(parTemps.count == 2, "seize temps sur deux accords donnent deux étiquettes",
-      "\(parTemps.count)")
+check(parTempsEcrit.count == 2, "seize temps sur deux accords donnent deux étiquettes",
+      "\(parTempsEcrit.count)")
 check(parMesure.count == 2, "et par mesure aussi : un accord tenu ne se réécrit pas",
       "\(parMesure.count)")
 check(parMesure[0].chord?.root == 0 && parMesure[1].chord?.root == 5,
       "dans l'ordre, avec les bons accords",
       parMesure.map { nom($0.chord) }.joined(separator: " "))
-// Les huit premiers temps portent Do : l'étiquette couvre les deux mesures d'un
-// coup, et s'arrête là où Fa commence — pas au bout de la première mesure.
 check(abs(parMesure[0].end - 8 * beat) < 1e-9,
       "et la première étiquette s'étend jusqu'au changement, pas jusqu'à la barre",
       String(format: "finit à %.2f s", parMesure[0].end))
+// Les raies d'une étiquette fondue sont celles qui ont tenu **partout** : le cadre
+// qu'on dessine court sur toute sa longueur, et montrer une raie qui n'a tenu que
+// dans la première mesure serait dessiner un cadre là où il n'y a rien.
+check(parMesure[0].notes.map(\.midi) == [60],
+      "et ses raies sont celles que tous les temps partagent",
+      parMesure[0].notes.map { $0.name() }.joined(separator: " "))
+
 // MARK: L'alignement sur les barres de mesure
 //
-// Le piège, et il a coûté cher : une grille dont le premier temps fort ne tombe pas
-// à zéro. Les temps relevés commencent alors avant lui, et regrouper « tous les
-// quatre temps depuis le début du fichier » place les noms à côté des barres — en
-// avance d'exactement ce qui sépare les deux. À l'écran l'accord change une mesure
-// trop tôt, ce qui s'entend avant de se voir.
+// Le piège, et il a coûté cher : une grille dont le premier temps fort ne tombe pas à
+// zéro. Les temps relevés commencent alors avant lui, et regrouper « tous les quatre
+// temps depuis le début du fichier » place les noms à côté des barres.
 let origine = 1.637
 let decalee = TempoGrid(bpm: bpm, origin: origine, beatsPerBar: 4)
 let premiers = ChordDetector.beatBounds(tempo: decalee, duration: 20)
@@ -432,8 +511,6 @@ let piste = ChordTrack(segments: premiers.dropLast().enumerated().map { k, t in
 check(piste.firstBeat < 0, "un morceau qui commence avant le premier temps fort",
       "premier temps relevé : \(piste.firstBeat)")
 let parBarres = piste.labels(from: 0, to: 20, grouping: 4)
-// Chaque étiquette, sauf éventuellement la première (une levée), doit commencer sur
-// un temps fort.
 let alignees = parBarres.dropFirst().allSatisfy {
     decalee.opensBar(decalee.beat(at: $0.start).rounded())
         && abs(decalee.beat(at: $0.start) - decalee.beat(at: $0.start).rounded()) < 1e-6
@@ -444,7 +521,6 @@ check(alignees, "les étiquettes tombent sur les barres de mesure",
 check(parBarres.first.map { $0.end - $0.start } ?? 0 < 4 * beat - 1e-9,
       "et la première est une levée, plus courte qu'une mesure",
       String(format: "%.2f temps", (parBarres[0].end - parBarres[0].start) / beat))
-// Sans décalage, rien ne change : la levée est vide et tous les groupes font quatre.
 let droite = ChordTrack(segments: (0..<16).map { k in
     ChordSegment(start: Double(k) * beat, end: Double(k + 1) * beat,
                  chord: Chord(root: k / 4, quality: .major), confidence: 1)
@@ -452,9 +528,6 @@ let droite = ChordTrack(segments: (0..<16).map { k in
 check(droite.labels(from: 0, to: 8, grouping: 4).count == 4,
       "une grille à l'origine donne quatre mesures pleines",
       "\(droite.labels(from: 0, to: 8, grouping: 4).count)")
-
-// Le nom d'un groupe est le plus long, pas le premier : une anacrouse ne nomme pas
-// la mesure.
 let anacrouse = ChordTrack(segments: (0..<4).map { k in
     ChordSegment(start: Double(k) * beat, end: Double(k + 1) * beat,
                  chord: Chord(root: k == 0 ? 7 : 0, quality: .major), confidence: 1)
@@ -462,6 +535,29 @@ let anacrouse = ChordTrack(segments: (0..<4).map { k in
 check(anacrouse.labels(from: 0, to: 2, grouping: 4).first?.chord?.root == 0,
       "un temps isolé ne donne pas son nom à la mesure",
       nom(anacrouse.labels(from: 0, to: 2, grouping: 4).first?.chord))
+
+// MARK: - Les réglages
+
+print()
+print("=== Réglages ===")
+check(ChordSettings().rarityWeight == 0,
+      "les couleurs rares ne coûtent rien par défaut")
+check(ChordSettings().hold > 0.5 && ChordSettings().hold < 1,
+      "et une raie doit tenir l'essentiel de l'intervalle",
+      String(format: "%.0f %%", ChordSettings().hold * 100))
+let partiel = Data("{\"scope\":1}".utf8)
+if let relus = try? JSONDecoder().decode(ChordSettings.self, from: partiel) {
+    check(relus.scope == .span && relus.hold == ChordSettings().hold,
+          "un réglage enregistré par une version plus ancienne se relit",
+          String(format: "tenue %.2f", relus.hold))
+} else {
+    check(false, "un réglage enregistré par une version plus ancienne se relit",
+          "décodage refusé")
+}
+check(ChordSettings().mapKey != { var s = ChordSettings(); s.prominence = 6; return s }().mapKey,
+      "changer la netteté périme la carte des notes")
+check(ChordSettings().mapKey == { var s = ChordSettings(); s.hold = 0.9; return s }().mapKey,
+      "changer la tenue, non : elle se relit sur la même carte")
 
 print()
 print(failures == 0 ? "Tout est bon." : "\(failures) vérification(s) en échec.")

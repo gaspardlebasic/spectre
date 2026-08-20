@@ -24,13 +24,22 @@ import SpectreCore
 /// permettre là où un retard s'entend.
 public final class ToneGenerator {
     /// Assez pour l'accord le plus fourni que le relevé sait entourer.
-    public static let maxVoices = 8
+    ///
+    /// Douze depuis que le survol fait entendre les raies **à toutes leurs octaves**
+    /// : un accord de quatre notes doublé sur trois octaves en demande autant, et
+    /// couper les plus hautes donnerait à entendre autre chose que ce qui est
+    /// entouré.
+    public static let maxVoices = 12
 
     private let engine = AVAudioEngine()
     private var source: AVAudioSourceNode?
-    /// Deux `Double` par voix : fréquence visée, puis gain visé.
+    /// Deux `Double` par voix : fréquence visée, puis gain visé. Et une case de
+    /// plus, en queue, pour la forme d'onde — elle traverse la frontière du thread
+    /// audio par le même chemin que le reste, plutôt que d'être lue sur une
+    /// propriété que deux fils toucheraient en même temps.
+    private static let waveformSlot = 2 * ToneGenerator.maxVoices
     private let controls =
-        UnsafeMutablePointer<Double>.allocate(capacity: 2 * ToneGenerator.maxVoices)
+        UnsafeMutablePointer<Double>.allocate(capacity: 2 * ToneGenerator.maxVoices + 1)
     private var release: DispatchWorkItem?
 
     /// Niveau de la sinusoïde. Assez pour s'entendre par-dessus rien, assez peu
@@ -49,6 +58,7 @@ public final class ToneGenerator {
             controls[2 * voice] = 440
             controls[2 * voice + 1] = 0
         }
+        controls[Self.waveformSlot] = Double(ToneWaveform.sine.rawValue)
 
         let rate = engine.outputNode.outputFormat(forBus: 0).sampleRate
         let sampleRate = rate > 0 ? rate : 48000
@@ -64,7 +74,9 @@ public final class ToneGenerator {
             let count = Int(frameCount)
             let targets = UnsafeBufferPointer(start: self.controls,
                                               count: 2 * Self.maxVoices)
-            self.oscillator.render(targets: targets,
+            let waveform = ToneWaveform(rawValue: Int(self.controls[Self.waveformSlot]))
+                ?? .sine
+            self.oscillator.render(targets: targets, waveform: waveform,
                                    into: UnsafeMutableBufferPointer(start: samples, count: count),
                                    count: count)
             // Les autres canaux reçoivent la copie du premier.
@@ -86,9 +98,13 @@ public final class ToneGenerator {
 
     /// Fait sonner une fréquence, ou fait taire si elle est nulle. Appeler aussi
     /// souvent qu'on veut : c'est le glissando qui absorbe les écarts.
+    ///
+    /// Une sinusoïde, et rien d'autre : c'est le chemin de la raie désignée dans le
+    /// spectre, où le son doit être la fréquence pointée et pas un timbre bâti
+    /// dessus. Voir `ToneWaveform`.
     public func play(_ frequency: Double?) {
         guard let frequency, frequency > 0 else { return stopImmediately() }
-        play(chord: [frequency])
+        play(chord: [frequency], waveform: .sine)
     }
 
     /// Fait sonner plusieurs hauteurs ensemble.
@@ -97,11 +113,12 @@ public final class ToneGenerator {
     /// s'éteignent alors dans le même fondu que tout le reste. Couper net une voix
     /// qui sonnait s'entendrait comme un clic, exactement au moment où l'on passe
     /// d'un accord à un autre.
-    public func play(chord frequencies: [Double]) {
+    public func play(chord frequencies: [Double], waveform: ToneWaveform = .triangle) {
         release?.cancel()
         release = nil
         let wanted = frequencies.filter { $0 > 0 }.prefix(Self.maxVoices)
         guard !wanted.isEmpty else { return silence() }
+        controls[Self.waveformSlot] = Double(waveform.rawValue)
 
         let perVoice = ChordOscillator.perVoiceLevel(level, voices: wanted.count)
         for (voice, frequency) in wanted.enumerated() {

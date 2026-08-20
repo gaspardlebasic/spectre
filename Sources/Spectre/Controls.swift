@@ -165,6 +165,20 @@ struct StemColumn: View {
 /// l'affichage. Groupé par ce à quoi cela sert, chaque groupe portant son nom —
 /// cela coûte quelques points de hauteur et fait gagner la question « où est réglé
 /// le tempo, déjà ? ».
+/// L'heure de lecture, dans sa propre vue.
+///
+/// Elle change à chaque image pendant la lecture. Écrite au milieu du groupe
+/// « Lecture », elle en refaisait tout le contenu — deux curseurs et leurs
+/// légendes — pour changer un chiffre de seconde en seconde.
+private struct PlayheadClock: View {
+    let model: AppModel
+
+    var body: some View {
+        Text(AppModel.format(model.playhead))
+            .font(.system(size: 11, design: .monospaced))
+    }
+}
+
 struct ControlPanel: View {
     @Bindable var model: AppModel
     let close: () -> Void
@@ -295,8 +309,7 @@ struct ControlPanel: View {
                 }
                 .disabled(model.duration == 0)
                 .help("Lire ou mettre en pause (espace)")
-                Text(AppModel.format(model.playhead))
-                    .font(.system(size: 11, design: .monospaced))
+                PlayheadClock(model: model)
                 Spacer()
             }
             caption("espace", "Lire ou mettre en pause. Cliquer dans l'image déplace "
@@ -430,15 +443,21 @@ struct ControlPanel: View {
                    et retire du même coup ce bruit de l'aimant du curseur.
                    """)
             HStack(spacing: 8) {
+                Button("Ouverture") { model.restoreOpeningContrast() }
+                    .controlSize(.small)
+                    .disabled(model.spectrogram.columnCount == 0)
+                    .help("Revenir au contraste mesuré sur le morceau entier à son "
+                          + "ouverture — le repère d'où l'on est parti. K")
                 Button("Auto") { model.applyAutoContrast() }
                     .controlSize(.small)
                     .disabled(model.spectrogram.columnCount == 0)
+                    .help("Régler noir, clair et pente d'après ce qui est à l'écran. ⇧K")
                 Spacer()
             }
             caption("Le niveau rendu noir. Le monter nettoie le fond, et retire du "
                     + "même coup ce bruit de l'aimantation du curseur.")
-            caption("K", "Régler noir, clair et pente d'après ce qui est à l'écran ; "
-                    + "⇧K le fait sur tout le morceau.")
+            caption("K", "Revenir au contraste mesuré à l'ouverture du morceau ; "
+                    + "⇧K le règle d'après ce qui est à l'écran.")
             slider("Zoom", value: Binding(get: { log2(model.verticalZoom) },
                                           set: { model.verticalZoom = pow(2, $0) }),
                    // 16× au maximum : au-delà, la vue butterait sur sa propre
@@ -481,6 +500,7 @@ struct ControlPanel: View {
                       Noms d'accords, au pied de la grille : un par temps, par mesure ou par phrase selon le zoom.
                       Devinés sur la basse et l'accompagnement séparés — il faut donc que les quatre pistes soient calculées, et qu'une grille métrique existe.
                       La pâleur d'un nom dit l'incertitude du relevé.
+                      Comment ils sont devinés se règle dans ⌘, — dont une portée « un accord par mesure, ou par sélection ».
                       """)
                 Picker("", selection: $model.display.useFlats) {
                     Text("♭").tag(true)

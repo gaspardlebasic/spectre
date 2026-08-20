@@ -122,9 +122,11 @@ struct DrumLaneView: View {
             }
             drawLoop(&context, size)
             drawLabels(&context, size)
-            drawPlayhead(&context, size)
             if let notice = model.drumLaneNotice { draw(notice, &context, size) }
         }
+        // La tête de lecture est un calque à part, ici comme sur l'image : elle
+        // avance à chaque instant, et le relevé de batterie ne bouge pas avec elle.
+        .overlay(PlayheadLine(model: model))
         // Molette, pincement, clic et ⇧ + glisser : tout ce que l'image accepte, la
         // ligne l'accepte aussi. Une bande de rythme sur laquelle on ne peut ni se
         // poser ni zoomer ne sert à rien.
@@ -265,15 +267,6 @@ struct DrumLaneView: View {
         context.fill(Path(CGRect(x: min(x1, Double(size.width)), y: 0,
                                  width: max(Double(size.width) - x1, 0), height: size.height)),
                      with: .color(outside))
-    }
-
-    private func drawPlayhead(_ context: inout GraphicsContext, _ size: CGSize) {
-        let x = model.point(ofTime: model.playhead)
-        guard x >= 0, x <= Double(size.width) else { return }
-        var line = Path()
-        line.move(to: CGPoint(x: x, y: 0))
-        line.addLine(to: CGPoint(x: x, y: size.height))
-        context.stroke(line, with: .color(.white.opacity(0.85)), lineWidth: 1)
     }
 
     /// Le relevé se fait pendant qu'on travaille, et la batterie peut avoir été

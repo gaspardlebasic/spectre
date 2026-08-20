@@ -199,6 +199,9 @@ public final class SpectrogramRenderer: NSObject, MTKViewDelegate {
     private let tileRows = 4096
     public private(set) var columns = 0
     public private(set) var bins = 0
+    /// Incrémenté à chaque téléversement. La vue s'en sert pour savoir que l'image
+    /// a changé sous elle, sans avoir à comparer des millions de valeurs.
+    public private(set) var generation = 0
 
     /// Ce que le rendu doit afficher : renseigné à chaque image par la vue.
     public var viewport = Viewport()
@@ -232,6 +235,7 @@ public final class SpectrogramRenderer: NSObject, MTKViewDelegate {
     public func upload(_ spectrogram: Spectrogram) {
         let bins = spectrogram.binCount
         let columns = spectrogram.columnCount
+        generation += 1
         guard bins > 0, columns > 0 else {
             tiles = nil
             self.columns = 0

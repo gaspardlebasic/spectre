@@ -95,7 +95,40 @@ final class TimelineMetalView: MTKView {
         clock = link
     }
 
-    @objc private func step() { draw() }
+    /// Ce dont l'image dépend. Tant que rien de tout cela ne bouge, le dessin
+    /// serait pixel pour pixel le même : le calque garde ce qu'il montre déjà, et
+    /// le GPU se tait. C'est tout le sujet de la lecture au repos — la tête de
+    /// lecture avance, mais elle est peinte ailleurs, dans son propre calque.
+    private struct RenderKey: Equatable {
+        var viewport: Viewport
+        var display: DisplaySettings
+        var hueOrigin: Int
+        var generation: Int
+        var size: CGSize
+    }
+    private var drawn: RenderKey?
+    private var wasVisible = true
+
+    @objc private func step() {
+        guard let model else { return }
+        model.tick(viewSize: bounds.size)
+
+        // Fenêtre masquée ou entièrement recouverte : le son continue, l'image
+        // n'a personne pour la regarder. Le retour au premier plan repart d'un
+        // dessin complet, le système ayant pu jeter le contenu du calque.
+        let visible = window?.occlusionState.contains(.visible) ?? false
+        defer { wasVisible = visible }
+        guard visible else { return }
+        if !wasVisible { drawn = nil }
+
+        let key = RenderKey(viewport: model.viewport, display: model.display,
+                            hueOrigin: Preferences.shared.hueOrigin,
+                            generation: model.renderer?.generation ?? 0,
+                            size: drawableSize)
+        guard key != drawn else { return }
+        drawn = key
+        draw()
+    }
 
     deinit { clock?.invalidate() }
 
@@ -283,12 +316,37 @@ struct SpectrogramSurface: NSViewRepresentable {
 
         func draw(in view: MTKView) {
             guard let renderer else { return }
-            model.tick(viewSize: view.bounds.size)
             renderer.viewport = model.viewport
             renderer.display = model.display
             renderer.hueOrigin = Preferences.shared.hueOrigin
             renderer.draw(in: view)
         }
+    }
+}
+
+// MARK: - Tête de lecture
+
+/// La tête de lecture, seule, dans son propre calque.
+///
+/// Elle avance à chaque image pendant la lecture, et **tout ce qui partage son
+/// dessin se refait avec elle**. Tant qu'elle était un trait du canevas des
+/// repères, jouer un morceau sans toucher à rien refaisait cent vingt fois par
+/// seconde la grille, les accords et leurs textes — pour déplacer un trait d'un
+/// pixel. Ici, c'est un rectangle qu'on décale : le compositeur s'en charge.
+struct PlayheadLine: View {
+    let model: AppModel
+
+    var body: some View {
+        GeometryReader { geometry in
+            let x = model.point(ofTime: model.playhead)
+            if x >= 0, x <= Double(geometry.size.width) {
+                Rectangle()
+                    .fill(.white.opacity(0.85))
+                    .frame(width: 1, height: geometry.size.height)
+                    .offset(x: x)
+            }
+        }
+        .allowsHitTesting(false)
     }
 }
 
@@ -309,7 +367,6 @@ struct TimelineOverlay: View {
             drawChordNotes(&context, size)
             drawLoop(&context, size)
             drawRuler(&context, size)
-            drawPlayhead(&context, size)
             drawSnap(&context, size)
         }
         .allowsHitTesting(false)
@@ -387,13 +444,18 @@ struct TimelineOverlay: View {
     /// Hauteur de la bande où s'écrivent les accords, en bas de l'image.
     private var chordBandHeight: Double { AppModel.chordBandHeight }
 
-    /// Les notes de l'accord survolé, entourées dans l'image et nommées.
+    /// Les raies sur lesquelles l'accord survolé a été décidé, entourées et nommées.
     ///
-    /// Ne sont montrées que les notes **jouées** : une note isolée peuple le spectre
-    /// de son octave, de sa quinte à la douzième et de sa tierce majeure deux octaves
-    /// plus haut, et entourer tout ce qui appartient aux classes de l'accord
-    /// reviendrait à entourer une forêt dont presque rien n'a été joué. Le tri se fait
-    /// dans `ChordVoicing`, qui écarte toute raie explicable par une raie plus grave.
+    /// **Toutes celles qui ont compté, à toutes leurs octaves** — c'est le contrat du
+    /// relevé par raies : le cadre ne montre pas une idée de l'accord, il montre les
+    /// traits mêmes que le relevé a lus dans cette image. Ce qui n'est pas entouré n'a
+    /// que trois raisons de ne pas l'être : la raie n'a pas duré tout l'intervalle,
+    /// une raie plus grave l'explique dans ses harmoniques, ou elle est trop pâle pour
+    /// le seuil réglé.
+    ///
+    /// Une raie tenue que l'accord ne contient pas est entourée **en pointillés** :
+    /// elle a compté dans la décision — contre le nom retenu, même — et l'effacer
+    /// laisserait à l'écran un trait franc dont rien n'expliquerait le silence.
     private func drawChordNotes(_ context: inout GraphicsContext, _ size: CGSize) {
         guard let segment = model.hoveredChord, let chord = segment.chord else { return }
         let notes = model.hoveredChordNotes
@@ -423,15 +485,26 @@ struct TimelineOverlay: View {
 
             let colour = noteColour(note.pitchClass)
             let box = CGRect(x: x0, y: y - thickness / 2, width: x1 - x0, height: thickness)
+            let opacity: Double
+            var style = StrokeStyle(lineWidth: 1)
+            switch note.role {
+            case .root: opacity = 0.95; style.lineWidth = 1.5
+            case .chord: opacity = 0.7
+            case .extra:
+                opacity = 0.6
+                // Pointillés : tenue, mais étrangère au nom. On la montre pour qu'on
+                // voie ce que le relevé a dû laisser de côté.
+                style.dash = [3, 3]
+            }
             context.stroke(Path(roundedRect: box, cornerRadius: 2),
-                           with: .color(colour.opacity(note.isRoot ? 0.95 : 0.7)),
-                           lineWidth: note.isRoot ? 1.5 : 1)
+                           with: .color(colour.opacity(opacity)), style: style)
 
             // Le nom se pose à gauche du cadre quand la place existe, dedans sinon.
-            let text = Text(note.name(flats: model.display.useFlats))
+            let text = Text(note.name(flats: model.display.useFlats)
+                            + (note.role == .extra ? " ?" : ""))
                 .font(.system(size: 10, weight: note.isRoot ? .bold : .medium,
                               design: .rounded))
-                .foregroundStyle(colour)
+                .foregroundStyle(colour.opacity(note.role == .extra ? 0.75 : 1))
             let resolved = context.resolve(text)
             let width = resolved.measure(in: size).width
             let left = x0 - width - 5
@@ -607,13 +680,6 @@ struct TimelineOverlay: View {
                             .foregroundStyle(.white.opacity(0.6)),
                          at: CGPoint(x: x + 26, y: rulerHeight / 2))
         }
-    }
-
-    private func drawPlayhead(_ context: inout GraphicsContext, _ size: CGSize) {
-        let x = model.point(ofTime: model.playhead)
-        guard x >= 0, x <= Double(size.width) else { return }
-        vertical(&context, x: x, from: 0, to: Double(size.height),
-                 color: .white.opacity(0.85), width: 1)
     }
 
     // MARK: Aimantation

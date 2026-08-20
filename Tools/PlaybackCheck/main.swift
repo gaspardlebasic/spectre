@@ -132,13 +132,19 @@ print("\n=== Accord entendu ===")
 // produit, pas le geste : que les hauteurs demandées y soient toutes, qu'aucune
 // autre ne s'y invite, qu'un accord ne soit pas plus fort qu'une note seule, et
 // qu'une voix qu'on retire s'en aille sans claquer.
+//
+// **En triangles**, comme dans l'application : un accord de sinusoïdes pures n'a
+// pas de timbre et ne ressemble à aucun instrument qui aurait pu le jouer. Vérifier
+// ici une forme que l'application n'emploie plus reviendrait à ne rien vérifier —
+// c'est la forme réellement jouée qui doit ne pas saturer et ne pas claquer.
 
 let voiceCount = 8
 var chord = ChordOscillator(sampleRate: sampleRate, voiceCount: voiceCount)
 var posed = Set<Int>()
 
 /// Fait avancer l'accord de `seconds` sur les fréquences demandées.
-func advance(_ frequencies: [Double], seconds: Double, level: Double = 0.08) -> [Float] {
+func advance(_ frequencies: [Double], seconds: Double, level: Double = 0.08,
+             waveform: ToneWaveform = .triangle) -> [Float] {
     // Deux `Double` par voix, et ils ne veulent pas dire la même chose : une
     // fréquence d'attente pour la première, un gain **nul** pour la seconde. Les
     // remplir d'une seule valeur ferait jouer les voix inutilisées à plein.
@@ -154,7 +160,7 @@ func advance(_ frequencies: [Double], seconds: Double, level: Double = 0.08) -> 
     var output = [Float](repeating: 0, count: Int(sampleRate * seconds))
     targets.withUnsafeBufferPointer { t in
         output.withUnsafeMutableBufferPointer { o in
-            chord.render(targets: t, into: o, count: o.count)
+            chord.render(targets: t, waveform: waveform, into: o, count: o.count)
         }
     }
     return output
@@ -191,11 +197,22 @@ let triad = [261.626, 329.628, 391.995]
 let held = advance(triad, seconds: 0.5)
 let settled = held[(held.count / 2)...]
 let expected = ChordOscillator.perVoiceLevel(0.08, voices: 3)
+// La fondamentale d'un triangle de sommet 1 vaut 8/π² : c'est elle qu'on mesure,
+// le reste du niveau étant parti dans les harmoniques.
+let fondamentaleDuTriangle = 8 / (Double.pi * Double.pi)
+let attendu = expected * fondamentaleDuTriangle
 let heard = triad.map { amplitude(of: $0, in: settled) }
 check("les trois notes de l'accord sont toutes là",
-      heard.allSatisfy { abs($0 - expected) < 0.1 * expected },
+      heard.allSatisfy { abs($0 - attendu) < 0.1 * attendu },
       heard.map { String(format: "%.4f", $0) }.joined(separator: "  ")
-        + String(format: "  (attendu %.4f)", expected))
+        + String(format: "  (attendu %.4f)", attendu))
+// Et chacune porte son propre timbre : la 3ᵉ harmonique au neuvième de sa
+// fondamentale, comme le veut un triangle.
+let timbres = triad.map { amplitude(of: 3 * $0, in: settled) / amplitude(of: $0, in: settled) }
+check("chaque note porte ses harmoniques de triangle",
+      timbres.allSatisfy { abs($0 - 1.0 / 9) < 0.02 },
+      timbres.map { String(format: "%.4f", $0) }.joined(separator: "  ")
+        + String(format: "  (attendu %.4f)", 1.0 / 9))
 // Entre Mi et Sol il n'y a rien : une voix de trop, un repli, un battement se
 // verraient ici. Le seuil n'est pas zéro — une projection sur un bloc fini laisse
 // fuir quelques pour cent de ses voisines — mais il discrimine largement ce qu'on
@@ -221,6 +238,17 @@ check("un accord ne sonne pas plus fort qu'une note seule",
 check("et il ne sature jamais",
       quad.allSatisfy { abs($0) < 1 },
       String(format: "crête %.3f", quad.map { abs(Double($0)) }.max() ?? 0))
+
+// La raie désignée dans le spectre passe par le même moteur, sur une seule voix, et
+// doit rester une sinusoïde : une raie est une fréquence unique, et lui répondre par
+// un timbre ferait entendre des hauteurs que l'image ne montre pas.
+let raie = advance([261.626], seconds: 0.3, waveform: .sine)
+let raieSettled = raie[(raie.count / 2)...]
+let harmoniqueDeTrop = amplitude(of: 3 * 261.626, in: raieSettled)
+    / amplitude(of: 261.626, in: raieSettled)
+check("la raie désignée reste une sinusoïde pure",
+      harmoniqueDeTrop < 0.01,
+      String(format: "3ᵉ harmonique à %.5f de la fondamentale", harmoniqueDeTrop))
 
 // Passer de quatre notes à trois : la voix retirée doit s'éteindre en fondu.
 let dropped = advance([261.626, 311.127, 391.995], seconds: 0.3)

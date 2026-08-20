@@ -11,7 +11,38 @@ import UniformTypeIdentifiers
     private(set) var spectrogram = Spectrogram.empty
 
     var analysis = AnalysisSettings()
-    var display = DisplaySettings()
+
+    /// Les réglages d'affichage — et, depuis le relevé par raies, une **entrée du
+    /// relevé d'accords**.
+    ///
+    /// Le noir de l'image est la frontière entre ce qui est joué et ce qui ne l'est
+    /// pas : l'éclaircir fait entrer des raies pâles dans le relevé, le monter les
+    /// en sort. C'est voulu et c'est le cœur de la promesse — ce qu'on voit est ce
+    /// qui est lu — mais cela veut dire que tirer un curseur de contraste refait les
+    /// accords, d'où la coalescence par tour de boucle.
+    var display = DisplaySettings() {
+        didSet {
+            // Le diapason décide de où tombent les demi-tons : la carte elle-même
+            // est à refaire.
+            if display.referenceA != oldValue.referenceA {
+                releveCarteDesNotes()
+            } else if display.floorDb != oldValue.floorDb
+                        || display.ceilingDb != oldValue.ceilingDb
+                        || display.gamma != oldValue.gamma
+                        || display.tiltDbPerOctave != oldValue.tiltDbPerOctave {
+                scheduleChords()
+            }
+        }
+    }
+    /// Le contraste mesuré à l'ouverture du fichier, sur le morceau entier.
+    ///
+    /// Relevé **même quand une session enregistrée impose autre chose** : sans
+    /// cela, le retour au contraste d'ouverture n'aurait marché que sur un fichier
+    /// jamais ouvert auparavant, c'est-à-dire jamais dans l'usage réel. Il est
+    /// mesuré et non retenu d'une séance à l'autre : la même matrice donne la même
+    /// mesure, si bien que rouvrir un morceau retrouve exactement le même repère
+    /// sans qu'on ait rien à enregistrer.
+    @ObservationIgnored private var openingContrast: DisplaySettings?
     var viewport = Viewport()
 
     /// `var` et non `let` : SwiftUI n'accepte de fabriquer une liaison vers
@@ -41,8 +72,19 @@ import UniformTypeIdentifiers
     /// Raie sur laquelle le curseur s'est aimanté.
     var snap: SnapTarget?
 
-    /// Passage joué en boucle.
-    var loop: ClosedRange<Double>? { didSet { pushLoop() } }
+    /// Passage joué en boucle — et, en portée « mesure », le passage relevé.
+    ///
+    /// Les deux ne font qu'un exprès. Sélectionner un passage pour le travailler et
+    /// demander ce qui s'y joue sont le même geste : on n'allait pas faire tracer
+    /// deux rectangles pour la même intention. Le relevé suit donc la borne qu'on
+    /// tire, sans latence — le chromagramme est déjà là, voir `chromaCache`.
+    var loop: ClosedRange<Double>? {
+        didSet {
+            pushLoop()
+            guard loop != oldValue, Preferences.shared.chords.scope == .span else { return }
+            reloadChords()
+        }
+    }
     var loopEnabled = true { didSet { pushLoop() } }
 
     /// Grille métrique estimée au chargement, ajustable ensuite.
@@ -54,7 +96,7 @@ import UniformTypeIdentifiers
     var tempo: TempoGrid? {
         didSet {
             guard tempo != oldValue else { return }
-            releveAccords(separated: isSeparated, fingerprint: source?.fingerprint)
+            reloadChords()
         }
     }
 
@@ -74,13 +116,13 @@ import UniformTypeIdentifiers
     var showDrumLane = true
     @ObservationIgnored private var percussionToken = 0
 
-    /// Les accords devinés, un par temps. Vide tant que la séparation n'a pas eu
-    /// lieu : il y faut la basse et l'accompagnement **séparément**.
+    /// Les accords devinés — un par temps, ou un par mesure, ou un seul pour le
+    /// passage sélectionné, selon la portée réglée. Vide tant que la séparation n'a
+    /// pas eu lieu : il y faut la basse et l'accompagnement **séparément**.
     private(set) var chords = ChordTrack.empty
     private(set) var chordsPending = false
     /// Écrire les noms d'accords sous la grille.
     var showChords = true
-    @ObservationIgnored private var chordToken = 0
 
     /// Avancement de l'analyse (0…1), `nil` quand rien n'est en cours.
     var progress: Double?
@@ -98,6 +140,8 @@ import UniformTypeIdentifiers
     /// Dernière session écrite sur le disque, et depuis quand elle est périmée.
     @ObservationIgnored private var savedSession: FileSession?
     @ObservationIgnored private var staleSince: CFTimeInterval?
+    /// Dernier examen de la session, pour ne pas le refaire à chaque image.
+    @ObservationIgnored private var lastAutosaveCheck: CFTimeInterval = 0
 
     init() {
         // Quitter l'application ne doit pas coûter les réglages en cours : la
@@ -219,13 +263,18 @@ import UniformTypeIdentifiers
         renderer?.layout = spectrogram.layout
         renderer?.upload(spectrogram)
         percussionCache.removeAll()
-        // Le relevé des accords est rangé sous la grille métrique, qui n'appartient
-        // pas au morceau : deux morceaux à 120 BPM partagent la clé. Sans ce vidage,
-        // le second afficherait les accords du premier — une erreur silencieuse et
-        // parfaitement crédible à l'écran.
-        chordCache.removeAll()
         chords = .empty
         chordsPending = false
+        // La carte des notes de la nouvelle image. Elle part en tâche de fond ; le
+        // relevé des accords la suivra dès qu'elle sera là.
+        releveCarteDesNotes()
+
+        // Le contraste de l'ouverture, mesuré tout de suite et sur le morceau
+        // entier — avant même de savoir si une session va le remplacer. C'est une
+        // passe d'histogramme sur une matrice déjà en mémoire, sans commune mesure
+        // avec l'analyse qui vient de l'y mettre, et c'est ce qui donne à K un
+        // repère y compris sur un morceau qu'on rouvre.
+        openingContrast = AutoContrast.settings(basedOn: display, in: spectrogram)
 
         let saved = source.fingerprint.flatMap { SessionStore.load($0) }
         if let saved {
@@ -249,7 +298,7 @@ import UniformTypeIdentifiers
             fitIfNeeded()
             // Rien de connu non plus sur l'allure de l'enregistrement : on la
             // mesure plutôt que d'imposer un compromis.
-            applyAutoContrast(wholePiece: true)
+            restoreOpeningContrast()
         }
         savedSession = currentSession()
         staleSince = nil
@@ -296,6 +345,12 @@ import UniformTypeIdentifiers
     /// serait absurde. Elle est écrite avec le reste, et à la fermeture.
     private func autosave() {
         guard let fingerprint = source?.fingerprint else { return }
+        // Quatre fois par seconde suffisent à décider s'il faut écrire dans une
+        // seconde. Fabriquer et comparer la session à chaque image, cent vingt fois
+        // par seconde, coûtait plus cher que l'écriture elle-même.
+        let time = CACurrentMediaTime()
+        guard time - lastAutosaveCheck > 0.25 else { return }
+        lastAutosaveCheck = time
         let current = currentSession()
         guard current.withoutPlayhead != savedSession?.withoutPlayhead else {
             staleSince = nil
@@ -413,15 +468,36 @@ import UniformTypeIdentifiers
 
     /// Règle noir, clair et pente sur ce qu'on a sous les yeux.
     ///
-    /// Une seule règle plutôt que deux boutons : au cadrage d'ensemble, « ce qu'on
-    /// a sous les yeux » est le morceau entier, et le réglage vaut pour lui.
-    func applyAutoContrast(wholePiece: Bool = false) {
+    /// Sur ce qu'on regarde, et seulement là : le réglage sur le morceau entier
+    /// n'est plus un bouton, c'est le repère d'ouverture — voir
+    /// `restoreOpeningContrast()`. Deux commandes qui rendaient le même service au
+    /// cadrage d'ensemble en font une de trop.
+    func applyAutoContrast() {
         guard spectrogram.columnCount > 0 else { return }
         let found = AutoContrast.settings(basedOn: display, in: spectrogram,
-                                          columns: wholePiece ? nil : visibleColumns,
-                                          bins: wholePiece ? nil : visibleBins)
+                                          columns: visibleColumns, bins: visibleBins)
         guard let found else { return }
         display = found
+    }
+
+    /// Revient au contraste mesuré à l'ouverture du fichier.
+    ///
+    /// C'est le point de retour, et il en fallait un. Les trois réglages de
+    /// contraste se retouchent en permanence — on éclaircit pour aller chercher une
+    /// harmonique, on assombrit pour ne garder que les attaques — et l'on finit par
+    /// ne plus savoir d'où l'on est parti. Le seul repère qui vaille est celui que
+    /// l'application avait mesuré sur le morceau entier en l'ouvrant : ni un
+    /// compromis d'usine, ni le résultat d'un cadrage, l'allure de cet
+    /// enregistrement-là.
+    ///
+    /// Ne touche ni au gamma, ni à la palette, ni au diapason : ce sont des goûts,
+    /// pas des mesures, et les remettre d'office serait défaire un réglage qu'on
+    /// n'a pas demandé à défaire.
+    func restoreOpeningContrast() {
+        guard let opening = openingContrast else { return }
+        display.floorDb = opening.floorDb
+        display.ceilingDb = opening.ceilingDb
+        display.tiltDbPerOctave = opening.tiltDbPerOctave
     }
 
     // MARK: Grille
@@ -567,9 +643,26 @@ import UniformTypeIdentifiers
     @ObservationIgnored private var stemCache: [Set<Stem>: Spectrogram] = [:]
     /// Les relevés de batterie déjà faits, rangés comme les spectrogrammes.
     @ObservationIgnored private var percussionCache: [Set<Stem>: PercussionTrack] = [:]
-    /// Les relevés d'accords déjà faits, rangés par grille métrique — c'est elle qui
-    /// découpe, donc en changer change le relevé, et y revenir doit être immédiat.
-    @ObservationIgnored private var chordCache: [TempoGrid: ChordTrack] = [:]
+    /// La carte des notes de la matrice affichée : le sommet de chaque demi-ton,
+    /// colonne par colonne.
+    ///
+    /// C'est toute la dépense du relevé, et elle ne dépend que de la matrice et du
+    /// diapason. Ce qui vient ensuite — compter combien de temps chaque demi-ton
+    /// tient dans une mesure, comparer à cent trente-deux accords — se fait en
+    /// quelques millisecondes sur un morceau entier. C'est ce qui permet au relevé de
+    /// suivre le curseur de contraste et la borne d'une sélection qu'on tire.
+    @ObservationIgnored private var noteMap = NoteMap.empty
+    @ObservationIgnored private var noteMapToken = 0
+    /// Ce qui a servi à relever la carte : le diapason et la netteté demandée.
+    /// Changer l'un des deux la périme ; changer n'importe quel autre réglage, non.
+    @ObservationIgnored private var noteMapKey: Int?
+    /// Vrai quand un relevé est déjà demandé pour ce tour de boucle : tirer un
+    /// curseur émet des dizaines de changements par seconde, et un seul relevé par
+    /// image suffit.
+    @ObservationIgnored private var chordsScheduled = false
+    /// Un relevé est en route ; un autre est demandé derrière.
+    @ObservationIgnored private var chordsRunning = false
+    @ObservationIgnored private var chordsAgain = false
     @ObservationIgnored private var job: SeparationJob?
 
     var isSeparated: Bool {
@@ -697,7 +790,8 @@ import UniformTypeIdentifiers
         // donc séparément.
         relevePercussion(keeping: wanted, separated: separated, fingerprint: fingerprint,
                          mix: source)
-        releveAccords(separated: separated, fingerprint: fingerprint)
+        // Les accords, eux, se relèvent sur l'image : ils suivront tout seuls,
+        // quand la nouvelle matrice sera adoptée.
 
         // Ce qui se joue reste ce qui est coché — décocher la batterie la fait
         // taire, et vide sa ligne du même geste.
@@ -756,7 +850,8 @@ import UniformTypeIdentifiers
     /// de piste, sans quoi comparer deux pistes serait insupportable.
     private func adopt(spectrogram matrix: Spectrogram, playing file: URL?) {
         spectrogram = matrix
-        forgetVoicing()
+        // L'image a changé : la carte des notes aussi, et les accords avec elle.
+        releveCarteDesNotes()
         renderer?.layout = matrix.layout
         renderer?.upload(matrix)
         snap = nil
@@ -871,35 +966,12 @@ import UniformTypeIdentifiers
             .first { pointed >= $0.start && pointed < $0.end && $0.chord != nil }
     }
 
-    /// Les notes de l'accord survolé, telles qu'elles sonnent vraiment.
+    /// Les raies sur lesquelles l'accord survolé a été décidé.
     ///
-    /// Gardées d'un dessin à l'autre. Le spectre moyen d'un temps, c'est une
-    /// exponentiation par ligne et par colonne — vingt mille pour un temps — et
-    /// l'image se redessine soixante fois par seconde tant que la souris ne bouge
-    /// pas. Le calcul ne dépend que de l'accord désigné : il n'a aucune raison
-    /// d'être refait tant qu'on reste dessus.
-    @ObservationIgnored private var voicingCache: (key: ClosedRange<Double>,
-                                                   notes: [SoundingNote])?
-
-    var hoveredChordNotes: [SoundingNote] {
-        guard let segment = hoveredChord, let chord = segment.chord,
-              spectrogram.columnCount > 0, segment.end > segment.start else { return [] }
-        let key = segment.start...segment.end
-        if let cached = voicingCache, cached.key == key { return cached.notes }
-        let spectrum = spectrogram.averageSpectrum(from: segment.start, to: segment.end)
-        // Le noir de l'image sert de plancher : ce qu'on entoure est ce qu'on voit.
-        // C'est aussi le réglage de contraste qui commande, donc l'éclaircir dévoile
-        // des notes plus faibles — ce qui est le comportement qu'on attend.
-        let notes = ChordVoicing.sounding(chord, in: spectrum, layout: spectrogram.layout,
-                                          referenceA: display.referenceA,
-                                          visibleFloor: Float(display.floorDb))
-        voicingCache = (key, notes)
-        return notes
-    }
-
-    /// À jeter dès que l'image change : les mêmes bornes de temps ne désignent plus
-    /// le même contenu quand on passe d'une piste à l'autre.
-    func forgetVoicing() { voicingCache = nil }
+    /// Pas de calcul, pas de cache : le relevé les a rangées avec le segment. C'est
+    /// le point du nouveau relevé — ce qu'on entoure *est* ce qui a décidé du nom, et
+    /// non une seconde lecture du spectre qui pourrait dire autre chose.
+    var hoveredChordNotes: [SoundingNote] { hoveredChord?.notes ?? [] }
 
     // MARK: Écoute d'un accord
 
@@ -926,14 +998,30 @@ import UniformTypeIdentifiers
                 || current?.chord != soundingChord?.chord else { return }
         soundingChord = current
         guard let current else { return tone.stop() }
-        tone.play(chord: chordFrequencies(current.chord))
+        // En triangles, et non en sinusoïdes : un accord de sinusoïdes pures n'a pas
+        // de timbre, se confond avec la musique qu'il commente et ne ressemble à
+        // aucun instrument qui aurait pu le jouer. La raie désignée, elle, reste une
+        // sinusoïde — voir `ToneWaveform`.
+        tone.play(chord: chordFrequencies(current.chord), waveform: .triangle)
     }
 
+    /// Ce qu'on fait entendre : **toutes les raies retenues**, à leur octave.
+    ///
+    /// Toutes, y compris celles que l'accord ne contient pas — celles qui sont
+    /// entourées en pointillés. Ne jouer que les notes du nom rendrait l'écoute plus
+    /// jolie et la réponse fausse : la question posée en survolant est « est-ce bien
+    /// cela qui est là ? », et il faut pour y répondre entendre ce qui est là.
+    ///
+    /// Les voix sont limitées ; quand il y a trop de raies, ce sont les plus fortes
+    /// qui sonnent. Faute de raies — un passage réglé trop sombre — on retombe sur
+    /// l'accord de manuel à partir de Do3 : rester muet ne dirait pas si l'on n'a
+    /// rien trouvé ou si rien ne marche.
     private func chordFrequencies(_ chord: Chord) -> [Double] {
         let notes = hoveredChordNotes
         let midi: [Int] = notes.isEmpty
             ? chord.quality.intervals.map { 48 + chord.root + $0 }
-            : notes.map(\.midi)
+            : notes.sorted { $0.level > $1.level }
+                   .prefix(ToneGenerator.maxVoices).map(\.midi).sorted()
         return midi.map { Pitch.frequency(ofMidi: Double($0),
                                           referenceA: display.referenceA) }
     }
@@ -943,54 +1031,137 @@ import UniformTypeIdentifiers
         guard showChords, spectrogram.columnCount > 0 else { return nil }
         if chordsPending { return "Relevé des accords…" }
         guard chords.isEmpty else { return nil }
-        if !isSeparated { return "Accords : séparer les pistes d'abord" }
         if tempo == nil || (tempo?.bpm ?? 0) <= 0 { return "Accords : chercher la grille d'abord" }
-        return nil
+        return "Accords : rien de tenu à l'écran — éclaircir l'image"
     }
 
-    /// Devine les accords à partir des deux pistes qui les portent.
+    /// Relève la carte des notes de la matrice affichée, puis les accords.
     ///
-    /// **Toujours la basse et le « reste », quoi qu'on ait coché.** Ce n'est pas une
-    /// vue de ce qu'on écoute mais une lecture de ce qui est joué : retirer la basse
-    /// pour travailler ne doit pas effacer les accords qu'on est en train de relever.
-    /// C'est l'inverse du choix fait pour la ligne de batterie, et pour la même
-    /// raison — là-bas, décocher la batterie *veut dire* qu'on ne veut plus la voir.
+    /// La carte est la seule partie chère — un balayage de la matrice entière — et
+    /// elle ne dépend que de l'image et du diapason. Elle se refait donc à chaque
+    /// changement de piste affichée, en tâche de fond, et le relevé qui la suit se
+    /// refait, lui, à la moindre retouche de contraste : il est assez rapide pour ça.
     ///
-    /// Le relevé se refait quand la grille métrique change : c'est elle qui découpe.
-    private func releveAccords(separated: Bool, fingerprint: String?) {
-        chordToken += 1
-        let token = chordToken
-        guard separated, let fingerprint, let tempo, tempo.bpm > 0,
-              let bassFile = StemStore.url(.bass, for: fingerprint),
-              let otherFile = StemStore.url(.other, for: fingerprint) else {
+    /// Le jeton écarte la carte d'une image qu'on a laissée derrière soi — changer de
+    /// piste pendant qu'elle se calcule est le geste normal.
+    private func releveCarteDesNotes() {
+        noteMapToken += 1
+        let token = noteMapToken
+        noteMap = .empty
+        chordsAgain = false
+        guard spectrogram.columnCount > 0 else {
             chords = .empty
-            chordsPending = false
-            return
-        }
-        if let ready = chordCache[tempo] {
-            chords = ready
             chordsPending = false
             return
         }
         chords = .empty
         chordsPending = true
+        let matrix = spectrogram
         let referenceA = display.referenceA
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let bass = try? AudioSource.load(bassFile),
-                  let other = try? AudioSource.load(otherFile) else {
-                DispatchQueue.main.async { self?.chordsPending = false }
-                return
+        let prominence = Preferences.shared.chords.prominence
+        noteMapKey = Self.mapKey(referenceA: referenceA, prominence: prominence)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let map = NoteMap.build(matrix, referenceA: referenceA, prominence: prominence)
+            DispatchQueue.main.async {
+                guard let self, self.noteMapToken == token else { return }
+                self.noteMap = map
+                self.chordsPending = false
+                self.releveAccords()
             }
-            let track = ChordDetector.detect(bass: bass.mono, harmony: other.mono,
-                                             sampleRate: other.sampleRate,
-                                             tempo: tempo, referenceA: referenceA)
+        }
+    }
+
+    /// Devine les accords à partir des raies tenues de l'image.
+    ///
+    /// **Ce qui est affiché, et rien d'autre.** C'est le renversement du relevé
+    /// précédent, qui lisait toujours la basse et l'accompagnement séparés quoi qu'on
+    /// ait coché. L'ancien parti se défendait — « ce n'est pas une vue de ce qu'on
+    /// écoute mais une lecture de ce qui est joué » — mais il rendait impossible la
+    /// seule chose qui compte ici : qu'on puisse regarder l'image et comprendre le
+    /// nom. Masquer la voix retire maintenant ses tenues du relevé, ce qui est
+    /// souvent ce qu'on veut ; la remettre les y remet.
+    private func releveAccords() {
+        guard !noteMap.isEmpty, let tempo, tempo.bpm > 0 else {
+            chords = .empty
+            chordsPending = false
+            return
+        }
+        // Un seul relevé à la fois, et un seul en attente derrière. Tirer un curseur
+        // de contraste demande un relevé par image ; les empiler tous sur la file
+        // ferait chauffer la machine pour jeter aussitôt tous les résultats sauf le
+        // dernier.
+        guard !chordsRunning else {
+            chordsAgain = true
+            return
+        }
+        chordsRunning = true
+        let settings = Preferences.shared.chords
+        // La sélection n'est une portée que là où elle en est une. En portée
+        // « temps », tracer une boucle pour travailler un passage ne doit rien
+        // changer au relevé.
+        let selection = settings.scope == .span ? loop : nil
+        let map = noteMap
+        let vue = display
+        let token = noteMapToken
+        if chords.isEmpty { chordsPending = true }
+        // En tâche de fond, et pas par excès de prudence : à la mesure, le relevé
+        // d'un morceau entier prend trente millisecondes, mais au temps il faut
+        // recoudre sept cent cinquante décisions entre deux cent vingt-huit accords,
+        // et le quart de seconde que cela demande se verrait comme un à-coup sous le
+        // curseur qu'on est en train de tirer.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let track = ChordDetector.detect(map: map, display: vue, tempo: tempo,
+                                             settings: settings, selection: selection)
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.chordCache[tempo] = track
-                guard self.chordToken == token else { return }
+                self.chordsRunning = false
+                // La carte a changé sous nos pieds : ce relevé-ci ne décrit plus
+                // l'image affichée.
+                guard self.noteMapToken == token else { return }
                 self.chords = track
                 self.chordsPending = false
+                if self.chordsAgain {
+                    self.chordsAgain = false
+                    self.releveAccords()
+                }
             }
+        }
+    }
+
+    private static func mapKey(referenceA: Double, prominence: Double) -> Int {
+        var hasher = Hasher()
+        hasher.combine(referenceA)
+        hasher.combine(prominence)
+        return hasher.finalize()
+    }
+
+    /// Reprendre le relevé sur le morceau ouvert — après un tour de réglage, une
+    /// sélection nouvelle, un contraste retouché.
+    ///
+    /// La carte des notes ne se refait que si ce qui la fabrique a bougé : le
+    /// diapason, ou la netteté exigée d'une raie. Tout le reste se relit dessus.
+    func reloadChords() {
+        let settings = Preferences.shared.chords
+        if noteMapKey != Self.mapKey(referenceA: display.referenceA,
+                                     prominence: settings.prominence) {
+            releveCarteDesNotes()
+        } else {
+            releveAccords()
+        }
+    }
+
+    /// Le même, mais au plus une fois par tour de boucle.
+    ///
+    /// Tirer le curseur de contraste émet des dizaines de changements par seconde ;
+    /// relever les accords à chacun serait refaire trente fois le même travail pour
+    /// une seule image affichée.
+    private func scheduleChords() {
+        guard !chordsScheduled else { return }
+        chordsScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.chordsScheduled = false
+            self.releveAccords()
         }
     }
 

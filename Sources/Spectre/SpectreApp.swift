@@ -61,6 +61,9 @@ struct Entry {
             exit(SeparationCommand.run(path: arguments[flag + 1], into: destination,
                                        accelerated: !arguments.contains("--processeur")))
         }
+        if let flag = arguments.firstIndex(of: "--accords"), flag + 1 < arguments.count {
+            exit(ChordsCommand.run(path: arguments[flag + 1], arguments: arguments))
+        }
         SpectreApp.main()
     }
 }
@@ -147,10 +150,15 @@ struct SpectreApp: App {
                 }
                 .keyboardShortcut("r", modifiers: [.command, .option])
                 Divider()
-                Button("Contraste automatique") { model.applyAutoContrast() }
+                // K ramène au repère, ⇧K s'adapte à ce qu'on regarde. L'ancien ⇧K
+                // — le réglage automatique sur tout le morceau — a disparu : c'est
+                // exactement ce que K rend maintenant, à ceci près qu'il le rend
+                // tel qu'il était à l'ouverture plutôt que recalculé sur la piste
+                // qu'on affiche à cet instant.
+                Button("Contraste de l'ouverture") { model.restoreOpeningContrast() }
                     .keyboardShortcut("k", modifiers: [])
-                Button("Contraste automatique sur tout le morceau") {
-                    model.applyAutoContrast(wholePiece: true)
+                Button("Contraste automatique sur ce qui est à l'écran") {
+                    model.applyAutoContrast()
                 }
                 .keyboardShortcut("k", modifiers: [.shift])
             }
@@ -194,6 +202,7 @@ struct ContentView: View {
                 Color.black
                 SpectrogramSurface(model: model)
                 TimelineOverlay(model: model)
+                PlayheadLine(model: model)
                 if model.spectrogram.columnCount == 0 { welcome }
                 if let progress = model.progress { analysing(progress) }
             }
