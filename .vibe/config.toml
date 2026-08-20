@@ -1,0 +1,18 @@
+# Réglages de Vibe pour ce dépôt.
+#
+# Le fichier de l'utilisateur (`~/.vibe/config.toml`) sert de base ; celui-ci le
+# recouvre, et ne recouvre que ce qu'il nomme. On n'y impose délibérément ni
+# modèle ni agent par défaut : c'est l'affaire de qui travaille, pas du dépôt.
+#
+# Ce qui appartient au dépôt tient dans trois endroits :
+#   AGENTS.md          les règles de la maison, lues à chaque session
+#   .vibe/skills/      les commandes propres au projet — /essai, /accords
+#   .vibe/config.toml  ce fichier
+
+# Les compétences du dépôt sont trouvées seules dans `.vibe/skills/`. La ligne
+# ci-dessous n'existe que pour le dire.
+skill_paths = [".vibe/skills"]
+
+# À décommenter selon le goût de chacun :
+# active_model = "devstral-2"
+# default_agent = "plan"

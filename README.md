@@ -480,6 +480,42 @@ paraît jamais plus forte qu'une autre à niveau égal.
 
 ## Vérification
 
+Deux niveaux. `check.sh` prouve que les pièces marchent ; `essai.sh` prouve que
+l'application marche.
+
+```bash
+./essai.sh
+```
+
+L'épreuve complète, application comprise, et **sans qu'aucun fichier privé soit
+nécessaire** : `Tools/Temoin` fabrique un morceau de synthèse dont on connaît
+d'avance le tempo (120 BPM), la grille (Do – La- – Fa – Sol, deux fois) et la
+batterie (grosse caisse aux temps 1 et 3, claire aux 2 et 4, charleston aux
+croches). Le fichier est le même octet pour octet à chaque exécution : la seule
+source de hasard, le bruit des percussions, vient d'un générateur à graine fixe.
+
+Ce morceau passe ensuite par les trois chemins qui existent. La **ligne de
+commande** en tire un spectrogramme hors fenêtre, dont le tempo relevé doit être
+celui qu'on a joué. Le **relevé d'accords** doit retrouver les quatre accords, n'en
+inventer aucun autre, et nommer tous les intervalles. Enfin l'**application**
+elle-même est ouverte par LaunchServices, comme sur un double-clic : on vérifie
+qu'elle tient debout, que le titre de sa fenêtre porte le nom du fichier — c'est la
+seule preuve, depuis l'extérieur, que le fichier lui a bien été transmis — et
+qu'aucun rapport de plantage n'a été écrit.
+
+Ce qui ne se mesure pas est photographié : `build/essai/fenetre.png` montre ce que
+l'application affiche, à regarder — le spectrogramme, la rangée des noms d'accords,
+les trois lignes de batterie. La photographie vise la fenêtre par son numéro et non
+une région de l'écran, si bien que ce qui la recouvre ne se retrouve pas sur
+l'image et que l'épreuve peut tourner pendant qu'on travaille ailleurs ; elle
+attend aussi que les pistes soient séparées, sans quoi les lignes de batterie
+seraient encore vides. Il y faut l'autorisation « Enregistrement de l'écran » pour
+le terminal ; sans elle le script le dit et continue. `--rapide` saute les harnais
+hors écran, `--sans-fenetre` saute l'application.
+
+Le morceau témoin est un plancher, pas un juge : une synthèse ne montre ni les
+erreurs de séparation, ni ce qu'un enregistrement saturé fait au relevé.
+
 ```bash
 ./check.sh
 ```
@@ -1048,6 +1084,21 @@ Par ordre d'utilité décroissante, à mon avis :
 Deux limites assumées de cette première version : le signal entier est chargé en
 mémoire (≈ 10 Mo la minute), et le ralenti passe par `AVAudioUnitTimePitch`, qui
 devient métallique en dessous de la moitié de la vitesse.
+
+## Reprendre le travail
+
+[AGENTS.md](AGENTS.md) tient les règles de la maison en une page : le français
+partout, l'auteur qui juge sur le comportement et non sur le code, les quatre
+étages et leur règle de dépendance, ce qui se lance, et les pièges déjà payés —
+le cache des pistes séparées qu'un harnais distrait efface, l'enregistrement
+LaunchServices sans lequel un double-clic n'ouvre rien, la quarantaine macOS.
+C'est le fichier que lisent les agents de développement ; il est écrit pour être
+lu par n'importe qui.
+
+Le dossier `.vibe/` ajoute à cela deux commandes propres au dépôt pour
+[Mistral Vibe](https://github.com/mistralai/mistral-vibe) : `/essai`, qui lance
+l'épreuve et dit ce qu'il reste à regarder à l'œil, et `/accords`, qui explique
+comment régler le relevé d'accords sur un vrai morceau.
 
 ## Licence
 

@@ -84,6 +84,11 @@ var cibles: [Target] = [
                       path: "Tools/PercussionCheck"),
     .executableTarget(name: "HarmonyCheck", dependencies: ["SpectreCore"],
                       path: "Tools/HarmonyCheck"),
+    // Le morceau témoin de synthèse : un WAV dont on connaît le tempo, la grille
+    // et la batterie. C'est ce qui permet d'éprouver l'application sans dépendre
+    // d'un fichier privé qu'aucun dépôt ne peut porter.
+    .executableTarget(name: "Temoin", dependencies: ["SpectreCore"],
+                      path: "Tools/Temoin"),
 ]
 
 var produits: [Product] = [
@@ -97,6 +102,7 @@ var produits: [Product] = [
     .executable(name: "ImageCheck", targets: ["ImageCheck"]),
     .executable(name: "PercussionCheck", targets: ["PercussionCheck"]),
     .executable(name: "HarmonyCheck", targets: ["HarmonyCheck"]),
+    .executable(name: "Temoin", targets: ["Temoin"]),
 ]
 
 var dependances: [Package.Dependency] = [
@@ -143,12 +149,16 @@ if surMac {
                           path: "Tools/RenderCheck"),
         .executableTarget(name: "SeparationCheck", dependencies: ["SpectreCore", "SpectreMac"],
                           path: "Tools/SeparationCheck"),
+        // Le numéro de la fenêtre de l'application, pour la photographier sans
+        // photographier ce qui la recouvre. Sert à `essai.sh`, à rien d'autre.
+        .executableTarget(name: "Fenetre", path: "Tools/Fenetre"),
     ]
     produits += [
         .executable(name: "Spectre", targets: ["Spectre"]),
         .executable(name: "PlaybackCheck", targets: ["PlaybackCheck"]),
         .executable(name: "RenderCheck", targets: ["RenderCheck"]),
         .executable(name: "SeparationCheck", targets: ["SeparationCheck"]),
+        .executable(name: "Fenetre", targets: ["Fenetre"]),
     ]
 }
 
