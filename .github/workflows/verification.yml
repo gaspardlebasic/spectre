@@ -23,6 +23,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Vérifications
         run: ./check.sh
+      - name: L'épreuve, sans la fenêtre
+        # Le morceau témoin de synthèse, et ce qu'on en tire sans écran : le tempo
+        # relevé, la grille d'accords, le spectrogramme dessiné hors fenêtre. Le
+        # coureur n'a pas de session graphique — l'application elle-même se juge à
+        # la main, sur `build/essai/fenetre.png`. `--rapide` évite de repasser les
+        # harnais que l'étape précédente vient de faire tourner.
+        run: ./essai.sh --rapide --sans-fenetre
       - name: Le chemin portable
         # Les mêmes contrôles, mais en forçant la couche numérique sur son
         # implémentation en Swift pur. C'est ce qui garde les deux implémentations
