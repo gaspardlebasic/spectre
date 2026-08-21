@@ -200,7 +200,8 @@ devinés. Les deux réponses sont bonnes, et l'étape 2 ne grossit donc pas :
 
 ## Étape 2 — un seul cerveau
 
-**La moitié portable est faite et mesurée ; la moitié Mac attend son compilateur.**
+**Faite, et vérifiée des deux côtés** — 280 contrôles sous Windows, 308 sur le Mac,
+et la fenêtre regardée.
 
 `AppModel` — 1 500 lignes, tout le comportement de l'application — a quitté
 `Sources/Spectre` pour un module à lui, `SpectreModele`, qui **n'importe que
@@ -244,16 +245,35 @@ Trois détails du déménagement valent d'être notés, parce qu'ils reviendront
   la remplace par `DispatchTime`, qui compte depuis le même instant — le démarrage
   de la machine — de sorte que rien de ce qui était réglé contre elle n'a bougé.
 
-### Ce qui reste à prouver
+### Ce que le Mac a répondu
 
-Le Mac n'a pas été compilé : cette machine ne le peut pas. C'est l'intégration
-continue qui juge, et son travail est plus complet qu'un simple `swift build` —
-elle passe `./check.sh` **et** `./essai.sh --rapide --sans-fenetre`, donc le morceau
-témoin par la ligne de commande et par le relevé d'accords.
+Le déménagement a été écrit sans compilateur pour le contredire — cette machine ne
+compile pas macOS. Deux instruments ont tranché, et il fallait les deux.
 
-Reste une seule chose qu'aucun coureur ne fera : **regarder
-`build/essai/fenetre.png`**. Le déménagement se veut neutre en comportement ; c'est
-la fenêtre qui le dira.
+L'intégration continue d'abord, qui fait mieux qu'un `swift build` : elle passe
+`./check.sh` **et** `./essai.sh --rapide --sans-fenetre`, donc le morceau témoin par
+la ligne de commande et par le relevé d'accords. Verte du premier coup, sur les
+trois plateformes.
+
+Puis le Mac lui-même, `./essai.sh` en entier, fenêtre comprise : 308 contrôles hors
+écran, tempo relevé à 120 BPM, les quatre accords relevés et aucun inventé, les
+pistes séparées, aucun rapport de plantage. Les trois points qui pouvaient être faux
+*sans qu'aucun calcul le soit* ont été essayés à la main :
+
+- **le suivi d'observation tient.** Vitesse tirée de ×1,00 à ×0,41 et transposition
+  de +0 à +7,8 demi-tons, chacune sans bouger l'autre, étiquettes à jour pendant le
+  glissement, double-clic ramenant au neutre. Le paramètre générique fait bien ce
+  qu'on attendait de lui ;
+- **le tourne-page s'anime et ne saute pas**, donc `DispatchTime` cadence comme
+  `CACurrentMediaTime` cadençait ;
+- **la session survit au quit** et se retrouve à la réouverture, donc rien n'a été
+  perdu en passant de l'abonnement à `NSApplication.willTerminate` à un appel
+  d'`AppDelegate`.
+
+Un mot sur la méthode, parce qu'elle se rejoue : la vérification a été menée par une
+seconde instance de l'assistant, du côté Mac de la même machine, à qui l'on a dit
+quoi regarder plutôt que quoi conclure. Les trois points ci-dessus lui ont été
+désignés nommément — c'est ce qui distingue une relecture d'une vérification.
 
 ## Comment on vérifie ce qu'on ne peut pas compiler
 
@@ -288,7 +308,7 @@ moins une borne inférieure entre deux essais sur du matériel réel.
 |---|---|
 | 0. La machine, et le noyau qui traverse | **faite** — trois coureurs au vert |
 | 1. Récupérer ce qui avait été supprimé | **faite** — 280 contrôles, et les demi-flottants |
-| 2. Un seul cerveau | **moitié portable faite** — `AppModel` est descendu ; le Mac attend l'intégration continue |
+| 2. Un seul cerveau | **faite** — `AppModel` est descendu, et le Mac ne s'en aperçoit pas |
 | 3. Une fenêtre, et l'image dedans | à faire — Win32, Direct3D 11, HLSL |
 | 4. Le son qui entre | à faire — Media Foundation, dr_flac |
 | 5. Le son qui sort | à faire — miniaudio, signalsmith-stretch |
