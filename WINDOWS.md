@@ -43,7 +43,7 @@ Ce n'est pas une note de bas de page, c'est ce qui décide la forme de l'interfa
 | interface | SwiftUI, Liquid Glass | **Direct2D + DirectWrite**, Fluent | OpenGL + FreeType |
 | spectrogramme | Metal | **Direct3D 11**, HLSL | OpenGL 3.3, GLSL |
 | FFT et vecteurs | Accelerate | Swift pur (`SPECTRE_PORTABLE`) | idem |
-| décodage | AVAudioFile | Media Foundation + dr_flac | à décider |
+| décodage | AVAudioFile | **Media Foundation** seule | à décider |
 | sortie audio | AVAudioEngine | **miniaudio** (WASAPI) | miniaudio (ALSA) |
 | ralenti | AVAudioUnitTimePitch | signalsmith-stretch | idem |
 | égaliseur | AVAudioUnitEQ | biquads écrits à la main | idem |
@@ -63,8 +63,10 @@ d'attente, qui est le mécanisme qui garde l'image collée au doigt.
 **HLSL est plus proche de Metal que ne l'était GLSL.** `SV_Position` a son origine
 en haut à gauche, exactement comme Metal : le retournement que la version GLSL
 devait *retirer* est donc **conservé** en HLSL. `Resources/spectrogramme.glsl`
-porte un long avertissement sur ce piège ; le fichier HLSL portera l'avertissement
-inverse, faute de quoi le prochain lecteur retournera l'image à force de prudence.
+porte un long avertissement sur ce piège ; le HLSL — qui vit en toutes lettres dans
+`SpectreWin/Rendu.swift`, comme le MSL vit dans `SpectreMac/Renderer.swift` — porte
+l'avertissement inverse, faute de quoi le prochain lecteur retournerait l'image à
+force de prudence.
 
 Trois écritures d'une même formule, avec `SpectrogramImage` sur le processeur pour
 arbitre commun : c'est la discipline que le dépôt applique déjà.
@@ -424,6 +426,79 @@ témoin est de la synthèse pure, dont les raies font exactement une ligne de la
 c'est le pire cas possible pour cette différence-là. Sur un vrai morceau, l'ancien
 portage relevait +0,97.
 
+## Étape 4 — le son qui entre
+
+**Faite, avec une réserve nommée plus bas.** Media Foundation ouvre les formats
+compressés, et ce qu'elle rend d'un WAV est **identique au bit près** à ce que le
+lecteur WAV portable en tire : écart maximal `0,00e+00`, aucun décalage.
+
+### dr_flac n'est pas venu, et ne viendra pas
+
+La pile annonçait « Media Foundation + dr_flac ». C'était une note écrite avant de
+relire le premier portage, qui avait déjà tranché : **Media Foundation lit le FLAC
+et l'ALAC d'origine depuis Windows 10**, sans rien à installer. Une bibliothèque
+tierce de plus se paierait à chaque construction et à chaque distribution, pour un
+format que le système connaît. La ligne de la pile est corrigée.
+
+### Le décodeur a changé d'étage
+
+Au premier portage, `AudioLoader` vivait dans `SpectreCore` et y faisait entrer un
+`#if os(Windows) import CMediaFoundation`. Il est maintenant dans `SpectreWin`, et
+le noyau ne connaît plus aucun système : `Décodeur` est la couture prévue pour cela
+depuis l'étape 2, et l'utiliser était le seul travail à faire.
+
+`Sources/CPont/mediafoundation.c` revient de `e690019` presque tel quel. Il avait
+été mesuré à l'époque, et le récrire n'aurait fait que rejouer les mêmes
+découvertes — dont les deux qu'il documente : l'amorçage du codeur que Media
+Foundation rend avec le reste, et le fait que ni la durée annoncée ni l'horodatage
+des échantillons ne renseignent dessus. C'est `GaplessTrim`, portable et déjà
+vérifié par ses 31 contrôles, qui lit ce que le conteneur en déclare.
+
+Une seule chose y a changé : un fichier absent et un format inconnu échouaient au
+même endroit et sous le même message. Le `HRESULT` les distingue, et ce n'est pas la
+même chose à corriger — l'un se règle en retrouvant le fichier, l'autre en le
+convertissant.
+
+### Le WAV passe devant, et c'est mesuré
+
+`DecodeurWindows` essaie le WAV **avant** de réveiller COM, même sur un fichier que
+le système saurait lire. C'est plus rapide, mais surtout cela garantit qu'un fichier
+non compressé donne exactement le même signal sur les deux plateformes — le socle
+sur lequel reposent toutes les vérifications croisées.
+
+Un raccourci pareil ne vaut que s'il ne change rien, et `Tools/DecodeCheck` le
+mesure : il donne **le même WAV aux deux chemins** et les confronte échantillon par
+échantillon. C'est aussi la façon de mesurer un décodeur quand le dépôt ne porte
+aucun fichier compressé — et c'est plus sévère qu'il n'y paraît, puisque cela tient
+la fréquence, le mélange des canaux, l'échelle et le premier échantillon.
+
+Le WAV du harnais porte **440 Hz à gauche et 660 Hz à droite** : deux canaux
+identiques passeraient le contrôle même si l'un des deux décodeurs oubliait le
+second.
+
+Le harnais mesure aussi les refus, parce qu'ils s'affichent : un fichier absent dit
+qu'il est absent, un fichier qui n'est pas du son dit que Windows ne sait pas le
+lire, et un WAV mal nommé `.mp3` passe quand même — le raccourci ne perd pas un
+fichier mal nommé.
+
+### La réserve
+
+**Aucun fichier compressé n'a été décodé sur cette machine.** Il n'y en a pas dans
+le dépôt, et la machine virtuelle n'a ni `ffmpeg` ni `flac` ni `sox` pour en
+fabriquer un. Ce qui est mesuré ici, c'est l'enveloppe : le démarrage de Media
+Foundation, la sélection du flux, la conversion en flottant, le réassemblage des
+blocs, la moyenne des canaux, la libération, les refus. Ce qui ne l'est pas, c'est
+qu'un MP3 précis sorte au bon endroit — cela reposait sur la mesure du premier
+portage, qui l'avait fait sur de vrais fichiers.
+
+Le harnais accepte des fichiers en argument, et leur passe le même barème :
+
+```powershell
+DecodeCheck.exe morceau.mp3 morceau.flac morceau.m4a
+```
+
+C'est la première chose à lancer sur une machine qui en a.
+
 ## Comment on vérifie ce qu'on ne peut pas compiler
 
 Le portage se mène désormais **depuis Windows** — une machine virtuelle Parallels
@@ -459,7 +534,7 @@ moins une borne inférieure entre deux essais sur du matériel réel.
 | 1. Récupérer ce qui avait été supprimé | **faite** — 280 contrôles, et les demi-flottants |
 | 2. Un seul cerveau | **faite** — `AppModel` est descendu, et le Mac ne s'en aperçoit pas |
 | 3. Une fenêtre, et l'image dedans | **faite** — l'image relue s'accorde au rendu processeur |
-| 4. Le son qui entre | à faire — Media Foundation, dr_flac |
+| 4. Le son qui entre | **faite** — Media Foundation seule, et identique au bit près sur le WAV |
 | 5. Le son qui sort | à faire — miniaudio, signalsmith-stretch |
 | 6. Les gestes, et la fluidité | à faire — et les mesures qui la disent |
 | 7. L'interface Windows 11 | à faire — Direct2D, Fluent, Mica |

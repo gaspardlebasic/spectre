@@ -17,7 +17,15 @@ extension DecodeurWindows {
     ///
     /// Elles vivent à côté du décodeur plutôt que dans le dialogue : c'est ce qui
     /// empêche celui-ci de proposer un format que le décodeur refuserait ensuite.
-    public static var formats: [String] { ["wav"] }
+    ///
+    /// Media Foundation lit tout cela d'origine sur n'importe quelle installation
+    /// de Windows 10 ou 11 — FLAC et ALAC compris depuis Windows 10, ce qui évite
+    /// d'embarquer un décodeur de plus. La liste est celle du `Décodeur`, pas celle
+    /// du système : ajouter une extension ici sans que Media Foundation la lise
+    /// ferait proposer un fichier qu'on refuserait ensuite.
+    public static var formats: [String] {
+        ["wav", "mp3", "m4a", "aac", "mp4", "wma", "flac", "aif", "aiff"]
+    }
 }
 
 /// Le sélecteur de fichiers du système.

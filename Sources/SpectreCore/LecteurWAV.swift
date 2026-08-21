@@ -37,6 +37,16 @@ public enum WAVFile {
         public let mono: [Float]
         public var frameCount: Int { mono.count }
         public var duration: Double { sampleRate > 0 ? Double(mono.count) / sampleRate : 0 }
+
+        // L'initialiseur par membres qu'écrit le compilateur reste interne : il faut
+        // donc le poser à la main pour qu'il traverse la frontière du module. Le
+        // décodeur de Windows en a besoin — ce qui sort de Media Foundation est le
+        // même contenu, obtenu autrement.
+        public init(sampleRate: Double, channels: Int, mono: [Float]) {
+            self.sampleRate = sampleRate
+            self.channels = channels
+            self.mono = mono
+        }
     }
 
     public static func read(at url: URL) throws -> Contents {

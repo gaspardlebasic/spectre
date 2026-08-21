@@ -216,6 +216,13 @@ if surWindows {
                 .linkedLibrary("d3d11"),
                 .linkedLibrary("dxgi"),
                 .linkedLibrary("d3dcompiler"),
+                // Media Foundation : `mfplat` porte l'API, `mfreadwrite` le lecteur
+                // de source, `mfuuid` les identifiants d'interface — qu'aucune
+                // définition locale ne remplace, contrairement à ceux de DXGI.
+                .linkedLibrary("mfplat"),
+                .linkedLibrary("mfreadwrite"),
+                .linkedLibrary("mfuuid"),
+                .linkedLibrary("ole32"),
             ]
         ),
         // Ce que Windows répond aux protocoles du modèle — le pendant exact de
@@ -258,11 +265,19 @@ if surWindows {
             dependencies: ["SpectreCore", "SpectreWin"],
             path: "Tools/RenduCheck"
         ),
+        // Le décodage du système, mesuré contre la référence portable : le même
+        // WAV donné aux deux chemins doit rendre le même signal.
+        .executableTarget(
+            name: "DecodeCheck",
+            dependencies: ["SpectreCore", "SpectreWin"],
+            path: "Tools/DecodeCheck"
+        ),
     ]
     produits += [
         .library(name: "SpectreWin", type: .static, targets: ["SpectreWin"]),
         .executable(name: "SpectreWindows", targets: ["SpectreWindows"]),
         .executable(name: "RenduCheck", targets: ["RenduCheck"]),
+        .executable(name: "DecodeCheck", targets: ["DecodeCheck"]),
     ]
 }
 
