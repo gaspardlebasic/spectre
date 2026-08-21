@@ -24,14 +24,14 @@ import WinSDK
 /// modèle est générique sur son lecteur — parce que l'interface observe
 /// `model.player.speed` et qu'un protocole existentiel romprait ce suivi — mais
 /// rien d'autre n'a de raison de porter ce détail.
-typealias AppModel = SpectreModele.AppModel<LecteurMuet>
+typealias AppModel = SpectreModele.AppModel<LecteurWindows>
 
-extension SpectreModele.AppModel where Lecteur == LecteurMuet {
+extension SpectreModele.AppModel where Lecteur == LecteurWindows {
     /// L'assemblage Windows : à chaque protocole du modèle, sa mise en œuvre.
     convenience init(fenetre: HWND?) {
-        self.init(lecteur: LecteurMuet(),
+        self.init(lecteur: LecteurWindows(),
                   décodeur: DecodeurWindows(),
-                  sinusoide: SinusoideMuette(),
+                  sinusoide: SinusoideWindows(),
                   pistes: SeparationAbsente(),
                   dialogue: DialogueWindows(fenetre: fenetre),
                   récentsDuSystème: RecentsWindows(),

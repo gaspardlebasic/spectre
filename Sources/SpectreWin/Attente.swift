@@ -9,45 +9,8 @@ import SpectreModele
 // ici — inerte, mais présente, et **groupée**, de sorte que l'état du portage se
 // lise dans la longueur de ce fichier plutôt que dans une liste tenue à part.
 //
-// Chaque étape en retire une pièce. Le jour où il ne reste rien, il disparaît.
-
-/// Le lecteur, en attendant l'étape 5.
-///
-/// Il tient l'état — vitesse, transposition, boucle, volume — pour que l'interface
-/// ait quelque chose à montrer, et sa tête de lecture n'avance pas : rien ne sort,
-/// et prétendre le contraire ferait défiler une image sur un silence.
-public final class LecteurMuet: LecteurAudio {
-    public init() {}
-
-    public private(set) var isPlaying = false
-    public private(set) var duration: Double = 0
-    public var message: String? = "Le son vient à l'étape 5."
-    public var speed: Double = 1
-    public var transpose: Double = 0
-    public var isNeutral: Bool { speed == 1 && transpose == 0 }
-    public var volume: Double = 1
-    public private(set) var currentTime: Double = 0
-    public private(set) var loop: ClosedRange<Double>?
-
-    public func load(url: URL) {}
-    public func replace(with url: URL) -> Bool { false }
-    public func play(from time: Double?) { if let time { currentTime = time } }
-    public func pause() {}
-    public func stop() { currentTime = 0 }
-    public func toggle(at time: Double) { currentTime = time }
-    public func seek(to time: Double) { currentTime = max(time, 0) }
-    public func setLoop(_ range: ClosedRange<Double>?) { loop = range }
-    public func setBand(_ range: ClosedRange<Double>?) {}
-}
-
-/// La sinusoïde d'écoute, en attendant l'étape 5.
-public final class SinusoideMuette: Sinusoide {
-    public init() {}
-    public var voixMaximales: Int { 6 }
-    public func play(_ frequency: Double?) {}
-    public func play(chord frequencies: [Double], waveform: ToneWaveform) {}
-    public func stop() {}
-}
+// Il en reste une. Le lecteur et la sinusoïde en sont sortis à l'étape 5 ; la
+// séparation en sortira à l'étape 9, et ce fichier disparaîtra avec elle.
 
 /// La séparation des pistes, en attendant l'étape 9.
 ///

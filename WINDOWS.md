@@ -44,8 +44,8 @@ Ce n'est pas une note de bas de page, c'est ce qui décide la forme de l'interfa
 | spectrogramme | Metal | **Direct3D 11**, HLSL | OpenGL 3.3, GLSL |
 | FFT et vecteurs | Accelerate | Swift pur (`SPECTRE_PORTABLE`) | idem |
 | décodage | AVAudioFile | **Media Foundation** seule | à décider |
-| sortie audio | AVAudioEngine | **miniaudio** (WASAPI) | miniaudio (ALSA) |
-| ralenti | AVAudioUnitTimePitch | signalsmith-stretch | idem |
+| sortie audio | AVAudioEngine | **WASAPI**, sans intermédiaire | à décider |
+| ralenti | AVAudioUnitTimePitch | **`SpectreCore/Etirement`**, portable | idem |
 | égaliseur | AVAudioUnitEQ | biquads écrits à la main | idem |
 | séparation | ONNX Runtime (greffon ObjC) | ONNX Runtime, API C | idem |
 | empreinte | CryptoKit | swift-crypto | idem |
@@ -499,6 +499,113 @@ DecodeCheck.exe morceau.mp3 morceau.flac morceau.m4a
 
 C'est la première chose à lancer sur une machine qui en a.
 
+## Étape 5 — le son qui sort
+
+**Faite.** Le morceau se joue, se met en pause, se cale, se met en boucle, se
+filtre, se ralentit et se transpose. Mesuré de bout en bout par `Tools/SortieCheck`
+sur quatorze contrôles, sans qu'aucune oreille n'écoute.
+
+### Deux choix de pile, tous deux à l'envers de ce qui était annoncé
+
+La pile promettait **miniaudio** et **signalsmith-stretch**. Ni l'un ni l'autre
+n'est venu, et la raison est la même dans les deux cas : chacun se paie en un
+en-tête de plusieurs mégaoctets à verser dans le dépôt, à construire et à
+distribuer, pour un rouage qu'on peut écrire.
+
+Ce dépôt a déjà tranché cette question trois fois dans ce sens — la FFT écrite à la
+main plutôt que PFFFT, les demi-flottants plutôt que `Float16`, Win32 plutôt que
+SDL3 — et chaque fois pour la même raison, qui est écrite en toutes lettres dans
+`SpectreDSP` : **une frontière qu'on ne peut pas mesurer des deux côtés n'est
+qu'une promesse.**
+
+- **WASAPI**, en mode partagé cadencé par évènement, tient dans
+  `Sources/CPont/wasapi.c`. Le choix pour Linux reste entier : ALSA ou miniaudio,
+  le jour venu, derrière les mêmes six fonctions.
+- **`SpectreCore/Etirement.swift`** porte le ralenti et la transposition, en SOLA.
+  Il est **dans le noyau**, donc portable, donc mesuré : c'est macOS qui pourrait
+  un jour l'adopter à la place d'`AVAudioUnitTimePitch`, et non l'inverse.
+
+### Le ralenti, et ce qui le rend indépendant de la hauteur
+
+Un étireur qui se contente de relire plus lentement descend d'une octave en même
+temps, et c'est exactement ce qu'un outil de transcription ne peut pas faire. Les
+deux réglages sont séparés par construction, et cela tient en deux lignes :
+
+- **la position de lecture avance de `vitesse` image par image rendue** — c'est là,
+  et là seulement, que se décide le tempo ;
+- **à l'intérieur d'un grain, on lit avec un pas de `2^(demiTons/12)`** — c'est là,
+  et là seulement, que se décide la hauteur.
+
+`Tools/EtirementCheck` mesure les deux séparément : la durée en comptant les images
+consommées, la hauteur en cherchant la raie dominante à la transformée. Vingt
+contrôles. Relevé : le tempo à moins de 1 % près, la hauteur à **3 cents près** sur
+deux octaves de transposition, aucun trou dans le son, et le niveau qui ne bat pas
+de plus de 0,0 dB.
+
+**Le neutre est exact au bit près**, et c'est la garantie qui compte le plus : à ×1
+et +0, l'étireur est court-circuité et les échantillons du fichier passent tels
+quels. Un recollage laissé en service pour un résultat *censé* être identique
+travaille pour rien, irrégulièrement, et ne rend jamais exactement l'original.
+C'est le même court-circuit que la version macOS, pour la même raison.
+
+### Le travail qui restait vraiment
+
+Une fois WASAPI ouvert, la lecture était déjà écrite : `PlaybackChain` tient la
+position, la boucle et le filtre de bande depuis l'étape 1, et ses 16 contrôles
+passaient sans qu'aucune carte son existe. `LecteurWindows` ne fait que brancher
+trois pièces déjà mesurées.
+
+**Ce qui restait, c'est le temps.** La tête de lecture ne doit pas montrer d'où l'on
+tire des échantillons, mais ce qui sort du haut-parleur — et trois retards
+s'additionnent entre les deux :
+
+- ce que l'étireur a tiré de la chaîne sans l'avoir encore recollé ;
+- ce qui est recollé mais pas encore remis au périphérique ;
+- ce que le périphérique tient dans son tampon.
+
+Une cinquantaine de millisecondes en tout. Personne ne le remarque en écoutant ;
+tout le monde le remarque en calant une boucle sur un temps, où la tête est
+visiblement passée avant que le coup ne se fasse entendre. Les trois se retirent
+dans `currentTime`, et c'est ce que mesure le contrôle « à ×0,5, elle avance deux
+fois moins vite » : si l'un des trois est mal compté, il tombe.
+
+### Les quatre pièges de l'étape 5
+
+**Les identifiants de WASAPI n'existent nulle part du côté C.** Les en-têtes du SDK
+*déclarent* `IID_IAudioClient` et les autres, mais rien ne les définit : ni
+`uuid.lib`, ni `ole32.lib`. En C++ le compilateur les tire de `__uuidof`, qui
+n'existe pas ici. Il faut les écrire à la main, et ce n'est pas risqué : un
+identifiant faux ne compile pas de travers, il fait échouer l'ouverture avec
+`E_NOINTERFACE` au premier essai. Ceux de DXGI, eux, naissent bien d'`INITGUID`,
+d'où une demi-heure passée à chercher pourquoi la même recette ne marchait plus.
+
+**Le périphérique est ouvert à la fréquence du fichier, et non à la sienne.**
+`AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM` fait insérer par Windows son propre
+rééchantillonneur. C'est le seul de qualité qu'on obtienne sans en écrire un, mais
+surtout : toute la position de lecture est comptée en **images du fichier**, et un
+rééchantillonnage en amont la ferait dériver silencieusement.
+
+**Le fil audio doit être monté en priorité.** Sans `AvSetMmThreadCharacteristics`
+sous la tâche « Pro Audio », une compilation en tâche de fond suffit à faire craquer
+le son. Le service existe pour cela et coûte deux lignes.
+
+**Un tampon rendu par WASAPI n'est pas vide.** Il porte encore ce qu'on y avait
+écrit au tour précédent, et rendre moins d'images que demandé sans mettre le reste à
+zéro fait rejouer le bloc d'avant — ce qui s'entend comme un bégaiement, en fin de
+morceau seulement, donc rarement pendant qu'on met au point.
+
+### Ce qui reste ouvert
+
+Le décodage du lecteur est **entier et en mémoire**, et il double celui que le
+modèle a déjà fait pour l'analyse : une minute de son coûte dix mégaoctets de plus.
+`AVAudioFile` n'a pas ce problème parce qu'il lit en flux ; il n'y a pas de lecteur
+en flux ici. Le décodage part donc en tâche de fond pour ne pas figer la fenêtre, et
+une demande de lecture arrivée entre-temps est retenue plutôt que perdue.
+
+`replace(with:)` rend `false`. Il sert à passer du mixage à une piste isolée sans
+arrêter le moteur, et la séparation n'est pas portée — c'est l'étape 9. L'appelant
+recharge franchement, ce qui est correct et se voit à peine.
+
 ## Comment on vérifie ce qu'on ne peut pas compiler
 
 Le portage se mène désormais **depuis Windows** — une machine virtuelle Parallels
@@ -535,7 +642,7 @@ moins une borne inférieure entre deux essais sur du matériel réel.
 | 2. Un seul cerveau | **faite** — `AppModel` est descendu, et le Mac ne s'en aperçoit pas |
 | 3. Une fenêtre, et l'image dedans | **faite** — l'image relue s'accorde au rendu processeur |
 | 4. Le son qui entre | **faite** — Media Foundation seule, et identique au bit près sur le WAV |
-| 5. Le son qui sort | à faire — miniaudio, signalsmith-stretch |
+| 5. Le son qui sort | **faite** — WASAPI, et un étireur écrit dans le noyau |
 | 6. Les gestes, et la fluidité | à faire — et les mesures qui la disent |
 | 7. L'interface Windows 11 | à faire — Direct2D, Fluent, Mica |
 | 8. Sessions et préférences | à faire — `SessionStore` est déjà portable |

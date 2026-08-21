@@ -183,6 +183,55 @@ void spectre_mf_liberer(float *echantillons);
 /// Un message en clair pour un code, en français, sans allocation.
 const char *spectre_mf_message(int code);
 
+// ─────────────────────────────────────────────────────────── La sortie audio
+//
+// WASAPI en mode partagé, cadencé par évènement. Le pendant macOS est
+// `AVAudioEngine` ; ici il n'y a pas de moteur, seulement un périphérique qui
+// réclame des échantillons et un fil qui les lui donne.
+
+typedef struct SpectreSortie SpectreSortie;
+
+/// Ce que le périphérique réclame : `images` images entrelacées sur `canaux`
+/// canaux, à écrire dans `sortie`. Rendre moins que demandé fait compléter de
+/// silence.
+///
+/// **Appelée sur un fil à priorité temps réel**, et pas sur le fil principal :
+/// tout ce qu'elle touche doit être à elle, ou protégé. Elle ne doit ni allouer,
+/// ni prendre un verrou que le fil principal garde longtemps.
+typedef int (*SpectreRemplir)(float *sortie, int images, int canaux, void *contexte);
+
+/// Ouvre le périphérique de sortie par défaut.
+///
+/// `frequence` est celle qu'on voudrait — celle du fichier. WASAPI rééchantillonne
+/// lui-même si le périphérique tourne à une autre : c'est le seul rééchantillonneur
+/// de qualité qu'on obtient sans en écrire un, et il évite surtout de faire porter
+/// à la chaîne de lecture une fréquence qui n'est pas celle du fichier.
+///
+/// Rend `NULL` en cas d'échec, et remplit `erreur` (`SPECTRE_ERREUR_MAX` octets).
+SpectreSortie *spectre_sortie_ouvrir(double frequence, SpectreRemplir remplir,
+                                     void *contexte, char *erreur);
+
+void spectre_sortie_fermer(SpectreSortie *sortie);
+
+/// La fréquence réellement obtenue. Égale à celle demandée quand tout va bien.
+double spectre_sortie_frequence(const SpectreSortie *sortie);
+int spectre_sortie_canaux(const SpectreSortie *sortie);
+
+/// Démarre ou arrête le flux. Arrêter ne ferme pas le périphérique : reprendre est
+/// immédiat, là qu'une réouverture coûte quelques dizaines de millisecondes qui
+/// s'entendent comme un retard à la barre d'espace.
+void spectre_sortie_jouer(SpectreSortie *sortie);
+void spectre_sortie_pause(SpectreSortie *sortie);
+int spectre_sortie_joue(const SpectreSortie *sortie);
+
+/// Images déjà remises au périphérique et pas encore entendues.
+///
+/// C'est ce qu'il faut retirer de la position de lecture pour que la tête montre
+/// **ce qui s'entend** plutôt que ce qui est déjà parti. Sans ce retrait, la tête
+/// prend l'avance d'un tampon — une trentaine de millisecondes, ce qui se voit dès
+/// qu'on cale une boucle sur un temps.
+int spectre_sortie_en_vol(const SpectreSortie *sortie);
+
 #ifdef __cplusplus
 }
 #endif

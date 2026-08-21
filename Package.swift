@@ -103,6 +103,10 @@ var cibles: [Target] = [
                       path: "Tools/ChainCheck"),
     .executableTarget(name: "GaplessCheck", dependencies: ["SpectreCore"],
                       path: "Tools/GaplessCheck"),
+    // Le ralenti et la transposition, mesurés là où ils sont écrits : dans le
+    // noyau, donc pour les trois plateformes à la fois.
+    .executableTarget(name: "EtirementCheck", dependencies: ["SpectreCore", "SpectreDSP"],
+                      path: "Tools/EtirementCheck"),
     // Spectre sans fenêtre : un WAV entre, une image sort. C'est le seul endroit
     // où l'analyse et le rendu se regardent sans écran ni carte son.
     .executableTarget(name: "SpectreCLI", dependencies: ["SpectreCore"],
@@ -136,6 +140,7 @@ var produits: [Product] = [
     .executable(name: "FilterCheck", targets: ["FilterCheck"]),
     .executable(name: "ChainCheck", targets: ["ChainCheck"]),
     .executable(name: "GaplessCheck", targets: ["GaplessCheck"]),
+    .executable(name: "EtirementCheck", targets: ["EtirementCheck"]),
     .executable(name: "SpectreCLI", targets: ["SpectreCLI"]),
     .executable(name: "AnalysisCheck", targets: ["AnalysisCheck"]),
     .executable(name: "FourierCheck", targets: ["FourierCheck"]),
@@ -223,6 +228,14 @@ if surWindows {
                 .linkedLibrary("mfreadwrite"),
                 .linkedLibrary("mfuuid"),
                 .linkedLibrary("ole32"),
+                // WASAPI : `avrt` porte le service qui monte le fil audio en
+                // priorité, sans quoi une compilation en tâche de fond suffit à
+                // faire craquer le son.
+                .linkedLibrary("avrt"),
+                // Les identifiants d'interface de WASAPI sont déclarés par les
+                // en-têtes mais définis dans cette bibliothèque-là — contrairement
+                // à ceux de DXGI, qu'`INITGUID` fait naître sur place.
+                .linkedLibrary("uuid"),
             ]
         ),
         // Ce que Windows répond aux protocoles du modèle — le pendant exact de
@@ -272,12 +285,20 @@ if surWindows {
             dependencies: ["SpectreCore", "SpectreWin"],
             path: "Tools/DecodeCheck"
         ),
+        // La sortie audio, mesurée sans oreille : un périphérique qui marche est
+        // cadencé par le temps réel, et cela se compte.
+        .executableTarget(
+            name: "SortieCheck",
+            dependencies: ["SpectreCore", "SpectreModele", "SpectreWin"],
+            path: "Tools/SortieCheck"
+        ),
     ]
     produits += [
         .library(name: "SpectreWin", type: .static, targets: ["SpectreWin"]),
         .executable(name: "SpectreWindows", targets: ["SpectreWindows"]),
         .executable(name: "RenduCheck", targets: ["RenduCheck"]),
         .executable(name: "DecodeCheck", targets: ["DecodeCheck"]),
+        .executable(name: "SortieCheck", targets: ["SortieCheck"]),
     ]
 }
 
