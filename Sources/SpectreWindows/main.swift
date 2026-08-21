@@ -15,6 +15,10 @@ import WinSDK
 // de `SpectreCLI` : c'est ce qui permet de demander la même image aux deux et de
 // les confronter par `ImageCheck`.
 //
+// `--sans-habillage` retire la réglette, la grille, la batterie et la barre : la
+// photographie redevient alors comparable au rendu du processeur, que rien
+// n'habille. C'est un instrument, pas un mode d'usage.
+//
 // L'application est assemblée ici, et nulle part ailleurs : le comportement vit
 // dans `SpectreModele`, les pièces de Windows dans `SpectreWin`, et ce fichier ne
 // fait que les brancher les unes aux autres, puis tourner.
@@ -45,6 +49,7 @@ extension SpectreModele.AppModel where Lecteur == LecteurWindows {
 var morceau: URL?
 var rendreDans: String?
 var photographierDans: String?
+var sansHabillage = false
 var mesurerPendant: Double?
 var tailleVoulue = (largeur: 1200, hauteur: 700)
 var arguments = Array(CommandLine.arguments.dropFirst())
@@ -57,6 +62,9 @@ while i < arguments.count {
     } else if argument == "--fluidite", i + 1 < arguments.count {
         mesurerPendant = Double(arguments[i + 1]) ?? 10
         i += 2
+    } else if argument == "--sans-habillage" {
+        sansHabillage = true
+        i += 1
     } else if argument == "--photo", i + 1 < arguments.count {
         photographierDans = arguments[i + 1]
         i += 2
@@ -109,6 +117,12 @@ final class Application: EchosDeLaFenetre {
         modele.renderer = rendu
         rendu.origineDesTeintes = PreferencesWindows.partagees.hueOrigin
         fenetre.echos = self
+        // La surimpression n'est pas indispensable au spectrogramme : si Direct2D
+        // manque, l'image reste et l'on perd la réglette. Mieux vaut une application
+        // amputée qu'une application qui refuse de s'ouvrir.
+        if !rendu.preparerLaSurimpression() {
+            Journal.erreur("pas de réglette ni de grille : Direct2D n'a pas démarré.")
+        }
         Journal.note("carte : \(rendu.nomDeLaCarte)")
     }
 
@@ -139,7 +153,13 @@ final class Application: EchosDeLaFenetre {
             appliquerLaTaille()
             rendu.attendreLImageSuivante()
             uneImage()
-            if modele.spectrogram.columnCount > 0, modele.progress == nil { break }
+            // On attend que **tout** soit relevé, et pas seulement la matrice : la
+            // batterie et les accords arrivent après, et photographier avant les
+            // montrerait vides — ce qui se lit comme une ligne cassée plutôt que
+            // comme une ligne pas encore remplie. C'est la même attente qu'`essai.sh`
+            // observe sur le Mac avant de photographier la fenêtre.
+            if modele.spectrogram.columnCount > 0, modele.progress == nil,
+               !modele.percussionPending, !modele.chordsPending { break }
         }
         guard modele.spectrogram.columnCount > 0 else {
             Journal.erreur("Rien n'a été analysé en \(Int(attente)) s"
@@ -198,9 +218,32 @@ final class Application: EchosDeLaFenetre {
         if rendu.fenetreCachee { mesures?.uneImageCachee() }
     }
 
+    /// Hauteur de la zone du spectrogramme, en points : la fenêtre moins la ligne de
+    /// batterie et la barre d'état.
+    ///
+    /// C'est **cette hauteur-là** que le modèle reçoit, et non celle de la fenêtre :
+    /// tout ce qu'il calcule — la bande passante du filtre, l'aimantation, le
+    /// contraste automatique — porte sur ce qu'on voit du spectre, pas sur ce que la
+    /// fenêtre mesure.
+    private func hauteurDeLImage(_ hauteurTotale: Double) -> Double {
+        guard habille else { return hauteurTotale }
+        return max(hauteurTotale - hauteurDeLaBatterie - hauteurDeLaBarre, 60)
+    }
+
+    /// Faux avec `--sans-habillage` : ni réglette, ni grille, ni batterie, ni barre.
+    ///
+    /// Ce n'est pas un mode d'usage, c'est un instrument. La surimpression couvre
+    /// une partie de l'image, si bien qu'une photographie habillée ne se compare
+    /// plus au rendu du processeur : `ImageCheck` trouverait un désaccord partout où
+    /// passe un trait de grille. Sans habillage, la photographie éprouve exactement
+    /// ce qu'elle éprouvait avant l'étape 7 — le chemin de la fenêtre, de bout en
+    /// bout — et reste mesurable.
+    var habille = true
+
     private func uneImageSansPresenter() {
         let points = fenetre.taillePoints
-        modele.tick(viewSize: CGSize(width: points.largeur, height: points.hauteur))
+        let hauteurImage = hauteurDeLImage(points.hauteur)
+        modele.tick(viewSize: CGSize(width: points.largeur, height: hauteurImage))
         rendu.viewport = modele.viewport
         rendu.display = modele.display
         rendu.origineDesTeintes = PreferencesWindows.partagees.hueOrigin
@@ -211,7 +254,26 @@ final class Application: EchosDeLaFenetre {
             else { return nil }
             return debut...fin
         }
+        // Sans habillage, le spectrogramme prend toute la fenêtre : c'est ce qui rend
+        // la photographie comparable au rendu du processeur, qui n'a ni réglette ni
+        // ligne de batterie. Voir `--sans-habillage`.
+        let zone = habille ? hauteurImage : points.hauteur
+        rendu.zone(largeur: points.largeur, hauteur: zone, echelle: fenetre.echelle)
         rendu.dessiner(echelle: fenetre.echelle)
+        guard habille else { return }
+
+        // Et par-dessus, tout ce qui est du texte et des traits. Une seule
+        // présentation part : Direct2D écrit dans le tampon que le nuanceur vient de
+        // remplir.
+        rendu.surimprimer(echelle: fenetre.echelle) { pinceau in
+            Frise(modele: modele, pinceau: pinceau,
+                  largeur: points.largeur, hauteur: hauteurImage).dessiner()
+            Batterie(modele: modele, pinceau: pinceau, largeur: points.largeur,
+                     haut: hauteurImage, hauteur: hauteurDeLaBatterie).dessiner()
+            Barre(modele: modele, pinceau: pinceau, largeur: points.largeur,
+                  haut: points.hauteur - hauteurDeLaBarre,
+                  hauteur: hauteurDeLaBarre).dessiner()
+        }
     }
 
     /// Le nuanceur raisonne en colonnes, comme tout le reste du rendu : la
@@ -371,6 +433,7 @@ if let sortie = rendreDans {
 // MARK: - La fenêtre
 
 guard let application = Application() else { exit(1) }
+application.habille = !sansHabillage
 if let morceau { application.ouvrir(morceau) }
 if let photographierDans {
     exit(application.photographier(dans: photographierDans) ? 0 : 1)

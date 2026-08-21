@@ -98,6 +98,37 @@ public final class Fenetre {
         }
         poignee = fenetre
         echelle = Double(GetDpiForWindow(fenetre)) / 96
+        habillerÀLaWindows11(fenetre)
+    }
+
+    /// La barre de titre du système, en sombre, avec Mica et les coins arrondis.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────────
+    /// CE QUE MICA PEUT ET NE PEUT PAS FAIRE ICI
+    ///
+    /// Mica teinte le fond de la fenêtre avec le fond d'écran, très flouté. Il ne
+    /// se voit **que là où la fenêtre laisse passer**, et la chaîne d'échange
+    /// remplit chaque pixel de la zone cliente : dans notre cas, Mica n'habille
+    /// donc que la barre de titre. C'est peu, et c'est pourtant ce qu'il faut —
+    /// une fenêtre dont la barre de titre est claire au-dessus d'un spectrogramme
+    /// noir se reconnaît de l'autre bout de la pièce comme une application qui n'a
+    /// pas été finie.
+    ///
+    /// Les trois attributs sont des nombres et non des constantes nommées : ils
+    /// n'existent dans les en-têtes qu'au-delà d'une certaine version du SDK, et
+    /// les écrire ainsi évite de faire dépendre la construction de la machine qui
+    /// construit. `DwmSetWindowAttribute` ignore poliment ce qu'il ne connaît pas,
+    /// si bien que Windows 10 se contente de la barre sombre.
+    /// ─────────────────────────────────────────────────────────────────────────
+    private func habillerÀLaWindows11(_ fenetre: HWND) {
+        func attribut(_ numero: Int32, _ valeur: Int32) {
+            var v = valeur
+            _ = DwmSetWindowAttribute(fenetre, DWORD(numero), &v,
+                                      DWORD(MemoryLayout<Int32>.size))
+        }
+        attribut(20, 1)   // DWMWA_USE_IMMERSIVE_DARK_MODE
+        attribut(38, 2)   // DWMWA_SYSTEMBACKDROP_TYPE = DWMSBT_MAINWINDOW (Mica)
+        attribut(33, 2)   // DWMWA_WINDOW_CORNER_PREFERENCE = ROUND
     }
 
     deinit {

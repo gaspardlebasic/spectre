@@ -128,12 +128,20 @@ Verdict "le tempo relevé est celui du témoin" ($tempo -eq "120") "$tempo BPM"
 # ── La fenêtre, et l'image dedans ────────────────────────────────────────────
 
 Etape "La fenêtre"
+# Deux photographies, et il en faut deux.
+#
+# Celle qu'on regarde porte l'interface entière — réglette, grille, accords,
+# batterie, barre. Celle qu'on **mesure** ne la porte pas : la surimpression couvre
+# une partie de l'image, et `ImageCheck` trouverait un désaccord partout où passe un
+# trait de grille. Les deux passent par le même chemin de fenêtre.
 $gpu = Join-Path $travail "fenetre.ppm"
-& "$bin\SpectreWindows.exe" $temoin --photo $gpu | Out-Null
+$nu = Join-Path $travail "fenetre-nue.ppm"
+& "$bin\SpectreWindows.exe" $temoin --photo $gpu 2>$null | Out-Null
+& "$bin\SpectreWindows.exe" $temoin --photo $nu --sans-habillage 2>$null | Out-Null
 Verdict "la fenêtre s'ouvre et rend une image" (Test-Path $gpu) $gpu
 
-if (Test-Path $gpu) {
-    $comparaison = & "$bin\ImageCheck.exe" $gpu $cpu 2>&1
+if (Test-Path $nu) {
+    $comparaison = & "$bin\ImageCheck.exe" $nu $cpu 2>&1
     $comparaison | ForEach-Object { Write-Host "    $_" }
     # Le désaccord restant tient à ce que le GPU interpole et que le processeur
     # prend le plus proche voisin : sur une synthèse dont les raies font une ligne

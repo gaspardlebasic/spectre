@@ -104,6 +104,12 @@ int spectre_rendu_televerser_tuiles(SpectreRendu *rendu, int lignes, int colonne
 int spectre_rendu_televerser_palette(SpectreRendu *rendu, int largeur, int hauteur,
                                      const uint8_t *rgba);
 
+/// Restreint le spectrogramme à une zone, en pixels, depuis le coin haut-gauche.
+///
+/// La ligne de batterie occupe une bande en bas de la fenêtre — sur le Mac, c'est
+/// une vue à part sous le spectrogramme. Zéro rend toute la fenêtre au nuanceur.
+void spectre_rendu_zone(SpectreRendu *rendu, int largeur, int hauteur);
+
 /// Dessine une image. Efface d'abord : une cible jamais écrite s'affiche en blanc
 /// sur certains pilotes et en noir sur d'autres, ce qui fait douter du nuanceur.
 void spectre_rendu_dessiner(SpectreRendu *rendu, const SpectreUniformes *u);
@@ -132,6 +138,64 @@ int spectre_rendu_relire(SpectreRendu *rendu, uint8_t *octets);
 /// Le nom de la carte, tel que le pilote le donne. Utile au rapport de mesure :
 /// une fluidité relevée sans dire sur quoi ne veut rien dire.
 void spectre_rendu_nom_de_la_carte(SpectreRendu *rendu, char *nom, int taille);
+
+// ───────────────────────────────────────────────────── La surimpression, en Direct2D
+//
+// La réglette, la grille, les noms d'accords, la boucle : tout ce qui se dessine
+// **par-dessus** le spectrogramme. Direct2D écrit dans le tampon de la même chaîne
+// d'échange que le nuanceur, si bien qu'une seule présentation part.
+//
+// Toutes les coordonnées et toutes les tailles sont en **points**, comme le modèle
+// les compte ; `spectre_surimpression_echelle` pose la densité de l'écran, et
+// c'est le seul endroit où l'on passe aux pixels.
+//
+// Les couleurs sont en `0xRRVVBBAA`.
+
+/// Crée l'appareil Direct2D et DirectWrite. À appeler une fois, après le rendu.
+int spectre_surimpression_preparer(SpectreRendu *rendu, char *erreur);
+
+/// Points par pixel : 1 sur un écran ordinaire, 2 sur un écran dense.
+void spectre_surimpression_echelle(SpectreRendu *rendu, float echelle);
+
+/// Encadrent tout dessin. Entre les deux, et **après** `spectre_rendu_dessiner` :
+/// le nuanceur remplit, la surimpression écrit par-dessus.
+void spectre_surimpression_debuter(SpectreRendu *rendu);
+void spectre_surimpression_finir(SpectreRendu *rendu);
+
+void spectre_surimpression_rectangle(SpectreRendu *rendu, float x, float y,
+                                     float largeur, float hauteur, uint32_t rvba);
+void spectre_surimpression_ligne(SpectreRendu *rendu, float x0, float y0,
+                                 float x1, float y1, uint32_t rvba,
+                                 float epaisseur, int pointille);
+void spectre_surimpression_cercle(SpectreRendu *rendu, float x, float y, float rayon,
+                                  uint32_t rvba, float epaisseur);
+
+/// Remplit une aire fermée, donnée par `nombre` couples `x, y` consécutifs.
+///
+/// Le contour se referme tout seul du dernier point au premier. C'est ce qui dessine
+/// la courbe de niveau de la ligne de batterie — et ce n'est pas une commodité :
+/// la même surface tracée en colonnes d'un point de large faisait deux mille cinq
+/// cents appels par image, et a coûté quarante images par seconde le jour où la
+/// batterie est arrivée. Une aire, c'est **un** appel.
+void spectre_surimpression_aire(SpectreRendu *rendu, const float *points,
+                                int nombre, uint32_t rvba);
+
+/// Écrit du texte UTF-16 terminé par un zéro.
+///
+/// - `y` est le **milieu** de la ligne, comme `context.draw(Text, at:)` de SwiftUI :
+///   les ordonnées de la vue macOS se reprennent donc telles quelles.
+/// - `police` : 0 pour Segoe UI Variable, 1 pour Cascadia Mono — celle de la
+///   réglette, dont les chiffres doivent avoir la même largeur d'un instant à
+///   l'autre, faute de quoi le temps affiché tremble en défilant.
+/// - `alignement` : 0 à gauche, 1 centré, 2 à droite, dans `largeur`.
+void spectre_surimpression_texte(SpectreRendu *rendu, const uint16_t *texte,
+                                 float x, float y, float largeur, float taille,
+                                 uint32_t rvba, int police, int alignement);
+
+/// La largeur qu'occuperait ce texte. Sert à poser une étiquette sans qu'elle
+/// déborde de ce qu'elle décrit.
+float spectre_surimpression_largeur_texte(SpectreRendu *rendu, const uint16_t *texte,
+                                          float taille, int police);
 
 /// Exécute ce que le travail de fond a déposé sur `DispatchQueue.main`.
 ///

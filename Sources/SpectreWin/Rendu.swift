@@ -231,6 +231,16 @@ public final class RenduD3D11: RenduSpectrogramme {
 
     private let pont: OpaquePointer
 
+    /// Le même pont, pour la surimpression : Direct2D dessine dans le tampon de
+    /// cette chaîne d'échange-ci, et il lui faut donc la même poignée. Ce n'est pas
+    /// une fuite d'abstraction — `Surimpression.swift` est l'autre moitié de ce
+    /// fichier, séparée pour la longueur et non pour la responsabilité.
+    var pontBrut: OpaquePointer { pont }
+
+    /// Zone où le nuanceur dessine, en points. `nil` veut dire toute la fenêtre.
+    /// Posée par `zone(largeur:hauteur:echelle:)`.
+    var zoneEnPoints: (largeur: Double, hauteur: Double)?
+
     public private(set) var colonnes = 0
     public private(set) var lignes = 0
     public private(set) var generation = 0
@@ -366,8 +376,12 @@ public final class RenduD3D11: RenduSpectrogramme {
             envoyerLaTableDesNotes()
         }
 
-        let largeurPixels = Double(largeur)
-        let hauteurPixels = Double(hauteur)
+        // La zone si elle est posée, la fenêtre sinon. C'est **cette taille-là** que
+        // le nuanceur doit connaître : il s'en sert pour retourner l'axe vertical, et
+        // celle de la fenêtre décalerait l'image de toute la hauteur qui ne lui
+        // revient pas.
+        let largeurPixels = zoneEnPoints.map { $0.largeur * echelle } ?? Double(largeur)
+        let hauteurPixels = zoneEnPoints.map { $0.hauteur * echelle } ?? Double(hauteur)
         let colonnesParPixel = viewport.columnsPerPoint / echelle
 
         var u = SpectreUniformes()

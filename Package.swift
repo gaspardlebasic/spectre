@@ -236,6 +236,10 @@ if surWindows {
                 // en-têtes mais définis dans cette bibliothèque-là — contrairement
                 // à ceux de DXGI, qu'`INITGUID` fait naître sur place.
                 .linkedLibrary("uuid"),
+                // Direct2D et DirectWrite : la surimpression — réglette, grille,
+                // noms d'accords — dessinée dans le tampon du nuanceur.
+                .linkedLibrary("d2d1"),
+                .linkedLibrary("dwrite"),
             ]
         ),
         // Ce que Windows répond aux protocoles du modèle — le pendant exact de
@@ -315,5 +319,10 @@ let package = Package(
     platforms: [.macOS("26.0")],
     products: produits,
     dependencies: dependances,
-    targets: cibles
+    targets: cibles,
+    // Un seul fichier du dépôt est en C++ — `Sources/CPont/direct2d.cpp` — et ce
+    // n'est pas un goût : `dwrite.h` ne porte pas de version C de ses interfaces,
+    // contrairement à tous les autres en-têtes de DirectX. Voir l'avertissement
+    // dans `Sources/CPont/interne.h`.
+    cxxLanguageStandard: .cxx17
 )

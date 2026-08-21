@@ -720,6 +720,121 @@ qui échoue au hasard, et une épreuve qui échoue au hasard finit par ne plus �
 lue. Ce qui est exigé, c'est que **l'instrument ait fonctionné** : qu'il y ait eu des
 images, et qu'elles aient été montrées.
 
+## Étape 7 — l'interface Windows 11
+
+**Faite pour la frise, entamée pour le reste** — et la limite est dite plus bas
+plutôt que passée sous silence.
+
+La fenêtre porte la réglette et ses horodatages, la grille métrique avec ses
+numéros de mesure, les repères d'octave, la boucle et sa durée, la tête de lecture,
+la bande des accords, les cadres des raies sur lesquelles un accord a été décidé, le
+relevé d'aimantation, la ligne de batterie à trois voies, et une barre d'état. Le
+tout en Direct2D et DirectWrite, **dans le tampon de la même chaîne d'échange que le
+nuanceur** : une seule présentation part.
+
+### Un seul tampon, deux façons d'y dessiner
+
+Le spectrogramme est une image entière calculée par le nuanceur ; tout le reste est
+du dessin vectoriel et du texte. Les mêler au nuanceur serait absurde — il faudrait
+y porter une fonte — et les dessiner dans une seconde fenêtre coûterait une
+composition de plus, donc une image de retard.
+
+Direct2D sait écrire directement dans le tampon de Direct3D : les deux partagent
+l'appareil, et la surface D2D n'est qu'une vue du même tampon. C'est l'équivalent
+exact du `Canvas` SwiftUI posé sur la vue Metal.
+
+`Sources/SpectreWindows/Frise.swift` est le pendant de `TimelineOverlay`, fonction
+par fonction, dans le même ordre, avec les mêmes seuils et les mêmes opacités. Les
+deux se lisent l'une contre l'autre : c'est ce qui permettra de voir qu'elles ont
+divergé le jour où l'une des deux changera.
+
+### Le seul fichier C++ du dépôt
+
+`dwrite.h` ne porte **pas** de version C de ses interfaces, contrairement à
+`d3d11.h`, `dxgi.h` et `d2d1.h` que `COBJMACROS` rend utilisables. L'inclure depuis
+un fichier C produit une centaine d'erreurs qui désignent l'en-tête de Microsoft, ce
+qui fait chercher du côté du SDK pendant un moment.
+
+`direct2d.cpp` est donc compilé en C++, et lui seul. `interne.h` est partagé : en
+C++ il voit le vrai en-tête, en C il ne voit que des types déclarés, ce qui suffit à
+`d3d11.c` — il ne fait que les porter dans la structure. La frontière avec Swift,
+elle, reste du C pur.
+
+### La mesure de l'étape 6 a trouvé le défaut de l'étape 7
+
+Le jour où la ligne de batterie est arrivée, le relevé de fluidité est tombé de
+**120 à 76 images par seconde**. À l'œil, l'image était exactement la même.
+
+Deux fausses pistes, mesurées et écartées : le nombre de rectangles (une colonne
+d'un point de large par abscisse, soit trois mille six cents par image) et
+l'absence d'aire dans le pont. Les corriger n'a rien rendu — la cadence est restée
+à 78.
+
+La vraie cause : **`AppModel` est `@Observable`, et chaque lecture d'une de ses
+propriétés passe par le suivi des dépendances.** La courbe de niveau demandait au
+modèle, pour chaque abscisse et pour chacune des trois voies, le relevé de
+percussion et deux conversions de temps — onze mille lectures suivies par image,
+pour une courbe qui tient en deux nombres : l'instant du bord gauche, et ce qu'un
+point vaut en secondes. Le temps est affine en l'abscisse ; il n'y avait rien à
+demander au modèle.
+
+Les prendre **une fois avant la boucle** a rendu les quarante images par seconde.
+Relevé après correction, trois exécutions de chaque :
+
+```
+  avec toute l'interface   8,32  8,29  8,29 ms
+  sans habillage           8,31  8,31  8,32 ms
+```
+
+L'interface ne coûte donc **rien de mesurable**. C'est exactement ce pour quoi
+l'étape 6 existe : un défaut de cette nature ne se voit pas, il se compte.
+
+### Mica, et ce qu'il peut faire ici
+
+La fenêtre demande trois attributs au gestionnaire de bureau : barre de titre
+sombre, fond Mica, coins arrondis. Les trois sont écrits en nombres et non en
+constantes nommées — elles n'existent dans les en-têtes qu'au-delà d'une certaine
+version du SDK, et `DwmSetWindowAttribute` ignore poliment ce qu'il ne connaît pas,
+si bien que Windows 10 se contente de la barre sombre.
+
+**Mica ne se voit que là où la fenêtre laisse passer**, et la chaîne d'échange
+remplit chaque pixel de la zone cliente : il n'habille donc que la barre de titre.
+C'est peu. C'est pourtant ce qu'il faut — une fenêtre dont la barre de titre est
+claire au-dessus d'un spectrogramme noir se reconnaît de l'autre bout de la pièce
+comme une application qui n'a pas été finie.
+
+### Deux photographies, et il en faut deux
+
+La surimpression couvre une partie de l'image : une photographie habillée ne se
+compare donc plus au rendu du processeur, et `ImageCheck` trouverait un désaccord
+partout où passe un trait de grille.
+
+`--sans-habillage` retire la réglette, la grille, la batterie et la barre. La
+photographie éprouve alors exactement ce qu'elle éprouvait avant l'étape 7 — le
+chemin de la fenêtre, de bout en bout — et reste mesurable. `essai.ps1` en prend
+donc deux : celle qu'on regarde, et celle qu'on mesure. Les nombres de la seconde
+sont **inchangés au centième** depuis l'étape 3, ce qui est la preuve que
+l'habillage n'a pas dérangé l'image.
+
+### Ce qui n'est pas là, et qu'il ne faut pas croire fait
+
+Sur le Mac, `Controls.swift` pose des commandes flottantes en verre — curseurs de
+vitesse et de transposition, sélecteur de pistes, boutons de palette — et
+`Preferences.swift` un panneau de réglages entier : quarante-huit kilo-octets de
+SwiftUI à eux deux. **Rien de tout cela n'est porté.**
+
+Ce qui est là est ce sans quoi l'application ne se pilote pas du tout : la barre du
+bas dit où en est la lecture, à quelle vitesse, dans quel ton, à quel tempo, et ce
+que le modèle a à dire. Tout le reste passe par le clavier, dont la barre rappelle
+les touches — parce qu'une interface qui cache ses raccourcis n'en a pas.
+
+Le neutre ne s'affiche pas : une barre qui répète « ×1,00 +0 » à longueur de journée
+apprend à ne plus être lue, et c'est précisément le jour où l'on a oublié un ralenti
+qu'on aurait voulu la voir.
+
+Porter les commandes et les préférences est une étape à soi. L'annoncer faite ici
+serait mentir sur ce que la fenêtre montre.
+
 ## L'épreuve complète, sous Windows
 
 `essai.ps1` est le pendant d'`essai.sh`, et il fait tout en une commande :
@@ -792,8 +907,8 @@ moins une borne inférieure entre deux essais sur du matériel réel.
 | 4. Le son qui entre | **faite** — Media Foundation seule, et identique au bit près sur le WAV |
 | 5. Le son qui sort | **faite** — WASAPI, et un étireur écrit dans le noyau |
 | 6. Les gestes, et la fluidité | **faite** — et les mesures ont trouvé un défaut |
-| 7. L'interface Windows 11 | à faire — Direct2D, Fluent, Mica |
-| 8. Sessions et préférences | à faire — `SessionStore` est déjà portable |
+| 7. L'interface Windows 11 | **la frise est faite** — reste les commandes et les préférences |
+| 8. Sessions et préférences | à faire — mais elles marchent déjà : voir l'étape 6 |
 | 9. La séparation | à faire — ONNX Runtime en C, et un WAV multicanal |
 | 10. La distribution | à faire — `build.ps1`, et les bibliothèques d'exécution |
 

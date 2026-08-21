@@ -1,40 +1,16 @@
 // Direct3D 11, en C. Voir `include/pont.h` pour la raison d'être de ce fichier.
 
-#define COBJMACROS
-#define WIN32_LEAN_AND_MEAN
-
-#include <windows.h>
 // `INITGUID` fait définir ici les `IID_…` que réclame `QueryInterface`, plutôt que
 // de les faire chercher dans `dxguid.lib` : une bibliothèque de moins à lier, et
 // une erreur de liaison de moins à diagnostiquer.
 #include <initguid.h>
-#include <d3d11.h>
-#include <dxgi1_3.h>
+#include "interne.h"
 #include <d3dcompiler.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "pont.h"
-
-struct SpectreRendu {
-    ID3D11Device *appareil;
-    ID3D11DeviceContext *contexte;
-    IDXGISwapChain2 *chaine;             // NULL hors écran
-    HANDLE attente;                      // objet d'attente de la chaîne
-    ID3D11RenderTargetView *cible;
-    ID3D11Texture2D *cibleHorsEcran;     // NULL à l'écran
-    ID3D11Texture2D *relecture;
-    ID3D11VertexShader *sommets;
-    ID3D11PixelShader *fragments;
-    ID3D11Buffer *constantes;
-    ID3D11RasterizerState *rasteriseur;
-    ID3D11ShaderResourceView *tuiles;
-    ID3D11ShaderResourceView *palette;
-    int largeur, hauteur;
-    char carte[128];
-};
 
 static void noter(char *erreur, const char *format, ...) {
     if (!erreur) { return; }
@@ -46,6 +22,7 @@ static void noter(char *erreur, const char *format, ...) {
 
 static void liberer(SpectreRendu *r) {
     if (!r) { return; }
+    spectre_surimpression_detruire(r);
     if (r->tuiles) { ID3D11ShaderResourceView_Release(r->tuiles); }
     if (r->palette) { ID3D11ShaderResourceView_Release(r->palette); }
     if (r->rasteriseur) { ID3D11RasterizerState_Release(r->rasteriseur); }
@@ -310,6 +287,12 @@ SpectreRendu *spectre_rendu_creer_hors_ecran(int largeur, int hauteur,
 
 void spectre_rendu_detruire(SpectreRendu *rendu) { liberer(rendu); }
 
+void spectre_rendu_zone(SpectreRendu *rendu, int largeur, int hauteur) {
+    if (!rendu) { return; }
+    rendu->zoneLargeur = largeur;
+    rendu->zoneHauteur = hauteur;
+}
+
 int spectre_rendu_largeur(const SpectreRendu *rendu) { return rendu ? rendu->largeur : 0; }
 int spectre_rendu_hauteur(const SpectreRendu *rendu) { return rendu ? rendu->hauteur : 0; }
 
@@ -322,6 +305,10 @@ int spectre_rendu_redimensionner(SpectreRendu *rendu, int largeur, int hauteur) 
     // La cible doit être lâchée **et détachée du contexte** avant que la chaîne se
     // redimensionne : le contexte garde une référence, et une seule suffit à faire
     // échouer `ResizeBuffers` avec une erreur qui parle de tampons occupés.
+    // La surface Direct2D tient une référence sur le tampon de la chaîne, tout
+    // comme la vue de cible : les deux doivent être lâchées, faute de quoi
+    // `ResizeBuffers` échoue en parlant de tampons occupés sans dire lequel.
+    spectre_surimpression_lacher(rendu);
     ID3D11DeviceContext_OMSetRenderTargets(rendu->contexte, 0, NULL, NULL);
     lacherCible(rendu);
     if (rendu->relecture) {
@@ -335,7 +322,9 @@ int spectre_rendu_redimensionner(SpectreRendu *rendu, int largeur, int hauteur) 
     if (FAILED(hr)) { return 0; }
     rendu->largeur = largeur;
     rendu->hauteur = hauteur;
-    return cibleDepuisLaChaine(rendu, NULL);
+    if (!cibleDepuisLaChaine(rendu, NULL)) { return 0; }
+    spectre_surimpression_reprendre(rendu);
+    return 1;
 }
 
 // ─────────────────────────────────────────────────────────── Le téléversement
@@ -447,9 +436,13 @@ void spectre_rendu_dessiner(SpectreRendu *rendu, const SpectreUniformes *u) {
     ID3D11DeviceContext_ClearRenderTargetView(rendu->contexte, rendu->cible, noir);
     ID3D11DeviceContext_OMSetRenderTargets(rendu->contexte, 1, &rendu->cible, NULL);
 
+    // Le spectrogramme n'occupe pas forcément toute la fenêtre : la ligne de
+    // batterie prend une bande en bas, comme sur le Mac où elle est une vue à part.
+    // Ce qui reste au-dessous garde la couleur d'effacement, et la surimpression y
+    // dessine.
     D3D11_VIEWPORT vue = {0};
-    vue.Width = (FLOAT)rendu->largeur;
-    vue.Height = (FLOAT)rendu->hauteur;
+    vue.Width = (FLOAT)(rendu->zoneLargeur > 0 ? rendu->zoneLargeur : rendu->largeur);
+    vue.Height = (FLOAT)(rendu->zoneHauteur > 0 ? rendu->zoneHauteur : rendu->hauteur);
     vue.MaxDepth = 1.0f;
     ID3D11DeviceContext_RSSetViewports(rendu->contexte, 1, &vue);
     ID3D11DeviceContext_RSSetState(rendu->contexte, rendu->rasteriseur);
