@@ -16,6 +16,16 @@ import SwiftUI
         static let cacheLimit = "cacheLimitBytes"
         static let hueOrigin = "hueOrigin"
         static let chords = "chordSettings"
+        static let reassignment = "reassignment"
+    }
+
+    /// La réattribution spectrale — voir `AnalysisSettings.reassignment`.
+    ///
+    /// Ici plutôt que par morceau, pour la même raison que les accords : c'est un
+    /// réglage d'algorithme, qu'on tourne en regardant et qu'on veut retrouver au
+    /// morceau suivant. Le changer refait l'image entière, donc l'analyse.
+    var reassignment: Bool {
+        didSet { UserDefaults.standard.set(reassignment, forKey: Key.reassignment) }
     }
 
     /// Plafond du dossier des pistes séparées, en octets.
@@ -68,6 +78,11 @@ import SwiftUI
         let stored = defaults.integer(forKey: Key.cacheLimit)
         cacheLimit = stored > 0 ? stored : 1_000_000_000
         hueOrigin = defaults.integer(forKey: Key.hueOrigin)     // 0 = Do, par défaut
+        // Allumée quand rien n'est écrit — `bool(forKey:)` rendrait faux, ce qui
+        // confondrait « jamais réglé » et « décoché exprès ».
+        reassignment = defaults.object(forKey: Key.reassignment) == nil
+            ? true
+            : defaults.bool(forKey: Key.reassignment)
         chords = defaults.data(forKey: Key.chords)
             .flatMap { try? JSONDecoder().decode(ChordSettings.self, from: $0) }
             ?? ChordSettings()
@@ -98,6 +113,8 @@ struct SettingsView: View {
     var body: some View {
         Form {
             chordSection
+
+            imageSection
 
             Section("Pistes séparées") {
                 Picker("Taille maximale du cache", selection: $preferences.cacheLimit) {
@@ -175,6 +192,39 @@ struct SettingsView: View {
         // le morceau ouvert sans qu'on ait à rien redemander. Le chromagramme, lui,
         // est gardé — seul un changement de fenêtre le fait relire.
         .onChange(of: preferences.chords) { model.reloadChords() }
+        // Changer la façon d'analyser, ce n'est pas changer la façon d'afficher :
+        // il n'y a rien à retoucher dans la matrice, elle est à refaire. Le morceau
+        // ouvert repart donc pour une analyse — un aller-retour par la session, si
+        // bien que le cadrage, le contraste et la tête de lecture sont retrouvés.
+        .onChange(of: preferences.reassignment) {
+            model.analysis.reassignment = preferences.reassignment
+            model.reanalyse()
+        }
+    }
+
+    // MARK: L'image
+
+    private var imageSection: some View {
+        Section("Image") {
+            Toggle("Réattribution spectrale", isOn: $preferences.reassignment)
+            explain("""
+                    Chaque case de la transformée dépose son énergie à la fréquence \
+                    que sa propre phase désigne, au lieu du centre de la case qui l'a \
+                    captée. Les partiels passent de trois lignes à une, et les attaques \
+                    cessent de baver.
+                    """)
+            explain("""
+                    En échange, ce qui n'est pas fait de raies — souffle, cymbales, \
+                    réverbération — devient granuleux : le bruit se réattribue au \
+                    hasard au lieu de s'étaler. Et l'analyse coûte deux fois plus, une \
+                    seconde transformée par étage.
+                    """)
+            explain("""
+                    Le relevé d'accords lit cette même image : la décocher le change \
+                    aussi, et le seuil de clarté ne veut plus tout à fait dire la \
+                    même chose puisque le fond remonte de 4 dB.
+                    """)
+        }
     }
 
     // MARK: Les accords

@@ -14,7 +14,8 @@ import SpectreMac
 /// Options : `--depuis` et `--duree` pour ne regarder qu'un passage, `--tenue`,
 /// `--clarte` et `--temps` pour bousculer les réglages, `--mixage` pour lire le
 /// mixage entier là où l'application montrerait les pistes moins la batterie, et
-/// `--notes` pour écrire sous chaque accord les raies qui l'ont décidé.
+/// `--notes` pour écrire sous chaque accord les raies qui l'ont décidé, et
+/// `--sans-carte-basse` pour relever sans retirer les harmoniques de la basse.
 enum ChordsCommand {
     static func run(path: String, arguments: [String]) -> Int32 {
         func value(_ name: String) -> String? {
@@ -37,6 +38,7 @@ enum ChordsCommand {
         // elles existent. C'est ce qui est à l'écran qui est relevé, donc c'est ce
         // qu'il faut lire ici pour que les chiffres veuillent dire quelque chose.
         var lu = "mixage"
+        var basseSeule: AudioSource?
         let wanted: Set<Stem> = arguments.contains("--sans-voix")
             ? [.bass, .other] : [.bass, .other, .vocals]
         if !arguments.contains("--mixage"), let fingerprint = source.fingerprint,
@@ -45,6 +47,13 @@ enum ChordsCommand {
            let stems = try? AudioSource.load(combined) {
             source = stems
             lu = wanted.contains(.vocals) ? "pistes sans batterie" : "basse et accompagnement"
+            // La basse toute seule : c'est elle qui dira lesquelles de ses raies sont
+            // ses propres harmoniques. `--sans-carte-basse` l'écarte, pour mesurer ce
+            // qu'elle change.
+            if !arguments.contains("--sans-carte-basse"),
+               let file = try? StemStore.combined([.bass], for: fingerprint) {
+                basseSeule = try? AudioSource.load(file)
+            }
         }
 
         let started = Date()
@@ -87,19 +96,27 @@ enum ChordsCommand {
         if let slack = number("--marge") { settings.mustExceedParent = slack }
         let map = NoteMap.build(spectrogram, referenceA: display.referenceA,
                                 prominence: settings.prominence)
+        let bassMap = basseSeule.map { basse -> NoteMap in
+            let matrix = OfflineAnalysis.run(samples: basse.mono,
+                                             sampleRate: basse.sampleRate,
+                                             settings: AnalysisSettings())
+            return NoteMap.build(matrix, referenceA: display.referenceA,
+                                 prominence: settings.prominence)
+        }
         let mapSeconds = Date().timeIntervalSince(mapStarted)
 
         let detectStarted = Date()
         let track = ChordDetector.detect(map: map, display: display, tempo: tempo,
-                                         settings: settings)
+                                         settings: settings, bass: bassMap)
         let detectSeconds = Date().timeIntervalSince(detectStarted)
 
         let from = number("--depuis") ?? 0
         let span = number("--duree") ?? .infinity
         let to = span.isFinite ? from + span : .infinity
 
-        print(String(format: "%@ — %.1f s, %@, %.1f BPM, %d/4",
+        print(String(format: "%@ — %.1f s, %@%@, %.1f BPM, %d/4",
                      url.lastPathComponent, spectrogram.duration, lu,
+                     bassMap == nil ? "" : " · carte de basse",
                      tempo.bpm, tempo.beatsPerBar))
         print(String(format: "%@ — %d accords", settings.vocabulary.label as NSString,
                      settings.chords.count))

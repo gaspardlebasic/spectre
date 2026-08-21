@@ -410,11 +410,11 @@ struct TimelineOverlay: View {
             let isPhrase = tempo.opensPhrase(beat)
             let isBar = tempo.opensBar(beat)
             let isBeat = abs(beat.rounded() - beat) < 1e-6
-            let color: Color = isPhrase ? .white.opacity(0.62)
-                : isBar ? .white.opacity(0.4)
-                : isBeat ? .white.opacity(0.18) : .white.opacity(0.08)
+            let color: Color = isPhrase ? .white.opacity(0.38)
+                : isBar ? .white.opacity(0.24)
+                : isBeat ? .white.opacity(0.11) : .white.opacity(0.05)
             vertical(&context, x: x, from: rulerHeight, to: Double(size.height),
-                     color: color, width: isBar ? 1 : 0.5)
+                     color: color, width: isBar ? 0.75 : 0.5)
         }
 
         // Numéros de mesure : toutes tant qu'elles ont la place, sinon une par
@@ -434,7 +434,7 @@ struct TimelineOverlay: View {
             guard time >= 0 else { continue }
             context.draw(Text("\(Int(bar) + 1)")
                             .font(.system(size: 9, weight: .medium, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.55)),
+                            .foregroundStyle(.white.opacity(0.38)),
                          at: CGPoint(x: model.point(ofTime: time) + 11, y: rulerHeight + 9))
         }
     }

@@ -591,37 +591,19 @@ public enum ChordVoicing {
     /// de montrer ses deux octaves.
     public static func held(in map: NoteMap, from t0: Double, to t1: Double,
                             display: DisplaySettings,
-                            settings: ChordSettings = ChordSettings()) -> [SoundingNote] {
+                            settings: ChordSettings = ChordSettings(),
+                            bass: NoteMap? = nil) -> [SoundingNote] {
         guard !map.isEmpty, t1 > t0 else { return [] }
-        let first = max(0, Int(map.column(atTime: t0).rounded(.up)))
-        let last = min(map.columnCount - 1, Int(map.column(atTime: t1).rounded(.down)))
-        guard first <= last else { return [] }
-        let total = Double(last - first + 1)
-        let floors = map.visibilityFloor(display: display, clarity: settings.clarity)
-
-        // Présence et niveau moyen de chaque demi-ton.
-        var candidates = [SoundingNote]()
-        var levels = [Int: Float]()
-        map.levels.withUnsafeBufferPointer { values in
-            for note in 0..<map.noteCount {
-                let floor = floors[note]
-                let row = note * map.columnCount
-                var seen = 0
-                var sum = 0.0
-                for column in first...last where values[row + column] >= floor {
-                    seen += 1
-                    sum += Double(values[row + column])
-                }
-                guard seen > 0 else { continue }
-                let level = Float(sum / Double(seen))
-                let midi = map.low + note
-                levels[midi] = level
-                guard Double(seen) / total >= settings.hold else { continue }
-                candidates.append(SoundingNote(midi: midi, level: level,
-                                               presence: Double(seen) / total))
-            }
-        }
+        var candidates = sounding(in: map, from: t0, to: t1,
+                                  display: display, settings: settings)
         guard !candidates.isEmpty else { return [] }
+
+        // La basse ne compte que par sa fondamentale.
+        if let bass, !bass.isEmpty {
+            candidates = withoutBassHarmonics(candidates, bass: bass, from: t0, to: t1,
+                                              display: display, settings: settings)
+            guard !candidates.isEmpty else { return [] }
+        }
 
         // L'explication par le grave. On ne regarde que des parents **tenus** : une
         // note brève ne peut pas expliquer une note tenue, elle n'a pas duré assez.
@@ -639,6 +621,74 @@ public enum ChordVoicing {
             return false
         }
         return candidates.filter { !explained($0) }.sorted { $0.midi < $1.midi }
+    }
+
+    /// Les demi-tons **tenus** d'un intervalle, sans autre règle que la tenue.
+    ///
+    /// Sorti de `held` pour servir deux fois : à l'image affichée, et à la carte de
+    /// la basse seule quand il y en a une. Les deux lectures doivent être faites de
+    /// la même façon, sans quoi comparer leurs niveaux ne voudrait rien dire.
+    private static func sounding(in map: NoteMap, from t0: Double, to t1: Double,
+                                 display: DisplaySettings,
+                                 settings: ChordSettings) -> [SoundingNote] {
+        let first = max(0, Int(map.column(atTime: t0).rounded(.up)))
+        let last = min(map.columnCount - 1, Int(map.column(atTime: t1).rounded(.down)))
+        guard first <= last else { return [] }
+        let total = Double(last - first + 1)
+        let floors = map.visibilityFloor(display: display, clarity: settings.clarity)
+
+        var result = [SoundingNote]()
+        map.levels.withUnsafeBufferPointer { values in
+            for note in 0..<map.noteCount {
+                let floor = floors[note]
+                let row = note * map.columnCount
+                var seen = 0
+                var sum = 0.0
+                for column in first...last where values[row + column] >= floor {
+                    seen += 1
+                    sum += Double(values[row + column])
+                }
+                guard seen > 0, Double(seen) / total >= settings.hold else { continue }
+                result.append(SoundingNote(midi: map.low + note,
+                                           level: Float(sum / Double(seen)),
+                                           presence: Double(seen) / total))
+            }
+        }
+        return result
+    }
+
+    /// Retire de l'image ce que la basse seule suffit à expliquer.
+    ///
+    /// **Une contrebasse ou une basse électrique est un cas à part.** Ses partiels
+    /// sont souvent plus forts que sa fondamentale — c'est ce qui la rend audible sur
+    /// un petit haut-parleur — si bien que la règle générale, « une harmonique est
+    /// plus faible que sa fondamentale », ne la décrit pas. Sa cinquième harmonique
+    /// entrait alors dans l'accord comme une tierce majeure que personne n'a jouée.
+    ///
+    /// On ne devine plus : quand les pistes sont séparées, **on regarde la basse
+    /// toute seule**. Ce qu'elle y montre autre part que sur sa note la plus grave
+    /// est, par construction, une harmonique — et s'en va. Aucun modèle de
+    /// décroissance là-dedans, aucun rang d'harmonique : une mesure.
+    ///
+    /// La réserve de `mustExceedParent` reste : un demi-ton où l'image porte
+    /// franchement plus que la basse seule contient autre chose, et le pianiste qui
+    /// double une harmonique du bassiste garde sa note.
+    private static func withoutBassHarmonics(_ candidates: [SoundingNote],
+                                             bass: NoteMap, from t0: Double, to t1: Double,
+                                             display: DisplaySettings,
+                                             settings: ChordSettings) -> [SoundingNote] {
+        let read = sounding(in: bass, from: t0, to: t1, display: display, settings: settings)
+        guard let fundamental = read.min(by: { $0.midi < $1.midi })?.midi else {
+            return candidates
+        }
+        let bassLevels = Dictionary(read.map { ($0.midi, $0.level) },
+                                    uniquingKeysWith: max)
+        return candidates.filter { note in
+            guard note.midi != fundamental, let level = bassLevels[note.midi] else {
+                return true
+            }
+            return Double(note.level) > Double(level) + settings.mustExceedParent
+        }
     }
 
     /// Ce que ces raies rapportent à chaque accord du vocabulaire.
@@ -718,21 +768,41 @@ public enum ChordDetector {
     ///   - map: la carte des notes de la matrice affichée.
     ///   - display: les réglages d'affichage, dont dépend ce qui est visible.
     ///   - tempo: la grille sans laquelle il n'y a ni découpage ni endroit où écrire.
-    ///   - selection: le passage sélectionné, s'il y en a un. N'est lu qu'en portée
-    ///     « mesure » : c'est là qu'il devient l'unique intervalle relevé.
+    ///   - bass: la carte de la **piste de basse seule**, quand les pistes sont
+    ///     séparées et que la basse est à l'image. Elle ne sert qu'à retirer ses
+    ///     propres harmoniques — voir `ChordVoicing.withoutBassHarmonics`. Sans elle,
+    ///     le relevé s'en tient à l'explication par le grave, qui vaut pour tout le
+    ///     monde.
+    ///   - selection: le passage sélectionné, s'il y en a un. **Il l'emporte sur la
+    ///     portée**, dans les deux modes : dès qu'on trace une plage, on demande à
+    ///     voir l'accord de cette plage-là, décidé sur elle entière et sur rien
+    ///     d'autre. Découper en temps ce qu'on vient d'entourer à la main répondrait
+    ///     à une question qu'on n'a pas posée.
     public static func detect(map: NoteMap, display: DisplaySettings,
                               tempo: TempoGrid,
                               settings: ChordSettings = ChordSettings(),
-                              selection: ClosedRange<Double>? = nil) -> ChordTrack {
+                              selection: ClosedRange<Double>? = nil,
+                              bass: NoteMap? = nil) -> ChordTrack {
         guard !map.isEmpty, tempo.bpm > 0 else { return .empty }
         let duration = map.duration
+
+        // La sélection avant la portée : elle est la portée, quand il y en a une.
+        if let selection, selection.upperBound - selection.lowerBound > LoopEditing.minimumLength {
+            let lo = max(selection.lowerBound, 0)
+            let hi = min(selection.upperBound, duration)
+            guard hi > lo else { return .empty }
+            return single(lo...hi, map: map, display: display, tempo: tempo,
+                          settings: settings, bass: bass)
+        }
 
         switch settings.scope {
         case .beat:
             let bounds = beatBounds(tempo: tempo, duration: duration)
             guard bounds.count > 1 else { return .empty }
             let spans = (0..<(bounds.count - 1)).map { bounds[$0]...bounds[$0 + 1] }
-            let read = spans.map { held(in: map, span: $0, display: display, settings: settings) }
+            let read = spans.map {
+                held(in: map, span: $0, display: display, settings: settings, bass: bass)
+            }
             let scores = read.map { ChordVoicing.scores(for: $0, settings: settings) }
             let chosen = viterbi(scores, vocabulary: settings.chords,
                                  changeCost: settings.changeCost)
@@ -740,17 +810,11 @@ public enum ChordDetector {
                          settings: settings, grouped: false,
                          firstBeat: Int(tempo.beat(at: bounds[0]).rounded()))
         case .span:
-            var spans: [ClosedRange<Double>]
-            if let selection, selection.upperBound - selection.lowerBound > LoopEditing.minimumLength {
-                let lo = max(selection.lowerBound, 0)
-                let hi = min(selection.upperBound, duration)
-                guard hi > lo else { return .empty }
-                spans = [lo...hi]
-            } else {
-                spans = barSpans(tempo: tempo, duration: duration)
-            }
+            let spans = barSpans(tempo: tempo, duration: duration)
             guard !spans.isEmpty else { return .empty }
-            let read = spans.map { held(in: map, span: $0, display: display, settings: settings) }
+            let read = spans.map {
+                held(in: map, span: $0, display: display, settings: settings, bass: bass)
+            }
             let scores = read.map { ChordVoicing.scores(for: $0, settings: settings) }
             // Aucun lissage : une mesure entière porte assez de preuves pour se
             // décider seule, et un passage qu'on a sélectionné à la main ne doit
@@ -767,11 +831,31 @@ public enum ChordDetector {
         }
     }
 
+    /// Un seul accord, pour un seul intervalle : le passage sélectionné.
+    ///
+    /// Rien à lisser, rien à recoudre — il n'y a qu'une décision, et elle porte sur
+    /// tout ce qu'on a entouré.
+    private static func single(_ span: ClosedRange<Double>, map: NoteMap,
+                               display: DisplaySettings, tempo: TempoGrid,
+                               settings: ChordSettings, bass: NoteMap?) -> ChordTrack {
+        let read = [held(in: map, span: span, display: display, settings: settings, bass: bass)]
+        let scores = read.map { ChordVoicing.scores(for: $0, settings: settings) }
+        let chosen = scores.map { column -> Int? in
+            var best = -Double.infinity
+            var argument = -1
+            for j in column.indices where column[j] > best { best = column[j]; argument = j }
+            return argument >= 0 && best > -.infinity ? argument : nil
+        }
+        return track(spans: [span], notes: read, scores: scores, chosen: chosen,
+                     settings: settings, grouped: true,
+                     firstBeat: Int(tempo.beat(at: span.lowerBound).rounded()))
+    }
+
     private static func held(in map: NoteMap, span: ClosedRange<Double>,
                              display: DisplaySettings,
-                             settings: ChordSettings) -> [SoundingNote] {
+                             settings: ChordSettings, bass: NoteMap?) -> [SoundingNote] {
         ChordVoicing.held(in: map, from: span.lowerBound, to: span.upperBound,
-                          display: display, settings: settings)
+                          display: display, settings: settings, bass: bass)
     }
 
     private static func track(spans: [ClosedRange<Double>], notes: [[SoundingNote]],

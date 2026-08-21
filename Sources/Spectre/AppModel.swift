@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
     private(set) var source: AudioSource?
     private(set) var spectrogram = Spectrogram.empty
 
-    var analysis = AnalysisSettings()
+    var analysis = AnalysisSettings(reassignment: Preferences.shared.reassignment)
 
     /// Les réglages d'affichage — et, depuis le relevé par raies, une **entrée du
     /// relevé d'accords**.
@@ -81,7 +81,9 @@ import UniformTypeIdentifiers
     var loop: ClosedRange<Double>? {
         didSet {
             pushLoop()
-            guard loop != oldValue, Preferences.shared.chords.scope == .span else { return }
+            // Quelle que soit la portée réglée : la boucle est devenue la portée du
+            // relevé dès qu'elle existe, et l'effacer rend le morceau à la sienne.
+            guard loop != oldValue else { return }
             reloadChords()
         }
     }
@@ -201,6 +203,18 @@ import UniformTypeIdentifiers
         }
     }
 
+    /// Refait l'image du morceau ouvert. Changer un réglage d'analyse n'est pas
+    /// changer un réglage d'affichage : la matrice n'est pas à retoucher, elle est
+    /// à recalculer, et avec elle la carte des notes, les accords et le tempo.
+    ///
+    /// On repasse par l'ouverture plutôt que d'écrire un chemin plus court : elle
+    /// enregistre la session avant, la relit après, et rend donc le cadrage, le
+    /// contraste et la tête de lecture tels qu'ils étaient.
+    func reanalyse() {
+        guard let url = fileURL else { return }
+        open(url)
+    }
+
     func open(_ url: URL) {
         guard progress == nil else { return }
         RecentFiles.note(url)
@@ -253,6 +267,8 @@ import UniformTypeIdentifiers
         mixSpectrogram = spectrogram
         selection = Self.everything
         stemCache.removeAll()
+        bassNoteMap = .empty
+        bassMapKey = nil
         job?.cancel()
         job = nil
         separating = nil
@@ -664,6 +680,22 @@ import UniformTypeIdentifiers
     @ObservationIgnored private var chordsRunning = false
     @ObservationIgnored private var chordsAgain = false
     @ObservationIgnored private var job: SeparationJob?
+    /// Un préchargement des pistes voisines est en route.
+    @ObservationIgnored private var precaching = false
+
+    /// La carte des notes de la **piste de basse seule**, quand elle existe.
+    ///
+    /// Elle ne sert qu'à une chose : retirer du relevé les harmoniques de la basse,
+    /// qui sont souvent plus fortes que sa fondamentale et entraient dans l'accord
+    /// comme des notes que personne n'a jouées. Voir
+    /// `ChordVoicing.withoutBassHarmonics`.
+    ///
+    /// C'est la seule entorse au principe « le relevé lit l'image affichée », et elle
+    /// est étroite : cette carte-ci ne peut rien **ajouter** au relevé, seulement en
+    /// retirer ce que la basse suffit à expliquer. Ce qu'on voit reste ce qui décide ;
+    /// on sait seulement, en plus, d'où une partie vient.
+    @ObservationIgnored private var bassNoteMap = NoteMap.empty
+    @ObservationIgnored private var bassMapKey: Int?
 
     var isSeparated: Bool {
         guard let fingerprint = source?.fingerprint else { return false }
@@ -850,6 +882,9 @@ import UniformTypeIdentifiers
     /// de piste, sans quoi comparer deux pistes serait insupportable.
     private func adopt(spectrogram matrix: Spectrogram, playing file: URL?) {
         spectrogram = matrix
+        // L'image qu'on vient de montrer est le nouveau point de départ : ce qui est
+        // à un clic d'ici se prépare en fond.
+        defer { precacheStems() }
         // L'image a changé : la carte des notes aussi, et les accords avec elle.
         releveCarteDesNotes()
         renderer?.layout = matrix.layout
@@ -884,6 +919,68 @@ import UniformTypeIdentifiers
         guard percussion.hits.isEmpty else { return nil }
         if isSeparated, !selection.contains(.drums) { return "Batterie retirée" }
         return spectrogram.columnCount > 0 ? "Aucun coup relevé" : nil
+    }
+
+    /// Prépare en fond les images qu'un seul clic peut demander.
+    ///
+    /// Cocher une piste demandait jusqu'ici de sommer les fichiers, de les décoder et
+    /// de les analyser. Sur un morceau long, c'est près d'une seconde — et toujours
+    /// au pire moment, celui où l'on vient de cliquer et où l'on attend de voir. Le
+    /// calcul est le même ; il a seulement lieu pendant qu'on regarde l'image
+    /// précédente, au lieu de pendant qu'on attend la suivante.
+    ///
+    /// Seulement ce qui est **à un geste d'ici** : les quatre bascules depuis la
+    /// sélection courante, soit trois images en pratique — retirer la batterie ne
+    /// change pas ce qu'on voit, elle est déjà hors de l'image. Précalculer les
+    /// quinze combinaisons remplirait la mémoire de matrices que personne ne
+    /// demandera : chacune pèse une soixantaine de mégaoctets sur un morceau de huit
+    /// minutes.
+    ///
+    /// En `utility` : c'est du travail d'avance, il ne doit rien prendre à ce qu'on
+    /// est en train de faire.
+    private func precacheStems() {
+        guard !precaching, separating == nil, job == nil,
+              let fingerprint = source?.fingerprint,
+              StemStore.isSeparated(fingerprint) else { return }
+
+        // La basse seule, d'abord : elle ne s'affiche presque jamais, mais le relevé
+        // d'accords la lit à chaque intervalle pour en retirer les harmoniques.
+        var todo: [Set<Stem>] = []
+        if stemCache[[.bass]] == nil { todo.append([.bass]) }
+        for stem in Stem.separated {
+            var next = selection
+            if next.contains(stem) { next.remove(stem) } else { next.insert(stem) }
+            guard !next.isEmpty else { continue }
+            let visible = seen(next, separated: true)
+            guard stemCache[visible] == nil, !todo.contains(visible) else { continue }
+            todo.append(visible)
+        }
+        guard !todo.isEmpty else { return }
+
+        precaching = true
+        let settings = analysis
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            for visible in todo {
+                // Pas de garde en cours de route : interroger le fil principal
+                // depuis ici pour savoir si le morceau a changé demanderait un
+                // `sync`, donc un interblocage à écrire un jour. Trois analyses de
+                // trop sur un fichier qu'on vient de fermer coûtent une seconde en
+                // `utility` ; la garde du dépôt, elle, est sûre.
+                guard let file = try? StemStore.combined(visible, for: fingerprint),
+                      let loaded = try? AudioSource.load(file) else { continue }
+                let matrix = OfflineAnalysis.run(samples: loaded.mono,
+                                                 sampleRate: loaded.sampleRate,
+                                                 settings: settings)
+                DispatchQueue.main.async {
+                    guard let self, self.source?.fingerprint == fingerprint else { return }
+                    self.stemCache[visible] = matrix
+                    // La basse vient d'arriver : le relevé peut enfin distinguer ses
+                    // harmoniques de ce que jouent les autres.
+                    if visible == [.bass] { self.releveCarteDeLaBasse() }
+                }
+            }
+            DispatchQueue.main.async { self?.precaching = false }
+        }
     }
 
     /// Ce qui nourrit la ligne de batterie, selon l'état des pistes.
@@ -1067,6 +1164,9 @@ import UniformTypeIdentifiers
                 self.noteMap = map
                 self.chordsPending = false
                 self.releveAccords()
+                // Le diapason ou la netteté ont pu changer : la carte de la basse
+                // vieillit avec celle de l'image, et se refait sur la même clé.
+                self.releveCarteDeLaBasse()
             }
         }
     }
@@ -1096,11 +1196,11 @@ import UniformTypeIdentifiers
         }
         chordsRunning = true
         let settings = Preferences.shared.chords
-        // La sélection n'est une portée que là où elle en est une. En portée
-        // « temps », tracer une boucle pour travailler un passage ne doit rien
-        // changer au relevé.
-        let selection = settings.scope == .span ? loop : nil
+        // La boucle est la portée du relevé dès qu'elle existe, quelle que soit la
+        // portée réglée : entourer un passage, c'est demander son accord.
+        let selection = loop
         let map = noteMap
+        let bass = voitLaBasse && !bassNoteMap.isEmpty ? bassNoteMap : nil
         let vue = display
         let token = noteMapToken
         if chords.isEmpty { chordsPending = true }
@@ -1111,7 +1211,8 @@ import UniformTypeIdentifiers
         // curseur qu'on est en train de tirer.
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let track = ChordDetector.detect(map: map, display: vue, tempo: tempo,
-                                             settings: settings, selection: selection)
+                                             settings: settings, selection: selection,
+                                             bass: bass)
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.chordsRunning = false
@@ -1148,6 +1249,44 @@ import UniformTypeIdentifiers
         } else {
             releveAccords()
         }
+    }
+
+    /// La carte de la piste de basse seule, d'où le relevé tire de quoi écarter ses
+    /// harmoniques.
+    ///
+    /// Trois conditions, et elles se lisent dans cet ordre : les pistes sont
+    /// séparées, la basse est **à l'image** — la retirer doit retirer aussi son droit
+    /// de veto — et sa matrice est déjà en mémoire. Sinon, le relevé s'en tient à
+    /// l'explication par le grave, qui vaut pour tout le monde.
+    private func releveCarteDeLaBasse() {
+        guard voitLaBasse else {
+            guard !bassNoteMap.isEmpty else { return }
+            bassNoteMap = .empty
+            bassMapKey = nil
+            releveAccords()
+            return
+        }
+        let referenceA = display.referenceA
+        let prominence = Preferences.shared.chords.prominence
+        let key = Self.mapKey(referenceA: referenceA, prominence: prominence)
+        guard bassMapKey != key, let matrix = stemCache[[.bass]] else { return }
+        bassMapKey = key
+        let fingerprint = source?.fingerprint
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let map = NoteMap.build(matrix, referenceA: referenceA, prominence: prominence)
+            DispatchQueue.main.async {
+                guard let self, self.source?.fingerprint == fingerprint else { return }
+                self.bassNoteMap = map
+                self.releveAccords()
+            }
+        }
+    }
+
+    /// La basse est-elle dans ce qu'on regarde ?
+    private var voitLaBasse: Bool {
+        guard let fingerprint = source?.fingerprint,
+              StemStore.isSeparated(fingerprint) else { return false }
+        return seen(selection, separated: true).contains(.bass)
     }
 
     /// Le même, mais au plus une fois par tour de boucle.
@@ -1205,6 +1344,8 @@ import UniformTypeIdentifiers
         job = nil
         separating = nil
         stemCache.removeAll()
+        bassNoteMap = .empty
+        bassMapKey = nil
         percussionCache.removeAll()
         StemStore.removeStems(for: fingerprint)
         selection = Self.everything

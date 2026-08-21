@@ -169,10 +169,10 @@ struct DrumLaneView: View {
             // Les mêmes quatre degrés que l'image, un cran plus discrets : ici les
             // traits passent derrière des coups qui, eux, doivent se compter.
             context.stroke(line,
-                           with: .color(.white.opacity(isPhrase ? 0.52
-                                                       : isBar ? 0.34
-                                                       : isBeat ? 0.16 : 0.07)),
-                           lineWidth: isBar ? 1 : 0.5)
+                           with: .color(.white.opacity(isPhrase ? 0.32
+                                                       : isBar ? 0.20
+                                                       : isBeat ? 0.10 : 0.045)),
+                           lineWidth: isBar ? 0.75 : 0.5)
         }
     }
 

@@ -21,6 +21,11 @@ guard arguments.count >= 2 else {
 
         Format lu ici : wav.
 
+        `--reattribution` fait déposer à chaque case son énergie à la fréquence
+        que sa phase désigne, au lieu du centre de sa case. Les partiels s'affinent,
+        le bruit devient granuleux — c'est le réglage « Réattribution spectrale »
+        du panneau ⌘,.
+
         `--taille` impose les dimensions de l'image. C'est ce qui permet de
         comparer ce dessin-ci, fait sur le processeur, à celui que le GPU produit
         dans la même fenêtre : à taille égale, les deux images doivent se
@@ -75,7 +80,8 @@ print(String(format: "  %@ — %.1f s, %d canal(aux) à %d Hz",
              entrée.lastPathComponent, fichier.duration,
              fichier.channels, Int(fichier.sampleRate)))
 
-let réglages = AnalysisSettings()
+var réglages = AnalysisSettings()
+réglages.reassignment = arguments.contains("--reattribution")
 let spectrogramme = OfflineAnalysis.run(samples: fichier.mono,
                                         sampleRate: fichier.sampleRate,
                                         settings: réglages)
@@ -84,10 +90,11 @@ guard spectrogramme.columnCount > 0 else {
     FileHandle.standardError.write(Data("Le morceau est trop court pour être analysé.\n".utf8))
     exit(1)
 }
-print(String(format: "  %d colonnes × %d lignes, %.0f Hz…%.0f Hz, analysé en %.2f s (×%.0f temps réel)",
+print(String(format: "  %d colonnes × %d lignes, %.0f Hz…%.0f Hz, analysé en %.2f s (×%.0f temps réel)%@",
              spectrogramme.columnCount, spectrogramme.binCount,
              spectrogramme.layout.minFrequency, spectrogramme.layout.maxFrequency,
-             analyse, fichier.duration / max(analyse, 1e-9)))
+             analyse, fichier.duration / max(analyse, 1e-9),
+             réglages.reassignment ? " · réattribué" : ""))
 
 // Le même réglage automatique que dans l'application : sans lui, l'image d'un
 // morceau réel est soit blanche soit noire, et ne dit rien.

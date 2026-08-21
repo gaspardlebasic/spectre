@@ -746,6 +746,109 @@ check("les douze teintes restent distinctes après rotation",
       Set(teintes(5).map { String(format: "%.6f", $0) }).count == 12,
       "\(Set(teintes(5).map { String(format: "%.6f", $0) }).count) teintes")
 
+// --- Réattribution spectrale -------------------------------------------------
+// Ce qu'on mesure : une raie doit devenir **plus fine** sans se déplacer ni
+// changer de niveau.
+//
+// La sinusoïde est posée exprès *entre* deux cases de FFT. C'est le seul endroit
+// où la réattribution a quelque chose à corriger, et surtout le seul où une
+// erreur de signe se voie : elle déplacerait la raie du double de l'écart, et
+// dans l'autre sens. Pile au centre d'une case, le décalage est nul et un signe
+// inversé passerait inaperçu.
+print("\n=== Réattribution ===")
+
+// Tout ce qui précède a tourné avec les réglages par défaut, réattribution
+// comprise. Le témoin de comparaison est donc celui qui l'éteint.
+var sansReattribution = settings
+sansReattribution.reassignment = false
+let reassigned = settings
+
+let ruler = Analyzer(sampleRate: sampleRate, settings: settings)
+let caseWidth = 1 / ruler.windowSeconds(at: 440)          // largeur d'une case, en Hz
+let caseCentre = (440 / caseWidth).rounded() * caseWidth  // le centre de case voisin
+let offCentre = caseCentre + 0.45 * caseWidth
+
+/// Le profil vertical d'une raie tenue : son niveau, sur combien de lignes elle
+/// reste à moins de 10 dB de son sommet, et **où se trouve son centre de gravité**.
+///
+/// Le centre de gravité plutôt que la ligne la plus forte : les lignes sont
+/// espacées de 33 cents, bien plus que ce que la réattribution corrige, si bien
+/// que le sommet ne change pratiquement jamais de ligne et ne mesure donc rien.
+///
+/// Ce qu'il faut savoir pour lire ces trois contrôles ensemble : **un signe inversé
+/// ne déplace pas la raie, il l'élargit**. Le décalage de chaque case vaut alors
+/// −(f₀ − j) au lieu de (f₀ − j) : le lobe se déploie du double autour de la raie
+/// au lieu de s'y refermer. Le barycentre reste juste, et ce sont la largeur et le
+/// niveau du sommet qui s'effondrent — vérifié en inversant le signe pour voir.
+func profile(_ s: Spectrogram, around f: Double,
+             span: Int = 12) -> (frequency: Double, level: Float, width: Int) {
+    let center = bin(of: f, s)
+    let lo = max(0, center - span), hi = min(s.binCount - 1, center + span)
+    var best = center, level = Float(-400)
+    for i in lo...hi where peak(s, bin: i) > level {
+        level = peak(s, bin: i)
+        best = i
+    }
+    var width = 0
+    for i in lo...hi where peak(s, bin: i) >= level - 10 { width += 1 }
+
+    // Barycentre en puissance, sur trois lignes de part et d'autre du sommet.
+    var weight = 0.0, moment = 0.0
+    for i in max(0, best - 3)...min(s.binCount - 1, best + 3) {
+        let w = pow(10, Double(peak(s, bin: i)) / 10)
+        weight += w
+        moment += w * Double(i)
+    }
+    let barycentre = weight > 0 ? moment / weight : Double(best)
+    return (s.layout.frequency(atBin: barycentre), level, width)
+}
+
+let held = synth(duration: 4, [(f: offCentre, amplitude: 1.0, from: 0.5, to: 3.5)])
+let ordinaire = OfflineAnalysis.run(samples: held, sampleRate: sampleRate,
+                                    settings: sansReattribution)
+let reattribue = OfflineAnalysis.run(samples: held, sampleRate: sampleRate, settings: reassigned)
+let before = profile(ordinaire, around: offCentre)
+let after = profile(reattribue, around: offCentre)
+
+print(String(format: "  raie à %.2f Hz — %.0f%% d'une case au-dessus du centre (case : %.2f Hz)",
+             offCentre, 45.0, caseWidth))
+
+let driftBefore = 1200 * log2(before.frequency / offCentre)
+let driftAfter = 1200 * log2(after.frequency / offCentre)
+check("l'énergie tombe à la bonne fréquence", abs(driftAfter) < 8,
+      String(format: "barycentre à %+.1f cents de la raie (%+.1f sans réattribution)",
+             driftAfter, driftBefore))
+check("elle devient plus fine", after.width < before.width,
+      "\(after.width) lignes à −10 dB contre \(before.width)")
+check("elle garde son niveau", abs(after.level) < 2,
+      String(format: "%.2f dB au lieu de %.2f dB (attendu 0)", after.level, before.level))
+check("le chemin sans réattribution reste juste, lui aussi", abs(before.level) < 2,
+      String(format: "%.2f dB, %d lignes, %+.1f cents",
+             before.level, before.width, driftBefore))
+
+// Les trois octaves du signal d'origine, pour vérifier que le compte se tient à
+// tous les étages du banc — et qu'aucun n'a rendu de NaN au passage.
+let reassignedWhole = OfflineAnalysis.run(samples: signal, sampleRate: sampleRate,
+                                          settings: reassigned)
+var finite = true
+for c in 0..<reassignedWhole.columnCount {
+    for i in 0..<reassignedWhole.binCount where !reassignedWhole.value(column: c, bin: i).isFinite {
+        finite = false
+    }
+}
+check("aucune valeur aberrante", finite, "\(reassignedWhole.columnCount) colonnes lues")
+
+for (frequency, name) in [(110.0, "La₁"), (440.0, "La₃"), (1760.0, "La₅")] {
+    let p = profile(reassignedWhole, around: frequency)
+    let cents = 1200 * log2(p.frequency / frequency)
+    check("\(name) reste juste", abs(cents) < 20,
+          String(format: "%+.0f cents, %d lignes, %.1f dB", cents, p.width, p.level))
+}
+
+let quietSharp = reassignedWhole.averageSpectrum(from: 6.6, to: 7.4).max() ?? 0
+check("le silence reste silencieux", quietSharp < -120,
+      String(format: "%.0f dB", quietSharp))
+
 if failures == 0 {
     print("Tout est bon.")
 } else {

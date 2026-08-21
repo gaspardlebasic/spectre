@@ -405,15 +405,24 @@ check(selection.segments.first?.chord == Chord(root: 9, quality: .minor),
       "et c'est bien ce qui s'y joue",
       "\(nom(selection.segments.first?.chord)) sur \(noms(selection.segments[0].notes))")
 
-// En portée « temps », la sélection ne change rien : elle sert à travailler un
-// passage, pas à découper le relevé.
+// En portée « temps » aussi : entourer un passage, c'est demander son accord, et
+// découper en temps ce qu'on vient de tracer à la main répondrait à une autre
+// question. La portée réglée reprend la main dès que la sélection s'efface.
 var parTemps = defaults
 parTemps.scope = .beat
-let ignoree = ChordDetector.detect(map: carte, display: vue, tempo: tempo,
-                                   settings: parTemps, selection: choisi)
-check(ignoree.segments.count > grille.count,
-      "la portée « temps » ignore la sélection et découpe toujours au temps",
-      "\(ignoree.segments.count) segments")
+let surSelection = ChordDetector.detect(map: carte, display: vue, tempo: tempo,
+                                        settings: parTemps, selection: choisi)
+check(surSelection.segments.count == 1,
+      "la portée « temps » cède elle aussi à la sélection",
+      "\(surSelection.segments.count) segment(s)")
+check(surSelection.segments.first?.chord == Chord(root: 9, quality: .minor),
+      "et y lit le même accord que la portée « mesure »",
+      "\(nom(surSelection.segments.first?.chord))")
+let sansSelection = ChordDetector.detect(map: carte, display: vue, tempo: tempo,
+                                         settings: parTemps, selection: nil)
+check(sansSelection.segments.count > grille.count,
+      "sans sélection, elle redécoupe bien au temps",
+      "\(sansSelection.segments.count) segments")
 
 // MARK: - Le vocabulaire
 
@@ -558,6 +567,132 @@ check(ChordSettings().mapKey != { var s = ChordSettings(); s.prominence = 6; ret
       "changer la netteté périme la carte des notes")
 check(ChordSettings().mapKey == { var s = ChordSettings(); s.hold = 0.9; return s }().mapKey,
       "changer la tenue, non : elle se relit sur la même carte")
+
+// MARK: - La basse ne compte que par sa fondamentale
+
+print()
+print("=== Les harmoniques de la basse ===")
+
+/// Une note au timbre imposé, harmonique par harmonique.
+///
+/// Ce qu'on veut fabriquer ici n'existe pas dans `note(midi:…)` : une basse dont la
+/// cinquième harmonique écrase la fondamentale. C'est une caricature — mais du bon
+/// côté, celui qui rend le défaut visible : 5·f₀ tombe une tierce majeure deux
+/// octaves plus haut, et c'est exactement la note qui transforme un mineur en majeur.
+func timbre(midi: Int, from start: Double, seconds: Double,
+            partials: [Double], into buffer: inout [Float]) {
+    let f0 = Pitch.frequency(ofMidi: Double(midi))
+    let first = Int(start * rate)
+    let count = Int(seconds * rate)
+    for i in 0..<count {
+        let j = first + i
+        guard j >= 0, j < buffer.count else { continue }
+        let t = Double(i) / rate
+        let envelope = min(t / 0.02, 1) * min((Double(count) / rate - t) / 0.05, 1)
+        var value = 0.0
+        for (k, gain) in partials.enumerated() where gain != 0 {
+            value += gain * sin(2 * .pi * f0 * Double(k + 1) * t)
+        }
+        buffer[j] += Float(max(envelope, 0) * value * 0.2)
+    }
+}
+
+let nombreDeMesures = 4.0
+let duree = nombreDeMesures * 4 * beat + 1
+let laMineur = [57, 60, 64]        // La3, Do4, Mi4
+let laGrave = 33                   // La1 : sa 5ᵉ harmonique tombe sur Do♯4
+
+var basseSeule = [Float](repeating: 0, count: Int(duree * rate))
+var accompagnement = [Float](repeating: 0, count: Int(duree * rate))
+for mesure in 0..<Int(nombreDeMesures) {
+    let start = Double(mesure) * 4 * beat
+    for pitch in laMineur {
+        note(midi: pitch, from: start, seconds: 4 * beat - 0.02, gain: 1,
+             into: &accompagnement)
+    }
+    for temps in 0..<4 {
+        timbre(midi: laGrave, from: start + Double(temps) * beat, seconds: beat - 0.03,
+               partials: [0.6, 0.2, 0.3, 0.2, 1.6, 0.1], into: &basseSeule)
+    }
+}
+var melange = basseSeule
+for i in melange.indices { melange[i] += accompagnement[i] }
+
+let matriceMix = OfflineAnalysis.run(samples: melange, sampleRate: rate,
+                                     settings: AnalysisSettings())
+let matriceBasse = OfflineAnalysis.run(samples: basseSeule, sampleRate: rate,
+                                       settings: AnalysisSettings())
+var vueBasse = DisplaySettings()
+vueBasse = AutoContrast.settings(basedOn: vueBasse, in: matriceMix) ?? vueBasse
+let carteMix = NoteMap.build(matriceMix, referenceA: vueBasse.referenceA)
+let carteBasse = NoteMap.build(matriceBasse, referenceA: vueBasse.referenceA)
+
+let sansBasse = ChordDetector.detect(map: carteMix, display: vueBasse, tempo: tempo,
+                                     settings: defaults)
+let avecBasse = ChordDetector.detect(map: carteMix, display: vueBasse, tempo: tempo,
+                                     settings: defaults, bass: carteBasse)
+
+/// Les classes de hauteur retenues sur la deuxième mesure — la première porte une
+/// attaque, la dernière une extinction.
+func classes(_ track: ChordTrack) -> Set<Int> {
+    guard let segment = track.segment(at: 4 * beat + 0.1) else { return [] }
+    return Set(segment.notes.map(\.pitchClass))
+}
+let avant = classes(sansBasse)
+let apres = classes(avecBasse)
+print("  lu sans la carte de basse : \(avant.sorted())")
+print("  lu avec : \(apres.sorted())")
+
+check(avant.contains(1),
+      "sans la carte de basse, la 5ᵉ harmonique entre bien dans le relevé",
+      "Do♯ retenu — c'est le défaut qu'on corrige")
+check(!apres.contains(1),
+      "avec elle, la tierce fantôme disparaît",
+      "classes retenues : \(apres.sorted())")
+check(apres.contains(9),
+      "la fondamentale de la basse, elle, reste",
+      "La présent : \(apres.contains(9))")
+check([0, 4].allSatisfy { apres.contains($0) },
+      "et ce que joue l'accompagnement n'est pas touché",
+      "Do et Mi présents")
+check(avecBasse.segment(at: 4 * beat + 0.1)?.chord == Chord(root: 9, quality: .minor),
+      "l'accord redevient La mineur",
+      nom(avecBasse.segment(at: 4 * beat + 0.1)?.chord)
+        + " au lieu de " + nom(sansBasse.segment(at: 4 * beat + 0.1)?.chord))
+
+// Le garde-fou, et c'est lui qui compte : le pianiste a le droit de jouer là où la
+// basse a une harmonique. Même basse, même 5ᵉ harmonique monstrueuse — mais cette
+// fois l'accompagnement joue vraiment Do♯, et l'accord est majeur. Une règle qui
+// retirerait toute harmonique de la basse effacerait cette tierce-là aussi, et
+// répondrait « mineur » à un accord majeur.
+var majeur = [Float](repeating: 0, count: Int(duree * rate))
+for mesure in 0..<Int(nombreDeMesures) {
+    let start = Double(mesure) * 4 * beat
+    for pitch in [57, 61, 64] {
+        note(midi: pitch, from: start, seconds: 4 * beat - 0.02, gain: 1, into: &majeur)
+    }
+}
+for i in majeur.indices { majeur[i] += basseSeule[i] }
+
+let matriceMajeur = OfflineAnalysis.run(samples: majeur, sampleRate: rate,
+                                        settings: AnalysisSettings())
+var vueMajeur = DisplaySettings()
+vueMajeur = AutoContrast.settings(basedOn: vueMajeur, in: matriceMajeur) ?? vueMajeur
+let carteMajeur = NoteMap.build(matriceMajeur, referenceA: vueMajeur.referenceA)
+let joueVraiment = ChordDetector.detect(map: carteMajeur, display: vueMajeur, tempo: tempo,
+                                        settings: defaults, bass: carteBasse)
+let retenu = joueVraiment.segment(at: 4 * beat + 0.1)
+check(retenu?.notes.contains { $0.pitchClass == 1 } == true,
+      "un Do♯ réellement joué survit à la même harmonique de basse",
+      noms(retenu?.notes ?? []))
+// Le nom exact, non : ce timbre caricatural laisse la 3ᵉ harmonique de Do♯4 tomber
+// sur Sol♯5, que l'explication par le grave ne rattrape pas, et le relevé écrit LaΔ.
+// C'est un artefact de la synthèse, pas de la règle qu'on éprouve ici. Ce qui doit
+// être vrai, c'est que l'accord soit bâti sur La et porte la tierce **majeure** :
+// une règle qui effacerait les harmoniques de basse sans réserve rendrait La mineur.
+check(retenu?.chord?.root == 9 && retenu?.chord?.pitchClasses.contains(1) == true,
+      "et l'accord garde sa tierce majeure au lieu de retomber en mineur",
+      nom(retenu?.chord))
 
 print()
 print(failures == 0 ? "Tout est bon." : "\(failures) vérification(s) en échec.")

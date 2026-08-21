@@ -21,15 +21,15 @@ public struct ChordSettings: Equatable, Hashable, Codable, Sendable {
         /// change d'accord au milieu d'une mesure, au prix d'une décision prise sur
         /// très peu de son — et d'un lissage qui efface parfois un accord de passage.
         case beat = 0
-        /// Un accord par mesure — ou un seul accord pour le passage sélectionné.
-        /// Chaque décision porte alors sur quatre fois plus de matière, et n'est
-        /// lissée par rien : ce qu'on lit est ce que la mesure contient.
+        /// Un accord par mesure. Chaque décision porte alors sur quatre fois plus
+        /// de matière, et n'est lissée par rien : ce qu'on lit est ce que la mesure
+        /// contient.
         case span = 1
 
         public var label: String {
             switch self {
             case .beat: "Un accord par temps"
-            case .span: "Un accord par mesure, ou par sélection"
+            case .span: "Un accord par mesure"
             }
         }
     }
@@ -62,12 +62,18 @@ public struct ChordSettings: Equatable, Hashable, Codable, Sendable {
         }
     }
 
-    /// La mesure par défaut. Le relevé par raies demande qu'une note **tienne**
-    /// l'intervalle, et un temps est court : sur le fichier témoin, découper au temps
+    /// Le temps par défaut : c'est la portée qui sait montrer un changement d'accord
+    /// au milieu d'une mesure, et c'est ce qu'on demande le plus souvent à un relevé.
+    ///
+    /// Elle a son prix, et il est mesuré : sur le fichier témoin, découper au temps
     /// laisse deux fois plus de raies inexpliquées et un tiers de noms sûrs en moins
-    /// que découper à la mesure. Le temps reste offert pour les morceaux qui changent
-    /// d'accord en cours de mesure.
-    public var scope: Scope = .span
+    /// que découper à la mesure — un temps porte rarement assez de notes tenues pour
+    /// se décider seul, et le lissage de Viterbi rattrape le reste. La mesure reste
+    /// offerte pour les morceaux qui tiennent leur harmonie.
+    ///
+    /// Ce choix ne coûte plus la lecture d'un passage : **une sélection est une
+    /// portée dans les deux modes** — voir `ChordDetector.detect`.
+    public var scope: Scope = .beat
     /// Les enrichissements compris, par défaut. Sur le fichier témoin, les écrire
     /// fait tomber les raies tenues sans explication de 7,2 % à 4,3 %, et le nombre
     /// de mesures qui en portent une de 27 % à 16 % : ce n'étaient pas des erreurs du
