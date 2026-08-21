@@ -34,6 +34,12 @@ let surMac = true
 let surMac = false
 #endif
 
+#if os(Windows)
+let surWindows = true
+#else
+let surWindows = false
+#endif
+
 // Le noyau ne connaît que la couche numérique. `Crypto` n'est tiré que là où
 // CryptoKit n'existe pas ; il porte le seul usage qu'on en fait, l'empreinte
 // SHA-256 qui rattache une session à un fichier.
@@ -194,6 +200,69 @@ if surMac {
         .executable(name: "RenderCheck", targets: ["RenderCheck"]),
         .executable(name: "SeparationCheck", targets: ["SeparationCheck"]),
         .executable(name: "Fenetre", targets: ["Fenetre"]),
+    ]
+}
+
+if surWindows {
+    cibles += [
+        // Le vocabulaire COM de Direct3D 11, tenu du côté C. Swift n'importe pas
+        // les macros d'un en-tête, et toute l'API de Direct3D en est faite : sans
+        // ce pont, chaque appel s'écrirait comme un déréférencement de table
+        // virtuelle. Voir `Sources/CPont/include/pont.h`.
+        .target(
+            name: "CPont",
+            path: "Sources/CPont",
+            linkerSettings: [
+                .linkedLibrary("d3d11"),
+                .linkedLibrary("dxgi"),
+                .linkedLibrary("d3dcompiler"),
+            ]
+        ),
+        // Ce que Windows répond aux protocoles du modèle — le pendant exact de
+        // `SpectreMac`. Une bibliothèque plutôt qu'un morceau de l'exécutable,
+        // pour que les vérifications puissent s'y lier.
+        .target(
+            name: "SpectreWin",
+            dependencies: ["SpectreCore", "SpectreDSP", "SpectreModele", "CPont"],
+            path: "Sources/SpectreWin",
+            swiftSettings: reglagesRelease,
+            // Posées ici et non sur l'exécutable : les vérifications se lient à
+            // cette bibliothèque, et une bibliothèque qui exige une liaison sans le
+            // dire fait échouer le harnais avec un symbole manquant plutôt qu'avec
+            // une phrase.
+            linkerSettings: [
+                .linkedLibrary("user32"),
+                .linkedLibrary("shell32"),
+                .linkedLibrary("comdlg32"),
+            ]
+        ),
+        // La fenêtre, et rien d'autre.
+        .executableTarget(
+            name: "SpectreWindows",
+            dependencies: ["SpectreCore", "SpectreDSP", "SpectreModele", "SpectreWin"],
+            path: "Sources/SpectreWindows",
+            swiftSettings: reglagesRelease,
+            linkerSettings: [
+                .linkedLibrary("user32"),
+                .linkedLibrary("gdi32"),
+                .linkedLibrary("shell32"),
+                .linkedLibrary("comdlg32"),
+                .linkedLibrary("dwmapi"),
+            ]
+        ),
+        // Le pendant Windows de `RenderCheck` : la vraie chaîne — téléversement,
+        // nuanceur, relecture — mais hors écran, donc mesurable là où personne ne
+        // peut regarder.
+        .executableTarget(
+            name: "RenduCheck",
+            dependencies: ["SpectreCore", "SpectreWin"],
+            path: "Tools/RenduCheck"
+        ),
+    ]
+    produits += [
+        .library(name: "SpectreWin", type: .static, targets: ["SpectreWin"]),
+        .executable(name: "SpectreWindows", targets: ["SpectreWindows"]),
+        .executable(name: "RenduCheck", targets: ["RenduCheck"]),
     ]
 }
 

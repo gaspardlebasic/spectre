@@ -99,6 +99,17 @@ print(String(format: "  %d colonnes × %d lignes, %.0f Hz…%.0f Hz, analysé en
 // Le même réglage automatique que dans l'application : sans lui, l'image d'un
 // morceau réel est soit blanche soit noire, et ne dit rien.
 var affichage = DisplaySettings()
+
+// `--gris` retire la palette des notes et ne laisse que le niveau.
+//
+// C'est ce qui rend deux rendus comparables sur ce qui compte quand on porte un
+// nuanceur : la géométrie et les niveaux. La palette des notes, elle, quantifie la
+// hauteur en douze classes, et cette quantification n'a pas lieu au même endroit
+// des deux côtés — le nuanceur lit le centre du pixel, ce rendu-ci lit la ligne
+// entière. Un seizième de demi-ton d'écart suffit alors à faire basculer une
+// rangée dans la teinte voisine, et l'image entière paraît en désaccord pour une
+// raison qui n'est ni la géométrie ni les niveaux.
+if arguments.contains("--gris") { affichage.colorMap = .gray }
 if let réglé = AutoContrast.settings(basedOn: affichage, in: spectrogramme) {
     affichage = réglé
     print(String(format: "  contraste : %.0f dB…%.0f dB, pente %.1f dB/octave",

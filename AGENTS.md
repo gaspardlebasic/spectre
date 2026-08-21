@@ -113,6 +113,11 @@ vérifiable là où il n'y a ni écran ni carte son.
 | `SpectreMac` | Décodage, rendu Metal, lecture, séparation Demucs. | `SpectreModele` + Apple |
 | `Spectre` | L'interface SwiftUI, et les commandes en ligne. | tout le reste |
 
+Et, sous Windows, les deux étages du haut ont leur pendant : `SpectreWin` répond aux
+mêmes protocoles avec Direct3D 11 et Win32 — c'est le jumeau de `SpectreMac`, et il
+fait la même longueur — tandis que `SpectreWindows` porte la fenêtre. Le pont C vers
+ce que Swift ne peut pas dire lui-même est dans `Sources/CPont`.
+
 **Les trois premiers compilent partout où Swift compile.** `SpectreModele` est
 l'étage qui a manqué au premier portage : faute de lui, Windows avait son propre
 modèle, plus fruste, qui divergeait un peu plus chaque semaine. Ce qu'il demande au

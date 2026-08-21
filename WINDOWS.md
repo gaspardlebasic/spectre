@@ -94,9 +94,11 @@ avant même de lire le manifeste — un désaccord entre la chaîne et le SDK Wi
 qui ne désigne rien de ce dépôt et fait perdre du temps si on la lit au premier
 degré.
 
-### Les quatre pièges de l'étape 0
+### Les cinq pièges de l'étape 0
 
-Aucun n'est dans le code ; tous coûtent une demi-heure à qui ne les connaît pas.
+Aucun n'est dans le code ; tous coûtent une demi-heure à qui ne les connaît pas. Le
+cinquième n'a été trouvé qu'à l'étape 3, faute d'avoir ouvert un terminal neuf
+jusque-là.
 
 **Swift n'a pas d'éditeur de liens.** Il appelle celui de MSVC, qui n'est sur le
 chemin que dans une invite « développeur ». Sans quoi : `toolchain is invalid:
@@ -122,6 +124,13 @@ que le Mac découvre ensuite en diff entier. Le dépôt porte désormais un
 donc SwiftPM élague la dépendance du fichier de résolution. La commettre ferait
 perdre au Mac sa version épinglée : **restaurer `Package.resolved` avant chaque
 commit fait depuis Windows.**
+
+**Les bibliothèques d'exécution de Swift ne sont pas sur le chemin non plus.**
+Sans `Runtimes\6.3.3\usr\bin`, `swift.exe` lui-même s'arrête avec le code
+`0xC0000135` — bibliothèque introuvable — et n'écrit pas un mot : ni le nom de la
+bibliothèque, ni même qu'il s'agit d'un problème de chargement. L'invite de
+développement doit donc poser trois choses, et pas deux : l'environnement de MSVC,
+`SDKROOT`, et ce chemin-là.
 
 ### Deux détails d'usage
 
@@ -275,6 +284,146 @@ seconde instance de l'assistant, du côté Mac de la même machine, à qui l'on 
 quoi regarder plutôt que quoi conclure. Les trois points ci-dessus lui ont été
 désignés nommément — c'est ce qui distingue une relecture d'une vérification.
 
+
+## Étape 3 — une fenêtre, et l'image dedans
+
+**Faite.** L'application ouvre le morceau témoin, l'analyse, et montre son
+spectrogramme dans une fenêtre Win32 rendue par Direct3D 11. L'image relue de la
+chaîne d'échange s'accorde avec le rendu processeur : profils de lignes +0,95, de
+colonnes +0,93, pixel à pixel +0,92, écart médian **0,89 sur 255**.
+
+### Ce qui a été écrit
+
+| fichier | ce qu'il porte |
+|---|---|
+| `Sources/CPont/d3d11.c` | Direct3D 11, en C : appareil, chaîne d'échange, tuiles, dessin, relecture |
+| `Sources/CPont/file.c` | l'appel qui vide la file principale — six lignes, et l'étape entière en dépend |
+| `Sources/SpectreWin/Rendu.swift` | le nuanceur HLSL, et le rendu qui remplit `RenduSpectrogramme` |
+| `Sources/SpectreWin/Plateforme.swift` | dialogue de fichier, documents récents, réglages |
+| `Sources/SpectreWin/Attente.swift` | ce que Windows ne sait pas encore faire, groupé |
+| `Sources/SpectreWindows/Fenetre.swift` | la fenêtre Win32, et le changement d'échelle |
+| `Sources/SpectreWindows/main.swift` | l'assemblage, et la boucle |
+| `Tools/RenduCheck` | le pendant Windows de `RenderCheck` : sept contrôles hors écran |
+
+`Sources/SpectreWin` est le pendant exact de `Sources/SpectreMac`, et il fait la
+même longueur. C'est ce qu'on cherchait en descendant `AppModel` dans le noyau à
+l'étape 2 : il ne reste ici que de la plomberie.
+
+### Le pont C, et pourquoi il fallait l'écrire
+
+Direct3D 11 est une API COM. En C++ on écrit `appareil->CreateTexture2D(…)` ; en C
+la même chose s'écrit `ID3D11Device_CreateTexture2D(appareil, …)`, et ce nom est
+une **macro** de `d3d11.h`. Swift importe les fonctions et les types d'un en-tête,
+mais pas ses macros : il ne verrait que des structures de pointeurs de fonctions
+nues, et chaque appel deviendrait un déréférencement de table virtuelle écrit à la
+main. Le vocabulaire COM reste donc du côté C, et Swift ne voit qu'une douzaine de
+fonctions à paramètres simples.
+
+Le même pont sert au rendu hors écran sans qu'une ligne change : la fenêtre n'est
+que l'un des deux endroits où l'image peut aller.
+
+### Le nuanceur, et l'avertissement écrit à l'envers
+
+Le HLSL vit **en toutes lettres dans `Rendu.swift`**, comme le MSL vit en toutes
+lettres dans `SpectreMac/Renderer.swift` : le pilote le compile au démarrage, il
+n'y a donc pas de fichier à trouver ni à distribuer. `Resources/spectrogramme.glsl`
+reste pour Linux.
+
+`SV_Position` a son origine en haut à gauche, exactement comme la `[[position]]` de
+Metal : le retournement de l'axe vertical que la version GLSL devait **retirer** est
+donc **conservé** en HLSL. Le nuanceur porte l'avertissement inverse de celui du
+fichier GLSL — faute de quoi le prochain lecteur, qui vient de lire l'autre, le
+retirerait par prudence. L'image resterait plausible, graves en haut.
+
+`RenduCheck` mesure précisément cela : il reprend les trois scènes de
+`Tools/RenderCheck`, qui juge la version Metal, et y ajoute les marques. Deux cartes
+graphiques tenues au même barème, avec les mêmes nombres.
+
+### Les cinq pièges de l'étape 3
+
+**La file principale n'est jamais vidée, et la fenêtre reste noire.** C'est le plus
+cher des cinq. Tout le modèle rend ses résultats par `DispatchQueue.main.async` :
+l'ouverture d'un fichier, l'avancement de l'analyse, le relevé des accords. Sur
+macOS la boucle d'AppKit vide cette file à chaque tour et personne n'y pense
+jamais. **Une boucle de messages Win32 ne la vide pas.** Le fichier est décodé, la
+matrice est calculée, le bloc est déposé — et jamais exécuté. Aucune erreur, aucun
+message, toute la mémoire consommée pour rien, et une fenêtre noire qui fait
+accuser le nuanceur. La sortie est `_dispatch_main_queue_callback_4CF`, que
+libdispatch exporte pour son intégration avec CoreFoundation : il n'est dans aucun
+en-tête public de la distribution Windows, mais `dumpbin` le trouve bien dans
+`dispatch.lib`. Voir `Sources/CPont/file.c`.
+
+**Présenter abandonne le tampon qu'on voulait relire.** La chaîne est en modèle
+*flip*, et `Present` laisse le contenu du tampon zéro indéfini. Relire après avoir
+présenté ne rend que du noir — ce qui ressemble en tout point à un nuanceur qui ne
+dessine rien, et se confond avec le piège précédent. `--photo` dessine donc une
+dernière image **sans la présenter**, puis relit.
+
+**Le triangle change d'enroulement en arrivant à l'écran.** Il est décrit dans un
+espace où Y monte ; l'écran compte Y vers le bas, donc son enroulement s'inverse au
+passage et le découpage des faces arrière l'efface entièrement — écran noir, sans
+la moindre erreur. Le rastériseur est posé en `CULL_NONE` : il n'y a qu'un triangle,
+et aucune face à cacher.
+
+**La dernière tuile déborde du tableau source.** La matrice est découpée en tuiles
+de 4 096 colonnes, et la dernière est incomplète. Direct3D veut malgré tout un pas
+de tranche entier, qui la ferait lire au-delà du tableau : on recopie donc dans un
+tampon à la bonne taille plutôt que de lui passer les données d'origine. Le
+remplissage vaut zéro, soit 0 dB, soit la clarté maximale — mais le nuanceur borne
+la colonne et ne l'atteint jamais.
+
+**Les bibliothèques d'exécution de Swift ne sont pas sur le chemin.** Rien à voir
+avec le code : `swift.exe` lui-même s'arrête alors avec le code `0xC0000135`, sans
+un mot. C'est `Runtimes\6.3.3\usr\bin` qu'il faut ajouter au `PATH`, en plus de la
+chaîne d'outils et de `SDKROOT`. Le sixième piège de l'étape 0, découvert à la
+troisième.
+
+### Comment on regarde une image quand on ne peut pas regarder l'écran
+
+Trois instruments, et il les faut tous les trois.
+
+```powershell
+RenduCheck.exe                                        # sept contrôles, hors écran
+SpectreWindows.exe temoin.wav --photo fenetre.ppm     # la fenêtre, par sa chaîne
+SpectreCLI.exe temoin.wav cpu.ppm --taille 1200x700 --reattribution
+ImageCheck.exe fenetre.ppm cpu.ppm
+```
+
+`--photo` est le pendant Windows de `build/essai/fenetre.png`, et il vaut mieux que
+lui : l'image ne vient pas de l'écran mais du tampon que la carte s'apprête à
+présenter. Rien ne peut la recouvrir, aucune autorisation n'est à demander, et elle
+passe par le chemin de la *fenêtre* — appareil, chaîne d'échange, présentation — et
+non par celui du rendu hors écran, qui n'en éprouve que la moitié. Les deux rendent
+aujourd'hui exactement les mêmes nombres, ce qui est la preuve qu'ils dessinent la
+même chose.
+
+**Deux réglages doivent être posés des deux côtés, sans quoi on compare deux images
+différentes et on accuse le nuanceur.**
+
+- **La réattribution.** L'application l'a par défaut, `SpectreCLI` ne l'a que sur
+  `--reattribution`. Une matrice réattribuée place l'énergie à sa vraie fréquence
+  plutôt qu'au centre de la case : les deux images sont alors franchement
+  différentes sur l'axe des fréquences, et sur lui seul. Mesuré : profil de lignes
+  +0,87 sans l'accord, +0,98 avec.
+- **Le contraste automatique.** Les deux l'appliquent, mais il fallait le poser
+  aussi du côté Windows : sans lui l'image du GPU sort au contraste d'origine et
+  celle du processeur au contraste réglé.
+
+`--gris` a été ajouté aux deux, et sert à séparer ce qui se mesure. La palette des
+notes quantifie la hauteur en douze classes, et cette quantification ne tombe pas au
+même endroit des deux côtés — le nuanceur lit le centre du pixel, `SpectrogramImage`
+lit la ligne entière. Un sixième de demi-ton suffit alors à basculer une rangée dans
+la teinte voisine. En gris, à la résolution propre de la matrice, avec la
+réattribution des deux côtés, les deux rendus s'accordent complètement : **écart
+médian nul, 95,6 % des pixels à moins de 8/255**.
+
+Le désaccord qui reste à la taille de la fenêtre — 76,6 % au lieu des 80 % exigés —
+est celui que `ImageCheck` annonce depuis le premier jour : le GPU interpole entre
+colonnes et entre lignes, le processeur prend le plus proche voisin. Le morceau
+témoin est de la synthèse pure, dont les raies font exactement une ligne de large :
+c'est le pire cas possible pour cette différence-là. Sur un vrai morceau, l'ancien
+portage relevait +0,97.
+
 ## Comment on vérifie ce qu'on ne peut pas compiler
 
 Le portage se mène désormais **depuis Windows** — une machine virtuelle Parallels
@@ -309,7 +458,7 @@ moins une borne inférieure entre deux essais sur du matériel réel.
 | 0. La machine, et le noyau qui traverse | **faite** — trois coureurs au vert |
 | 1. Récupérer ce qui avait été supprimé | **faite** — 280 contrôles, et les demi-flottants |
 | 2. Un seul cerveau | **faite** — `AppModel` est descendu, et le Mac ne s'en aperçoit pas |
-| 3. Une fenêtre, et l'image dedans | à faire — Win32, Direct3D 11, HLSL |
+| 3. Une fenêtre, et l'image dedans | **faite** — l'image relue s'accorde au rendu processeur |
 | 4. Le son qui entre | à faire — Media Foundation, dr_flac |
 | 5. Le son qui sort | à faire — miniaudio, signalsmith-stretch |
 | 6. Les gestes, et la fluidité | à faire — et les mesures qui la disent |
