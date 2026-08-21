@@ -1,41 +1,23 @@
 import AVFoundation
-import Accelerate
 import Foundation
 import SpectreCore
+import SpectreDSP
 
-/// Le contenu d'un fichier audio ramené à ce dont l'analyse a besoin : un signal
-/// mono en virgule flottante, à la fréquence d'échantillonnage du fichier.
+/// Le décodeur d'Apple : `AVAudioFile` lit tout ce que macOS sait lire.
 ///
-/// Tout est chargé en mémoire (≈ 10 Mo la minute). C'est la limite assumée de cette
-/// première version : au-delà d'une demi-heure il faudra analyser en flux et ne
-/// garder que la matrice, bien plus compacte que le signal.
-public struct AudioSource {
-    public let url: URL
-    public let sampleRate: Double
-    public let frameCount: Int
-    /// Somme des canaux, normalisée : c'est ce que voit l'analyseur.
-    public let mono: [Float]
-    /// Identifie le morceau indépendamment de l'endroit où il est rangé, pour
-    /// retrouver les réglages qu'on lui a donnés la dernière fois.
-    public let fingerprint: String?
+/// Le contenu qu'il produit, lui, vit dans `SpectreCore` — voir `AudioSource`.
+/// Cette séparation est ce qui permet à tout ce qui est au-dessus de ne dépendre
+/// que des nombres, et à une seconde plateforme de n'avoir que ce fichier-ci à
+/// réécrire.
+public struct DecodeurApple: Décodeur {
+    public init() {}
 
-    public var duration: Double { sampleRate > 0 ? Double(frameCount) / sampleRate : 0 }
-    public var name: String { url.deletingPathExtension().lastPathComponent }
-
-    public enum Failure: LocalizedError {
-        case unreadable(URL, Error)
-        case empty(URL)
-
-        public var errorDescription: String? {
-            switch self {
-            case .unreadable(let url, let error):
-                return "Impossible de lire « \(url.lastPathComponent) » : \(error.localizedDescription)"
-            case .empty(let url):
-                return "« \(url.lastPathComponent) » ne contient aucun son."
-            }
-        }
+    public func charger(_ url: URL) throws -> AudioSource {
+        try AudioSource.load(url)
     }
+}
 
+extension AudioSource {
     public static func load(_ url: URL) throws -> AudioSource {
         let file: AVAudioFile
         do {
@@ -76,10 +58,11 @@ public struct AudioSource {
             mono.append(contentsOf: repeatElement(0, count: n))
             mono.withUnsafeMutableBufferPointer { out in
                 let dst = out.baseAddress! + offset
+                // Par la frontière numérique plutôt que par `vDSP_vsma` en clair :
+                // c'est exactement l'opération qu'elle porte, et le décodeur de
+                // l'autre plateforme mélangera ses canaux avec la même.
                 for c in 0..<channels {
-                    // vDSP_vsma : dst += src · gain, un canal après l'autre.
-                    var g = gain
-                    vDSP_vsma(data[c], 1, &g, dst, 1, dst, 1, vDSP_Length(n))
+                    Vector.addScaled(data[c], times: gain, into: dst, count: n)
                 }
             }
         }
