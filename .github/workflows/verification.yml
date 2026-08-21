@@ -1,9 +1,17 @@
 # Ce que la construction vérifie.
 #
-# L'application ne vise que macOS. Le noyau, lui, ne connaît aucun système : ce
-# flux le compile et le fait tourner deux fois — une fois par le chemin
-# d'Accelerate, une fois par le chemin en Swift pur — parce qu'une frontière qu'on
-# ne mesure que d'un côté n'est qu'une promesse.
+# Trois plateformes, et un partage du travail dicté par ce que la machine de
+# développement sait faire. Le portage se mène depuis une machine Windows ARM64 :
+# ce chemin-là est donc éprouvé à chaque compilation, à la main, et n'a pas besoin
+# d'un coureur. Ce flux couvre exactement ce que cette machine ne peut pas juger —
+# macOS, Windows en x64, et Linux.
+#
+# Le noyau ne connaît aucun système. On le compile et on le fait tourner par les
+# deux chemins numériques — celui d'Accelerate et celui en Swift pur — parce
+# qu'une frontière qu'on ne mesure que d'un côté n'est qu'une promesse. Le coureur
+# Linux tient cette promesse en continu : il n'existe pas encore de version Linux,
+# mais c'est justement en la préparant tous les jours qu'elle coûtera un pilote et
+# non une application.
 
 name: Vérification
 
@@ -48,3 +56,78 @@ jobs:
           "$BIN/AnalysisCheck"
           "$BIN/PercussionCheck"
           "$BIN/HarmonyCheck"
+
+  windows:
+    name: Windows x64 — le noyau
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Le couple branche/étiquette se met à jour ensemble : l'action va chercher
+      # une archive précise, et une paire dépareillée échoue au téléchargement
+      # plutôt qu'à la compilation, ce qui égare.
+      #
+      # 6.3.3 et pas moins : la 6.0.3 échoue sur « cyclic dependency in module
+      # 'ucrt' » avant même de lire le manifeste — un désaccord entre la chaîne et
+      # le SDK Windows, qui n'a rien à voir avec ce dépôt.
+      - uses: compnerd/gha-setup-swift@main
+        with:
+          branch: swift-6.3.3-release
+          tag: 6.3.3-RELEASE
+
+      - name: Version de la chaîne
+        run: swift --version
+
+      # `swift build` sans viser de cible : le manifeste est du code, exécuté sur
+      # la machine qui construit, et il ne déclare tout simplement pas la couche
+      # Apple ailleurs que sur un Mac. Viser une cible à la main ne marcherait pas
+      # de toute façon — `--product` est sans effet sur une bibliothèque
+      # automatique, SwiftPM prévient et construit tout.
+      #
+      # `SPECTRE_PORTABLE` n'est pas passé à la main : le manifeste le pose d'office
+      # là où Accelerate n'existe pas.
+      - name: Construire et vérifier le noyau
+        shell: pwsh
+        env:
+          # Le cache des pistes séparées a un plafond : un harnais qui ne range pas
+          # chez lui efface les pistes des vrais morceaux, et des minutes de GPU
+          # avec elles. Sans objet sur un coureur neuf, mais la discipline vaut
+          # partout — c'est en la relâchant « juste ici » qu'on la perd.
+          SPECTRE_RANGEMENT: ${{ runner.temp }}/spectre
+        run: |
+          swift build -c release
+          # `--show-bin-path` plutôt que `.build\release` : Windows refuse de créer
+          # le lien symbolique qui porte ce nom hors du mode développeur, et la
+          # construction le signale sans échouer. Le chemin réel porte le triplet.
+          $bin = (swift build -c release --show-bin-path | Select-Object -Last 1).Trim()
+          foreach ($harnais in @("DSPCheck", "WAVCheck", "AnalysisCheck",
+                                 "PercussionCheck", "HarmonyCheck")) {
+            Write-Host "── $harnais"
+            & "$bin\$harnais.exe"
+            if ($LASTEXITCODE -ne 0) { throw "$harnais a échoué ($LASTEXITCODE)" }
+          }
+
+  linux:
+    name: Linux — le noyau
+    # Il n'y a pas encore de version Linux, et c'est précisément pourquoi ce
+    # coureur existe : il mesure tous les jours que le noyau et sa couche numérique
+    # restent écrits sans rien connaître du système. Une portabilité qu'on ne
+    # vérifie qu'au moment d'en avoir besoin n'est jamais là quand ce moment vient.
+    runs-on: ubuntu-latest
+    # La même version que la chaîne Windows : le portage se juge sur un désaccord
+    # entre plateformes, pas sur un désaccord entre compilateurs.
+    container: swift:6.3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version de la chaîne
+        run: swift --version
+      - name: Construire et vérifier le noyau
+        env:
+          SPECTRE_RANGEMENT: ${{ runner.temp }}/spectre
+        run: |
+          swift build -c release
+          BIN="$(swift build -c release --show-bin-path)"
+          for harnais in DSPCheck WAVCheck AnalysisCheck PercussionCheck HarmonyCheck; do
+            echo "── $harnais"
+            "$BIN/$harnais"
+          done

@@ -172,8 +172,12 @@ for (nom, data) in [("ce n'est pas du RIFF", Data("PAS UN WAV DU TOUT".utf8)),
 }
 
 titre("Aller au disque")
+// Le numéro du processus vient de Foundation et non de `getpid()` : sous Windows
+// ce nom-là est déprécié au profit de `_getpid`, et la chaîne le signale à chaque
+// compilation. Un avertissement qu'on apprend à ne plus voir finit par en cacher
+// un vrai.
 let chemin = FileManager.default.temporaryDirectory
-    .appendingPathComponent("spectre-essai-\(getpid()).wav")
+    .appendingPathComponent("spectre-essai-\(ProcessInfo.processInfo.processIdentifier).wav")
 do {
     try fabrique(canaux: [sinus], bits: 24, flottant: false).write(to: chemin)
     let lu = try WAVFile.read(at: chemin)

@@ -18,10 +18,11 @@ import PackageDescription
 // sur une machine qui n'en veut pas — ce qui, autrement, fait échouer la
 // construction du noyau pour une raison qui n'a rien à voir avec lui.
 //
-// L'application ne vise plus que macOS. Le noyau, lui, reste écrit sans rien
-// connaître du système : ce n'est pas une plateforme de plus qu'on vise, c'est la
-// discipline qui garde `SpectreCore` vérifiable seul et sa couche numérique
-// comparable à elle-même — voir `SPECTRE_PORTABLE` ci-dessous.
+// Windows est de nouveau visé, et Linux le sera après lui. La discipline du noyau
+// — ne rien connaître du système — cesse donc d'être une précaution pour devenir
+// ce sur quoi les deux autres plateformes reposent : voir `SPECTRE_PORTABLE`
+// ci-dessous, et l'intégration continue qui repasse les mêmes contrôles ailleurs
+// que sur un Mac.
 #if os(macOS)
 let surMac = true
 #else
@@ -29,12 +30,12 @@ let surMac = false
 #endif
 
 // Le noyau ne connaît que la couche numérique. `Crypto` n'est tiré que là où
-// CryptoKit n'existe pas : le noyau compile hors des plateformes Apple, et c'est
-// cette propriété-là qu'on tient, indépendamment de toute autre plateforme visée.
+// CryptoKit n'existe pas ; il porte le seul usage qu'on en fait, l'empreinte
+// SHA-256 qui rattache une session à un fichier.
 let dependancesNoyau: [Target.Dependency] = [
     "SpectreDSP",
     .product(name: "Crypto", package: "swift-crypto",
-             condition: .when(platforms: [.linux, .android])),
+             condition: .when(platforms: [.linux, .windows, .android])),
 ]
 
 let reglagesRelease: [SwiftSetting] = [
@@ -54,7 +55,7 @@ var cibles: [Target] = [
         name: "SpectreDSP",
         path: "Sources/SpectreDSP",
         swiftSettings: [
-            .define("SPECTRE_PORTABLE", .when(platforms: [.linux, .android]))
+            .define("SPECTRE_PORTABLE", .when(platforms: [.linux, .windows, .android]))
         ] + reglagesRelease
     ),
     .target(

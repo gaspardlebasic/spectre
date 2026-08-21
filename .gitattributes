@@ -1,0 +1,19 @@
+# Une fin de ligne, une seule, partout : celle du dépôt.
+#
+# Le dépôt se travaille désormais depuis un Mac et depuis Windows. Or Git pour
+# Windows pose `core.autocrlf = true` à l'installation, et convertit donc tout en
+# CRLF à l'extraction. Les dégâts ne sont pas ceux qu'on imagine : la compilation
+# s'en moque, mais l'index garde alors les tailles d'avant conversion, si bien
+# qu'un `git add` sur un fichier jamais touché y verse du CRLF sans prévenir — et
+# c'est le Mac qui découvre le diff, entier, sur un fichier que personne n'a
+# ouvert.
+#
+# Cette ligne-ci l'emporte sur le réglage de la machine, quelle qu'elle soit.
+* text=auto eol=lf
+
+# Ce qui n'est pas du texte, et qu'une conversion abîmerait pour de bon.
+*.icns binary
+*.onnx binary
+*.bin  binary
+*.png  binary
+*.ppm  binary

@@ -7,3 +7,4 @@ Sources/CMiniaudio/include/miniaudio.h
 Sources/CImGui/imgui/
 Sources/CStretch/signalsmith/
 .vscode/
+.claude/settings.local.json

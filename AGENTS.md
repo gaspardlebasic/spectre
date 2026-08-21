@@ -10,6 +10,12 @@ chaque chose fait et pourquoi elle est faite ainsi — est dans le
 [README](README.md), qui est long et qui vaut d'être lu avant d'inventer quoi que
 ce soit.
 
+L'application ne tourne aujourd'hui que sur macOS, mais **un portage vers Windows
+est en cours**, et Linux suivra. Le noyau compile et passe déjà sur les trois
+plateformes ; c'est ce que mesure `verification.yml`. Qui touche à `SpectreDSP` ou
+à `SpectreCore` travaille donc pour trois systèmes, pas pour un —
+[WINDOWS.md](WINDOWS.md) tient l'état du chantier et les pièges déjà payés.
+
 ## Les règles de la maison
 
 1. **Tout est en français** : le code, les commentaires, les noms qui s'affichent,
