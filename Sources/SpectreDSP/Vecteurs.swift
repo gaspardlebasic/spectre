@@ -9,7 +9,7 @@ import Accelerate
 /// n'appelle plus Accelerate directement mais ces quelques fonctions. Les porter
 /// ailleurs, c'est écrire une seconde implémentation ici et nulle part ailleurs.
 ///
-/// La liste est volontairement courte : six opérations. Elle a été relevée sur le
+/// La liste est volontairement courte : sept opérations. Elle a été relevée sur le
 /// code existant, pas devinée, et c'est ce qui rend la frontière vérifiable — si
 /// `SpectreCore` compile sans `import Accelerate`, il n'en reste rien.
 public enum Vector {
@@ -87,5 +87,80 @@ public enum Vector {
             out[k] = sum
         }
         #endif
+    }
+
+    /// Conversion en demi-flottants (IEEE-754 binaire 16), arrondi au plus proche,
+    /// pair en cas d'égalité.
+    ///
+    /// C'est ce qui part sur la carte graphique : la matrice y est stockée en
+    /// demi-flottants parce qu'à ces niveaux le pas vaut 0,06 dB — très en dessous
+    /// du visible — et que la mémoire occupée est divisée par deux. Une heure de
+    /// musique passe ainsi de 400 à 200 Mo.
+    ///
+    /// La version portable est écrite à la main plutôt que confiée à `Float16`,
+    /// pour la raison qui avait déjà fait préférer une FFT maison à PFFFT : ce type
+    /// n'existe pas sur toutes les cibles que le noyau doit atteindre, et une
+    /// frontière numérique ne se découvre pas absente le jour où l'on compile
+    /// ailleurs. Écrite ici, elle se compare à vImage sur le Mac — voir `DSPCheck`.
+    public static func demiFlottants(_ x: UnsafePointer<Float>,
+                                     into out: UnsafeMutablePointer<UInt16>, count: Int) {
+        #if !SPECTRE_PORTABLE && canImport(Accelerate)
+        var entree = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: x),
+                                   height: 1, width: vImagePixelCount(count),
+                                   rowBytes: count * MemoryLayout<Float>.size)
+        var sortie = vImage_Buffer(data: out,
+                                   height: 1, width: vImagePixelCount(count),
+                                   rowBytes: count * MemoryLayout<UInt16>.size)
+        vImageConvert_PlanarFtoPlanar16F(&entree, &sortie, 0)
+        #else
+        for i in 0..<count { out[i] = demiFlottant(x[i]) }
+        #endif
+    }
+
+    /// Un flottant simple précision vers un demi-flottant, valeur par valeur.
+    ///
+    /// Les trois cas qui font toute la longueur de cette fonction sont ceux qu'un
+    /// simple décalage rate : les sous-normaux, où le bit implicite doit redevenir
+    /// explicite ; les NaN, dont la mantisse ne peut pas tomber à zéro sous peine
+    /// de les changer en infini ; et l'arrondi, qui peut déborder dans l'exposant —
+    /// ce qui est correct, et donne l'infini au bon moment.
+    ///
+    /// Publique comme l'est `PortableRealFourier`, et pour la même raison : c'est
+    /// le chemin portable, et il ne serait pas comparable à celui d'Accelerate si
+    /// le harnais ne pouvait pas l'appeler là où Accelerate existe.
+    public static func demiFlottant(_ f: Float) -> UInt16 {
+        let bits = f.bitPattern
+        let signe = UInt16((bits >> 16) & 0x8000)
+        let exposantBrut = Int((bits >> 23) & 0xFF)
+        let mantisse = bits & 0x007F_FFFF
+
+        if exposantBrut == 0xFF {
+            if mantisse == 0 { return signe | 0x7C00 }
+            return signe | 0x7C00 | UInt16(max(mantisse >> 13, 1))
+        }
+
+        // Exposant débiaisé de 127, rebiaisé de 15.
+        let exposant = exposantBrut - 127 + 15
+
+        if exposant >= 0x1F { return signe | 0x7C00 }
+
+        if exposant <= 0 {
+            // Sous-normal. En dessous de 2⁻²⁵ il ne reste rien à représenter, pas
+            // même le plus petit sous-normal.
+            if exposant < -10 { return signe }
+            let complete = mantisse | 0x0080_0000
+            let decalage = UInt32(14 - exposant)
+            let quotient = complete >> decalage
+            let reste = complete & ((UInt32(1) << decalage) - 1)
+            let moitie = UInt32(1) << (decalage - 1)
+            let arrondi = (reste > moitie || (reste == moitie && quotient & 1 == 1))
+                ? quotient + 1 : quotient
+            return signe | UInt16(arrondi)
+        }
+
+        let reste = mantisse & 0x1FFF
+        var demi = UInt16(exposant << 10) | UInt16(mantisse >> 13)
+        if reste > 0x1000 || (reste == 0x1000 && demi & 1 == 1) { demi += 1 }
+        return signe | demi
     }
 }

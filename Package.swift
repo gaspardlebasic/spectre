@@ -68,6 +68,16 @@ var cibles: [Target] = [
                       path: "Tools/DSPCheck"),
     .executableTarget(name: "WAVCheck", dependencies: ["SpectreCore"],
                       path: "Tools/WAVCheck"),
+    // Les trois harnais de la chaîne de lecture portable. Ils n'ont besoin
+    // d'aucune carte son : le filtre se mesure sur sa réponse, la chaîne se rend
+    // hors ligne, et l'amorçage se lit dans des en-têtes qu'on fabrique. C'est ce
+    // qui permet de les faire tourner là où la lecture n'existe pas encore.
+    .executableTarget(name: "FilterCheck", dependencies: ["SpectreCore"],
+                      path: "Tools/FilterCheck"),
+    .executableTarget(name: "ChainCheck", dependencies: ["SpectreCore"],
+                      path: "Tools/ChainCheck"),
+    .executableTarget(name: "GaplessCheck", dependencies: ["SpectreCore"],
+                      path: "Tools/GaplessCheck"),
     // Spectre sans fenêtre : un WAV entre, une image sort. C'est le seul endroit
     // où l'analyse et le rendu se regardent sans écran ni carte son.
     .executableTarget(name: "SpectreCLI", dependencies: ["SpectreCore"],
@@ -97,6 +107,9 @@ var produits: [Product] = [
     .library(name: "SpectreDSP", type: .static, targets: ["SpectreDSP"]),
     .executable(name: "DSPCheck", targets: ["DSPCheck"]),
     .executable(name: "WAVCheck", targets: ["WAVCheck"]),
+    .executable(name: "FilterCheck", targets: ["FilterCheck"]),
+    .executable(name: "ChainCheck", targets: ["ChainCheck"]),
+    .executable(name: "GaplessCheck", targets: ["GaplessCheck"]),
     .executable(name: "SpectreCLI", targets: ["SpectreCLI"]),
     .executable(name: "AnalysisCheck", targets: ["AnalysisCheck"]),
     .executable(name: "FourierCheck", targets: ["FourierCheck"]),

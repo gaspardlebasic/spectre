@@ -134,6 +134,70 @@ sans viser de cible suffit, puisque la couche Apple n'y est tout simplement pas
 déclarée. Viser à la main ne marcherait pas de toute façon — `--product` est sans
 effet sur une bibliothèque automatique, SwiftPM prévient et construit tout.
 
+## Étape 1 — récupérer ce qui avait été supprimé, et lever deux doutes
+
+**Faite.** 280 contrôles passent sous Windows ARM64, contre 211 à l'étape
+précédente.
+
+### Ce qui revient de l'historique
+
+Trois fichiers du noyau, repris tels quels à `577c6a8`, sans une ligne à
+retoucher — ils n'importaient déjà que Foundation :
+
+- `SpectreCore/Filtre.swift` — les quatre biquads du filtre de bande, mesurés sur
+  leur réponse et non comparés à `AVAudioUnitEQ`, dont le gabarit n'est pas
+  documenté ;
+- `SpectreCore/Gapless.swift` — le rognage de l'amorçage que les formats à trame
+  ajoutent ;
+- `SpectreCore/ChaineDeLecture.swift` — la logique de lecture sans carte son.
+
+Et leurs trois harnais : `FilterCheck` (17 contrôles), `ChainCheck` (16),
+`GaplessCheck` (31).
+
+`Ouverture.swift` **n'est pas revenu** : il ouvre sur `#if os(Windows) import
+CMediaFoundation`, et cette cible n'existera qu'à l'étape 4. Le restaurer
+maintenant casserait précisément la construction qu'on cherche à prouver.
+
+### Ce qui est neuf : les demi-flottants
+
+`Vector.demiFlottants` est la septième opération de la frontière numérique. Elle
+manquait parce que le chemin Metal la prenait dans vImage
+(`vImageConvert_PlanarFtoPlanar16F`), qui n'existe pas ailleurs — or c'est par
+elle que la matrice part sur la carte graphique.
+
+Écrite à la main plutôt que confiée à `Float16`, pour la raison qui avait déjà
+fait préférer une FFT maison à PFFFT : ce type n'est pas disponible sur toutes les
+cibles, et une frontière numérique ne se découvre pas absente le jour où l'on
+compile ailleurs.
+
+Elle est mesurée **contre la définition** : `DSPCheck` cherche le plus proche
+demi-flottant en les essayant tous les 65 536, décodés en double. Lent, et sans
+aucun rouage commun avec ce qu'il juge — la même méthode que la DFT bête en N²
+qui sert de référence à la transformée. 616 valeurs y passent, dont les bords qui
+séparent les implémentations, plus 1 024 sur toute la plage d'affichage.
+
+Deux pièges valent d'être notés, parce qu'ils étaient dans la *référence* et non
+dans la conversion, ce qui est la pire place pour un défaut :
+
+- **les deux zéros sont à distance nulle de la même cible.** Aucune comparaison de
+  magnitude ne les départage ; la recherche porte donc sur la valeur absolue et le
+  signe se rajoute à la fin, comme IEEE-754 le prescrit — y compris quand une
+  valeur minuscule s'écrase sur zéro et doit garder son signe ;
+- **l'infini est à distance infinie de tout**, donc une recherche du plus proche ne
+  le trouve jamais. Le débordement se traite à part : l'arrondi choisit l'infini
+  dès 65 520, moitié entre le plus grand fini et le motif suivant.
+
+### Les deux doutes levés
+
+Toute l'étape 2 en dépendait, et ils ont été posés au compilateur plutôt que
+devinés. Les deux réponses sont bonnes, et l'étape 2 ne grossit donc pas :
+
+- **`Observation` existe sous Windows**, et pas seulement à la compilation :
+  `withObservationTracking` se déclenche bel et bien. `AppModel` peut descendre
+  dans le noyau en gardant `@Observable`.
+- **`CGPoint`, `CGSize`, `CGRect` et `CGFloat` viennent de Foundation** ici aussi.
+  Aucun type de géométrie à écrire, aucune signature à changer.
+
 ## Comment on vérifie ce qu'on ne peut pas compiler
 
 Le portage se mène désormais **depuis Windows** — une machine virtuelle Parallels
@@ -165,8 +229,8 @@ moins une borne inférieure entre deux essais sur du matériel réel.
 
 | étape | état |
 |---|---|
-| 0. La machine, et le noyau qui traverse | **faite** — 211 contrôles sous Windows ARM64 |
-| 1. Récupérer ce qui avait été supprimé | à faire — biquads, rognage d'amorçage, chaîne de lecture |
+| 0. La machine, et le noyau qui traverse | **faite** — trois coureurs au vert |
+| 1. Récupérer ce qui avait été supprimé | **faite** — 280 contrôles, et les demi-flottants |
 | 2. Un seul cerveau | à faire — `AppModel` descend dans le noyau, derrière des protocoles |
 | 3. Une fenêtre, et l'image dedans | à faire — Win32, Direct3D 11, HLSL |
 | 4. Le son qui entre | à faire — Media Foundation, dr_flac |

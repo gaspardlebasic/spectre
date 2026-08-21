@@ -53,6 +53,9 @@ jobs:
           BIN="$(swift build -c release -Xswiftc -DSPECTRE_PORTABLE --show-bin-path)"
           "$BIN/DSPCheck"
           "$BIN/WAVCheck"
+          "$BIN/FilterCheck"
+          "$BIN/ChainCheck"
+          "$BIN/GaplessCheck"
           "$BIN/AnalysisCheck"
           "$BIN/PercussionCheck"
           "$BIN/HarmonyCheck"
@@ -100,7 +103,8 @@ jobs:
           # le lien symbolique qui porte ce nom hors du mode développeur, et la
           # construction le signale sans échouer. Le chemin réel porte le triplet.
           $bin = (swift build -c release --show-bin-path | Select-Object -Last 1).Trim()
-          foreach ($harnais in @("DSPCheck", "WAVCheck", "AnalysisCheck",
+          foreach ($harnais in @("DSPCheck", "WAVCheck", "FilterCheck", "ChainCheck",
+                                 "GaplessCheck", "AnalysisCheck",
                                  "PercussionCheck", "HarmonyCheck")) {
             Write-Host "── $harnais"
             & "$bin\$harnais.exe"
@@ -127,7 +131,8 @@ jobs:
         run: |
           swift build -c release
           BIN="$(swift build -c release --show-bin-path)"
-          for harnais in DSPCheck WAVCheck AnalysisCheck PercussionCheck HarmonyCheck; do
+          for harnais in DSPCheck WAVCheck FilterCheck ChainCheck GaplessCheck \
+                         AnalysisCheck PercussionCheck HarmonyCheck; do
             echo "── $harnais"
             "$BIN/$harnais"
           done
