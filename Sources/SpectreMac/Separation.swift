@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import SpectreCore
+import SpectreModele
 
 /// Ce qui peut échouer entre le clic sur une piste et son apparition à l'écran.
 public enum SeparationFailure: LocalizedError {
@@ -30,26 +31,6 @@ public enum SeparationFailure: LocalizedError {
 }
 
 // MARK: - Le moteur
-
-/// Où en est un calcul qui dure des minutes.
-///
-/// La fraction ne suffit pas. Avant la première tranche il se passe une dizaine de
-/// secondes — le décodage, puis surtout l'ouverture du réseau compilé, 625 Mo relus
-/// du disque — pendant lesquelles il n'y a rien à mesurer : c'est un seul appel
-/// opaque à CoreML, qui rend la main quand il a fini. Une barre immobile à zéro fait
-/// alors croire que rien ne se passe, ou que quelque chose est bloqué. Le nom de
-/// l'étape, lui, se dit toujours.
-public struct SeparationProgress {
-    /// De 0 à 1. Reste à zéro tant qu'aucune tranche n'est finie.
-    public var fraction: Double
-    /// Ce qui se passe en ce moment, à montrer tel quel.
-    public var stage: String
-
-    public init(fraction: Double, stage: String) {
-        self.fraction = fraction
-        self.stage = stage
-    }
-}
 
 /// Les pistes rendues, **et la fréquence à laquelle elles ont été rendues**.
 ///

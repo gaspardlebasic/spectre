@@ -3,6 +3,7 @@ import Accelerate
 import Foundation
 import OnnxRuntimeBindings
 import SpectreCore
+import SpectreModele
 
 /// Séparation par Demucs v4, exécutée par ONNX Runtime.
 ///

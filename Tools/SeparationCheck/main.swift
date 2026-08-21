@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import SpectreCore
+import SpectreModele
 import SpectreMac
 
 // Vérifie l'ossature de la séparation sans modèle et sans interface : le rangement,

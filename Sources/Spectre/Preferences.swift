@@ -1,5 +1,6 @@
 import Observation
 import SpectreCore
+import SpectreModele
 import SpectreMac
 import SwiftUI
 

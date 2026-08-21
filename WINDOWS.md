@@ -198,6 +198,63 @@ devinés. Les deux réponses sont bonnes, et l'étape 2 ne grossit donc pas :
 - **`CGPoint`, `CGSize`, `CGRect` et `CGFloat` viennent de Foundation** ici aussi.
   Aucun type de géométrie à écrire, aucune signature à changer.
 
+## Étape 2 — un seul cerveau
+
+**La moitié portable est faite et mesurée ; la moitié Mac attend son compilateur.**
+
+`AppModel` — 1 500 lignes, tout le comportement de l'application — a quitté
+`Sources/Spectre` pour un module à lui, `SpectreModele`, qui **n'importe que
+Foundation, Observation et SpectreCore**. Le noyau, la couche numérique et le
+cerveau compilent donc tous les trois sous Windows, et les 280 contrôles y passent
+inchangés.
+
+Ce que le modèle demande encore au système tient dans un seul fichier,
+`Plateforme.swift` : le lecteur audio, la sinusoïde, le rendu, le décodage, le
+rangement et la séparation des pistes, le sélecteur de fichiers, les documents
+récents, les préférences, et une horloge monotone. Dix protocoles. Le pendant macOS
+de ce fichier fait cent lignes de plomberie — et c'est la mesure de ce que Windows
+aura à écrire pour avoir *la même* application, non une application qui lui
+ressemble.
+
+### Le piège de l'observation, et comment il est contourné
+
+L'ancien `WINDOWS.md` l'avait signalé sans le résoudre : `Player` est `@Observable`
+et l'interface SwiftUI fabrique des liaisons vers `model.player.speed`. Une liaison
+exige un chemin modifiable de bout en bout, et le suivi d'`Observation` exige un
+type **concret** — masquer le lecteur derrière un protocole existentiel romprait ce
+suivi, et l'affichage cesserait de se mettre à jour *sans qu'une seule ligne de
+calcul soit fausse*. C'est le genre de panne qu'on cherche pendant deux jours.
+
+La sortie est un paramètre générique, et sur le lecteur seulement :
+`AppModel<Lecteur: LecteurAudio>`. Chaque plateforme pose son type concret, et
+l'interface ne porte pas ce détail — `Sources/Spectre/Plateforme.swift` la cache
+derrière `typealias AppModel = SpectreModele.AppModel<Player>`, si bien qu'aucun
+fichier de l'interface n'a changé d'une ligne. Les autres services, que l'interface
+n'observe jamais, restent des existentiels : plus simples, et suffisants.
+
+Trois détails du déménagement valent d'être notés, parce qu'ils reviendront :
+
+- **Un type générique n'accepte pas de propriété statique stockée.** Quatre
+  constantes ont dû en sortir ; deux sont devenues des constantes de fichier, deux
+  vivent dans `Reglages` et `AppModel` les renvoie sous leurs anciens noms.
+- **Les services se prennent en variable locale avant un bloc de fond**, plutôt que
+  d'être atteints à travers `self`. Cela évite de retenir le modèle pour un calcul
+  qui n'a plus d'objet, et le compilateur l'exige de toute façon.
+- **L'horloge.** `CACurrentMediaTime` vient de CoreAnimation ; `Horloge.maintenant`
+  la remplace par `DispatchTime`, qui compte depuis le même instant — le démarrage
+  de la machine — de sorte que rien de ce qui était réglé contre elle n'a bougé.
+
+### Ce qui reste à prouver
+
+Le Mac n'a pas été compilé : cette machine ne le peut pas. C'est l'intégration
+continue qui juge, et son travail est plus complet qu'un simple `swift build` —
+elle passe `./check.sh` **et** `./essai.sh --rapide --sans-fenetre`, donc le morceau
+témoin par la ligne de commande et par le relevé d'accords.
+
+Reste une seule chose qu'aucun coureur ne fera : **regarder
+`build/essai/fenetre.png`**. Le déménagement se veut neutre en comportement ; c'est
+la fenêtre qui le dira.
+
 ## Comment on vérifie ce qu'on ne peut pas compiler
 
 Le portage se mène désormais **depuis Windows** — une machine virtuelle Parallels
@@ -231,7 +288,7 @@ moins une borne inférieure entre deux essais sur du matériel réel.
 |---|---|
 | 0. La machine, et le noyau qui traverse | **faite** — trois coureurs au vert |
 | 1. Récupérer ce qui avait été supprimé | **faite** — 280 contrôles, et les demi-flottants |
-| 2. Un seul cerveau | à faire — `AppModel` descend dans le noyau, derrière des protocoles |
+| 2. Un seul cerveau | **moitié portable faite** — `AppModel` est descendu ; le Mac attend l'intégration continue |
 | 3. Une fenêtre, et l'image dedans | à faire — Win32, Direct3D 11, HLSL |
 | 4. Le son qui entre | à faire — Media Foundation, dr_flac |
 | 5. Le son qui sort | à faire — miniaudio, signalsmith-stretch |

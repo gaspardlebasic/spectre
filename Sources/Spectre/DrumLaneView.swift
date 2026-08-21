@@ -1,5 +1,6 @@
 import AppKit
 import SpectreCore
+import SpectreModele
 import SwiftUI
 
 // MARK: - Les gestes de la ligne

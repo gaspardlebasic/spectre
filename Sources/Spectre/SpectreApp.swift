@@ -1,5 +1,6 @@
 import AppKit
 import SpectreCore
+import SpectreModele
 import SpectreMac
 import SwiftUI
 import UniformTypeIdentifiers
@@ -46,6 +47,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    /// Quitter ne doit pas coûter les réglages en cours : la position de lecture,
+    /// elle, n'est écrite qu'à ce moment-là.
+    ///
+    /// C'est la plateforme qui sait *quand* l'application s'en va — ici la
+    /// notification d'AppKit, ailleurs `WM_CLOSE` — et le modèle qui sait *quoi*
+    /// enregistrer. Le modèle s'abonnait lui-même à cette notification ; il ne le
+    /// peut plus depuis qu'il ne connaît plus AppKit, et c'est très bien ainsi.
+    func applicationWillTerminate(_ notification: Notification) {
+        AppDelegate.model?.applicationVaSeFermer()
+    }
 }
 
 /// Point d'entrée. Avant d'ouvrir une fenêtre, on regarde si la ligne de commande

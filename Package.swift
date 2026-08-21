@@ -1,15 +1,20 @@
 // swift-tools-version:5.9
 import PackageDescription
 
-// Quatre étages, du plus portable au moins portable, chacun ne connaissant que
+// Cinq étages, du plus portable au moins portable, chacun ne connaissant que
 // ceux d'en dessous.
 //
 // `SpectreDSP` isole les quelques opérations vectorielles et la transformée réelle :
 // c'est la seule frontière numérique avec la plateforme. `SpectreCore` porte
 // l'analyse, le tempo, les palettes, le relevé de la batterie — tout ce qui se
-// décide sans écran ni carte son ; il ne connaît ni AppKit, ni AVFoundation, ni
-// Metal, et compile donc partout où Swift compile. `SpectreMac` porte les
-// implémentations Apple, et `Spectre` la fenêtre.
+// décide sans écran ni carte son. `SpectreModele` porte le comportement de
+// l'application elle-même, et ne connaît la plateforme qu'à travers une poignée de
+// protocoles. `SpectreMac` porte les implémentations Apple, et `Spectre` la
+// fenêtre.
+//
+// Les trois premiers compilent partout où Swift compile, et c'est ce qui fait
+// qu'une seconde plateforme obtient la même application plutôt qu'une application
+// qui lui ressemble.
 //
 // **Le manifeste est du code, exécuté sur la machine qui construit.** On peut donc
 // simplement ne pas déclarer la couche Apple ailleurs que sur un Mac, plutôt que
@@ -64,6 +69,20 @@ var cibles: [Target] = [
         path: "Sources/SpectreCore",
         swiftSettings: reglagesRelease
     ),
+    // Le cerveau : tout le comportement de l'application — le tourne-page,
+    // l'aimantation, le tracé de boucle, le relevé qui se refait quand on tire un
+    // curseur — sans une ligne qui connaisse un système. Ce que la plateforme doit
+    // fournir tient dans `Plateforme.swift`, et rien d'autre n'en sort.
+    //
+    // C'est l'étage qui manquait au premier portage, et son absence est ce qui l'a
+    // tué : faute de lui, Windows avait son propre modèle, plus fruste, qui
+    // divergeait un peu plus à chaque semaine de travail sur le Mac.
+    .target(
+        name: "SpectreModele",
+        dependencies: ["SpectreCore"],
+        path: "Sources/SpectreModele",
+        swiftSettings: reglagesRelease
+    ),
     .executableTarget(name: "DSPCheck", dependencies: ["SpectreDSP"],
                       path: "Tools/DSPCheck"),
     .executableTarget(name: "WAVCheck", dependencies: ["SpectreCore"],
@@ -104,6 +123,7 @@ var cibles: [Target] = [
 
 var produits: [Product] = [
     .library(name: "SpectreCore", type: .static, targets: ["SpectreCore"]),
+    .library(name: "SpectreModele", type: .static, targets: ["SpectreModele"]),
     .library(name: "SpectreDSP", type: .static, targets: ["SpectreDSP"]),
     .executable(name: "DSPCheck", targets: ["DSPCheck"]),
     .executable(name: "WAVCheck", targets: ["WAVCheck"]),
@@ -143,6 +163,7 @@ if surMac {
             dependencies: [
                 "SpectreCore",
                 "SpectreDSP",
+                "SpectreModele",
                 .product(name: "onnxruntime",
                          package: "onnxruntime-swift-package-manager"),
             ],
@@ -151,7 +172,7 @@ if surMac {
         ),
         .executableTarget(
             name: "Spectre",
-            dependencies: ["SpectreCore", "SpectreDSP", "SpectreMac"],
+            dependencies: ["SpectreCore", "SpectreDSP", "SpectreModele", "SpectreMac"],
             path: "Sources/Spectre",
             swiftSettings: reglagesRelease
         ),

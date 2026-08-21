@@ -1,5 +1,6 @@
 import Foundation
 import SpectreCore
+import SpectreModele
 import SpectreMac
 
 /// Relevé d'accords depuis le terminal : `Spectre --accords morceau.mp3`.

@@ -1,0 +1,103 @@
+import AppKit
+import Foundation
+import SpectreCore
+import SpectreModele
+import UniformTypeIdentifiers
+
+// Ce que macOS répond aux protocoles du modèle.
+//
+// Le fichier est court, et c'est le résultat qu'on cherchait : le comportement de
+// l'application vit dans `SpectreModele`, et il ne reste ici que de la plomberie.
+// Le pendant Windows de ce fichier fera la même longueur.
+
+// MARK: - Le son
+
+extension Player: LecteurAudio {}
+
+extension ToneGenerator: Sinusoide {
+    public var voixMaximales: Int { Self.maxVoices }
+}
+
+// MARK: - L'image
+
+extension SpectrogramRenderer: RenduSpectrogramme {}
+
+// MARK: - Les fichiers
+
+/// Le sélecteur de fichiers du système.
+public struct DialogueApple: DialogueFichier {
+    public init() {}
+
+    public func choisirUnMorceau() -> URL? {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.audio]
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Ouvrir"
+        panel.message = "Choisir un fichier audio à transcrire"
+        return panel.runModal() == .OK ? panel.url : nil
+    }
+}
+
+/// Les documents récents du Dock et du menu Pomme.
+///
+/// Ils doublent `RecentFiles`, qui est la nôtre : celle d'AppKit ne survit pas au
+/// redémarrage dans une application qui n'est pas bâtie sur son architecture de
+/// documents — vérifié, `NSRecentDocumentRecords` restait vide après une ouverture
+/// et une sortie propre. On la nourrit tout de même, parce que c'est elle qu'on
+/// consulte par un clic droit sur l'icône du Dock.
+public struct RecentsApple: DocumentsRecents {
+    public init() {}
+
+    public func noter(_ url: URL) {
+        NSDocumentController.shared.noteNewRecentDocumentURL(url)
+    }
+
+    public func effacer() {
+        NSDocumentController.shared.clearRecentDocuments(nil)
+    }
+}
+
+// MARK: - La séparation
+
+extension SeparationJob: TravailAnnulable {}
+
+/// Le rangement des pistes et leur fabrication, réunis comme le modèle les voit.
+///
+/// Il ne distingue jamais les deux : il demande si un morceau est séparé, la somme
+/// de telles pistes, ou le lancement d'un calcul. Que les pistes soient rangées
+/// dans Application Support et écrites en CAF ne le regarde pas.
+public final class RangementApple: ServiceDeSeparation {
+    public init() {}
+
+    public var modeleDisponible: Bool { StemStore.hasModel }
+
+    public func estSepare(_ empreinte: String) -> Bool {
+        StemStore.isSeparated(empreinte)
+    }
+
+    public func urlDeLaPiste(_ piste: Stem, empreinte: String) -> URL? {
+        StemStore.url(piste, for: empreinte)
+    }
+
+    public func urlCombinee(_ pistes: Set<Stem>, empreinte: String) throws -> URL? {
+        try StemStore.combined(pistes, for: empreinte)
+    }
+
+    public func oublierLesPistes(empreinte: String) {
+        StemStore.removeStems(for: empreinte)
+    }
+
+    public func marquerUtilise(_ empreinte: String) {
+        StemStore.markUsed(empreinte)
+    }
+
+    public func separer(fichier: URL, empreinte: String,
+                        avancement: @escaping (SeparationProgress) -> Void,
+                        fin: @escaping (Result<Void, Error>) -> Void) -> TravailAnnulable {
+        let travail = SeparationJob()
+        travail.run(fileAt: fichier, fingerprint: empreinte,
+                    separator: DemucsSeparator(),
+                    progress: avancement, completion: fin)
+        return travail
+    }
+}

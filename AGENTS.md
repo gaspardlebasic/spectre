@@ -100,17 +100,28 @@ juger vraiment il faut un vrai morceau — que l'on donne à l'application, ou �
 `Spectre --accords "…" --notes` qui écrit la grille et les compteurs de mise au
 point.
 
-## Les quatre étages
+## Les cinq étages
 
 Un module ne connaît que ceux d'en dessous. C'est ce qui garde le calcul
 vérifiable là où il n'y a ni écran ni carte son.
 
 | Étage | Ce qu'il contient | Dépend de |
 |-------|-------------------|-----------|
-| `SpectreDSP` | Fenêtres, FFT, décimation. Rien d'autre que des nombres. | Accelerate, ou du Swift pur avec `-DSPECTRE_PORTABLE` |
+| `SpectreDSP` | Fenêtres, FFT, décimation, demi-flottants. Rien d'autre que des nombres. | Accelerate, ou du Swift pur avec `-DSPECTRE_PORTABLE` |
 | `SpectreCore` | Analyse, spectrogramme, tempo, batterie, accords, WAV, sessions, réglages. | `SpectreDSP` |
-| `SpectreMac` | Décodage, rendu Metal, lecture, séparation Demucs. | `SpectreCore` + Apple |
+| `SpectreModele` | **Le comportement de l'application** : ouverture, tourne-page, aimantation, boucle, sélection de pistes, survol des accords. | `SpectreCore` |
+| `SpectreMac` | Décodage, rendu Metal, lecture, séparation Demucs. | `SpectreModele` + Apple |
 | `Spectre` | L'interface SwiftUI, et les commandes en ligne. | tout le reste |
+
+**Les trois premiers compilent partout où Swift compile.** `SpectreModele` est
+l'étage qui a manqué au premier portage : faute de lui, Windows avait son propre
+modèle, plus fruste, qui divergeait un peu plus chaque semaine. Ce qu'il demande au
+système tient dans `Sources/SpectreModele/Plateforme.swift` — une dizaine de
+protocoles, et rien d'autre. Ajouter une plateforme, c'est les remplir.
+
+Corollaire pour qui écrit du neuf : **un comportement se met dans `SpectreModele`,
+pas dans la vue**. Une règle écrite dans une `View` SwiftUI est une règle que
+Windows n'aura pas.
 
 `SpectreCore` ne doit rien importer d'Apple : c'est la frontière que
 `verification.yml` mesure des deux côtés, en repassant les mêmes contrôles sur le

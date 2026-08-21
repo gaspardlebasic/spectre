@@ -1,6 +1,7 @@
 import AppKit
 import MetalKit
 import SpectreCore
+import SpectreModele
 import SpectreMac
 import SwiftUI
 

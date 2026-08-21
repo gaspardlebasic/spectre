@@ -1,16 +1,44 @@
-import AppKit
 import Foundation
 import Observation
 import SpectreCore
-import SpectreMac
-import UniformTypeIdentifiers
+
+/// Marge, en fraction de la largeur, que la tête de lecture ne doit pas franchir.
+private let margeDuTournePage = 0.1
+/// Durée du tourne-page.
+private let dureeDuTournePage = 0.32
 
 /// État de l'application : le fichier, sa matrice, la fenêtre visible, la lecture.
-@Observable final class AppModel {
-    private(set) var source: AudioSource?
-    private(set) var spectrogram = Spectrogram.empty
+///
+/// **Ce fichier ne connaît aucun système.** Tout ce qu'il demande à la plateforme
+/// passe par les protocoles de `Plateforme.swift` ; ce qui reste ici est le
+/// comportement de Spectre, le même sur toutes les machines. C'est la leçon du
+/// premier portage, qui en avait écrit un second, plus fruste, et le regardait
+/// diverger.
+///
+/// **Pourquoi générique sur le lecteur, et sur lui seul.** L'interface de macOS
+/// fabrique des liaisons SwiftUI vers `model.player.speed` et
+/// `model.player.transpose`. Une liaison exige un chemin modifiable de bout en
+/// bout, et le suivi d'`Observation` exige un type *concret* : masquer le lecteur
+/// derrière un protocole existentiel romprait ce suivi, et l'affichage cesserait
+/// de se mettre à jour sans qu'une seule ligne de calcul soit fausse. C'est
+/// précisément le piège que l'ancien `WINDOWS.md` avait signalé. Un paramètre
+/// générique le contourne sans rien coûter : chaque plateforme pose son type, et
+/// `Spectre` s'en cache derrière un `typealias`. Les autres services, que
+/// l'interface n'observe jamais, restent des existentiels — plus simples.
+@Observable public final class AppModel<Lecteur: LecteurAudio> {
 
-    var analysis = AnalysisSettings(reassignment: Preferences.shared.reassignment)
+    // MARK: Ce que la plateforme fournit
+
+    @ObservationIgnored private let décodeur: Décodeur
+    @ObservationIgnored private let pistes: ServiceDeSeparation
+    @ObservationIgnored private let dialogue: DialogueFichier
+    @ObservationIgnored private let récentsDuSystème: DocumentsRecents
+    @ObservationIgnored private let préférences: PreferencesGlobales
+
+    public private(set) var source: AudioSource?
+    public private(set) var spectrogram = Spectrogram.empty
+
+    public var analysis: AnalysisSettings
 
     /// Les réglages d'affichage — et, depuis le relevé par raies, une **entrée du
     /// relevé d'accords**.
@@ -20,7 +48,7 @@ import UniformTypeIdentifiers
     /// en sort. C'est voulu et c'est le cœur de la promesse — ce qu'on voit est ce
     /// qui est lu — mais cela veut dire que tirer un curseur de contraste refait les
     /// accords, d'où la coalescence par tour de boucle.
-    var display = DisplaySettings() {
+    public var display = DisplaySettings() {
         didSet {
             // Le diapason décide de où tombent les demi-tons : la carte elle-même
             // est à refaire.
@@ -43,16 +71,16 @@ import UniformTypeIdentifiers
     /// mesure, si bien que rouvrir un morceau retrouve exactement le même repère
     /// sans qu'on ait rien à enregistrer.
     @ObservationIgnored private var openingContrast: DisplaySettings?
-    var viewport = Viewport()
+    public var viewport = Viewport()
 
     /// `var` et non `let` : SwiftUI n'accepte de fabriquer une liaison vers
     /// `player.speed` que si le chemin est modifiable de bout en bout.
-    var player = Player()
+    public var player: Lecteur
 
     /// Position de la tête de lecture, en secondes.
-    var playhead: Double = 0
+    public var playhead: Double = 0
     /// Position du curseur dans la vue (en points, depuis le coin haut-gauche).
-    var hover: CGPoint? {
+    public var hover: CGPoint? {
         didSet {
             if hover == nil { snap = nil }
             updateChordTone()
@@ -63,14 +91,14 @@ import UniformTypeIdentifiers
     /// Elles sont posées **sur** l'image : sans cela, viser un bouton ferait
     /// afficher par-dessous la note et la fréquence du point qu'il cache, avec son
     /// trait et son cercle. On ne désigne pas une raie quand on vise un bouton.
-    var pointerOverControls = false {
+    public var pointerOverControls = false {
         didSet {
             guard pointerOverControls else { return }
             hover = nil
         }
     }
     /// Raie sur laquelle le curseur s'est aimanté.
-    var snap: SnapTarget?
+    public var snap: SnapTarget?
 
     /// Passage joué en boucle — et, en portée « mesure », le passage relevé.
     ///
@@ -78,7 +106,7 @@ import UniformTypeIdentifiers
     /// demander ce qui s'y joue sont le même geste : on n'allait pas faire tracer
     /// deux rectangles pour la même intention. Le relevé suit donc la borne qu'on
     /// tire, sans latence — le chromagramme est déjà là, voir `chromaCache`.
-    var loop: ClosedRange<Double>? {
+    public var loop: ClosedRange<Double>? {
         didSet {
             pushLoop()
             // Quelle que soit la portée réglée : la boucle est devenue la portée du
@@ -87,7 +115,7 @@ import UniformTypeIdentifiers
             reloadChords()
         }
     }
-    var loopEnabled = true { didSet { pushLoop() } }
+    public var loopEnabled = true { didSet { pushLoop() } }
 
     /// Grille métrique estimée au chargement, ajustable ensuite.
     ///
@@ -95,7 +123,7 @@ import UniformTypeIdentifiers
     /// changer le refait. Un tempo faux ou un « un » mal placé donnerait des accords
     /// à cheval sur deux harmonies, ce qui ne ressemble à rien : corriger la grille
     /// corrige les accords du même geste.
-    var tempo: TempoGrid? {
+    public var tempo: TempoGrid? {
         didSet {
             guard tempo != oldValue else { return }
             reloadChords()
@@ -109,64 +137,81 @@ import UniformTypeIdentifiers
     /// bon régime : sur un mixage entier, tout ce qui claque dans le médium
     /// alimente la ligne de caisse claire et l'attaque d'une note de basse s'y lit
     /// comme un coup. Voir `relevePercussion(keeping:separated:fingerprint:mix:)`.
-    private(set) var percussion = PercussionTrack.empty
+    public private(set) var percussion = PercussionTrack.empty
     /// Vrai tant que le relevé du morceau courant n'est pas fini.
-    private(set) var percussionPending = false
+    public private(set) var percussionPending = false
     /// Montrer la ligne de batterie. Volontairement **hors** des réglages conservés :
     /// c'est une vue en cours d'essai, et lui faire une place dans le format des
     /// sessions rendrait illisibles celles déjà écrites.
-    var showDrumLane = true
+    public var showDrumLane = true
     @ObservationIgnored private var percussionToken = 0
 
     /// Les accords devinés — un par temps, ou un par mesure, ou un seul pour le
     /// passage sélectionné, selon la portée réglée. Vide tant que la séparation n'a
     /// pas eu lieu : il y faut la basse et l'accompagnement **séparément**.
-    private(set) var chords = ChordTrack.empty
-    private(set) var chordsPending = false
+    public private(set) var chords = ChordTrack.empty
+    public private(set) var chordsPending = false
     /// Écrire les noms d'accords sous la grille.
-    var showChords = true
+    public var showChords = true
 
     /// Avancement de l'analyse (0…1), `nil` quand rien n'est en cours.
-    var progress: Double?
-    var status: String?
+    public var progress: Double?
+    public var status: String?
 
     /// Sinusoïde d'écoute, tenue tant que le bouton reste enfoncé.
-    @ObservationIgnored private let tone = ToneGenerator()
+    @ObservationIgnored private let sinusoide: Sinusoide
     @ObservationIgnored private var probing = false
 
     /// Taille de la vue en points, tenue à jour par le rendu.
-    @ObservationIgnored var viewSize = CGSize(width: 1200, height: 700)
-    @ObservationIgnored weak var renderer: SpectrogramRenderer?
+    @ObservationIgnored public var viewSize = CGSize(width: 1200, height: 700)
+    @ObservationIgnored public weak var renderer: (any RenduSpectrogramme)?
     /// Évite de recadrer une deuxième fois si la vue change de taille après coup.
     @ObservationIgnored private var needsFit = false
     /// Dernière session écrite sur le disque, et depuis quand elle est périmée.
     @ObservationIgnored private var savedSession: FileSession?
-    @ObservationIgnored private var staleSince: CFTimeInterval?
+    @ObservationIgnored private var staleSince: Double?
     /// Dernier examen de la session, pour ne pas le refaire à chaque image.
-    @ObservationIgnored private var lastAutosaveCheck: CFTimeInterval = 0
+    @ObservationIgnored private var lastAutosaveCheck: Double = 0
 
-    init() {
-        // Quitter l'application ne doit pas coûter les réglages en cours : la
-        // position de lecture, elle, n'est écrite qu'à ce moment-là.
-        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification,
-                                               object: nil, queue: .main) { [weak self] _ in
-            self?.flushSession()
-        }
+    /// Tout ce que le modèle ne sait pas faire seul lui est remis ici, et une fois
+    /// pour toutes. Il n'ira rien chercher ailleurs : c'est ce qui rend la liste
+    /// des dépendances lisible d'un coup d'œil, et le modèle éprouvable avec des
+    /// pièces de harnais à la place des vraies.
+    public init(lecteur: Lecteur,
+                décodeur: Décodeur,
+                sinusoide: Sinusoide,
+                pistes: ServiceDeSeparation,
+                dialogue: DialogueFichier,
+                récentsDuSystème: DocumentsRecents,
+                préférences: PreferencesGlobales) {
+        self.player = lecteur
+        self.décodeur = décodeur
+        self.sinusoide = sinusoide
+        self.pistes = pistes
+        self.dialogue = dialogue
+        self.récentsDuSystème = récentsDuSystème
+        self.préférences = préférences
+        self.analysis = AnalysisSettings(reassignment: préférences.reassignment)
     }
 
-    var title: String { source?.name ?? "Spectre" }
-    var fileURL: URL? { source?.url }
-    var duration: Double { source?.duration ?? 0 }
+    /// Écrit la session en cours sans attendre l'échéance.
+    ///
+    /// À appeler quand l'application s'en va : quitter ne doit pas coûter les
+    /// réglages, et la position de lecture n'est écrite qu'à ce moment-là. C'est la
+    /// plateforme qui sait *quand* — `NSApplication.willTerminate` sur macOS,
+    /// `WM_CLOSE` sous Windows — et le modèle qui sait *quoi*.
+    public func applicationVaSeFermer() {
+        flushSession()
+    }
+
+    public var title: String { source?.name ?? "Spectre" }
+    public var fileURL: URL? { source?.url }
+    public var duration: Double { source?.duration ?? 0 }
 
     // MARK: Ouverture
 
-    func openPanel() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.audio]
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Ouvrir"
-        panel.message = "Choisir un fichier audio à transcrire"
-        if panel.runModal() == .OK, let url = panel.url { open(url) }
+    public func openPanel() {
+        if let url = dialogue.choisirUnMorceau() { open(url) }
     }
 
     // MARK: Les morceaux récents
@@ -177,11 +222,11 @@ import UniformTypeIdentifiers
     /// pas au redémarrage ici. On la tient tout de même à jour en parallèle, pour le
     /// menu du Dock et les « Éléments récents » du menu Pomme, qui ne connaissent
     /// qu'elle.
-    private(set) var recentFiles: [URL] = RecentFiles.all()
+    public private(set) var recentFiles: [URL] = RecentFiles.all()
 
-    func clearRecentFiles() {
+    public func clearRecentFiles() {
         RecentFiles.clear()
-        NSDocumentController.shared.clearRecentDocuments(nil)
+        récentsDuSystème.effacer()
         recentFiles = []
     }
 
@@ -195,7 +240,7 @@ import UniformTypeIdentifiers
     /// séparation est automatique, à lancer une minute de GPU sur le mauvais morceau.
     /// On laisse donc passer le temps de cet évènement, et l'on ne fait rien si
     /// quelque chose est arrivé entre-temps.
-    func reopenLastFile() {
+    public func reopenLastFile() {
         guard source == nil, progress == nil, let last = recentFiles.first else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self, self.source == nil, self.progress == nil else { return }
@@ -210,15 +255,15 @@ import UniformTypeIdentifiers
     /// On repasse par l'ouverture plutôt que d'écrire un chemin plus court : elle
     /// enregistre la session avant, la relit après, et rend donc le cadrage, le
     /// contraste et la tête de lecture tels qu'ils étaient.
-    func reanalyse() {
+    public func reanalyse() {
         guard let url = fileURL else { return }
         open(url)
     }
 
-    func open(_ url: URL) {
+    public func open(_ url: URL) {
         guard progress == nil else { return }
         RecentFiles.note(url)
-        NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        récentsDuSystème.noter(url)
         recentFiles = RecentFiles.all()
         status = "Lecture du fichier…"
         progress = 0
@@ -226,11 +271,15 @@ import UniformTypeIdentifiers
         playhead = 0
 
         let settings = analysis
+        // Les services sont pris ici plutôt qu'à travers `self` dans le bloc : ils
+        // ne changent jamais, et les prendre au passage évite de retenir le modèle
+        // pour un calcul qui n'a plus d'objet dès qu'on change de morceau.
+        let décodeur = self.décodeur
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let started = Date()
             let loaded: AudioSource
             do {
-                loaded = try AudioSource.load(url)
+                loaded = try décodeur.charger(url)
             } catch {
                 DispatchQueue.main.async {
                     self?.progress = nil
@@ -329,10 +378,10 @@ import UniformTypeIdentifiers
         // sans rien avoir à demander. Sinon on s'en tient au mixage qu'on vient
         // d'analyser — repasser par `show` ne ferait que téléverser une deuxième
         // fois la même matrice.
-        if source.fingerprint.map(StemStore.isSeparated) == true {
+        if source.fingerprint.map(pistes.estSepare) == true {
             // Rouvrir un morceau le remet en tête : le ménage du cache s'appuie sur
             // cette date, et jeter celui sur lequel on travaille serait le comble.
-            source.fingerprint.map(StemStore.markUsed)
+            source.fingerprint.map(pistes.marquerUtilise)
             show(selection)
         } else {
             relevePercussion(Self.everything, from: source.mono,
@@ -364,7 +413,7 @@ import UniformTypeIdentifiers
         // Quatre fois par seconde suffisent à décider s'il faut écrire dans une
         // seconde. Fabriquer et comparer la session à chaque image, cent vingt fois
         // par seconde, coûtait plus cher que l'écriture elle-même.
-        let time = CACurrentMediaTime()
+        let time = Horloge.maintenant()
         guard time - lastAutosaveCheck > 0.25 else { return }
         lastAutosaveCheck = time
         let current = currentSession()
@@ -372,7 +421,7 @@ import UniformTypeIdentifiers
             staleSince = nil
             return
         }
-        let now = CACurrentMediaTime()
+        let now = Horloge.maintenant()
         guard let since = staleSince else { staleSince = now; return }
         guard now - since > 1 else { return }
         SessionStore.save(current, for: fingerprint)
@@ -381,7 +430,7 @@ import UniformTypeIdentifiers
     }
 
     /// Écrit sans attendre — changement de morceau, ou fermeture de l'application.
-    func flushSession() {
+    public func flushSession() {
         guard let fingerprint = source?.fingerprint else { return }
         let current = currentSession()
         guard current != savedSession else { return }
@@ -401,7 +450,7 @@ import UniformTypeIdentifiers
     // MARK: Boucle d'affichage
 
     /// Appelée à chaque image : synchronise la tête de lecture et fait défiler.
-    func tick(viewSize: CGSize) {
+    public func tick(viewSize: CGSize) {
         let resized = abs(viewSize.width - self.viewSize.width) > 0.5
             || abs(viewSize.height - self.viewSize.height) > 0.5
         self.viewSize = viewSize
@@ -453,7 +502,7 @@ import UniformTypeIdentifiers
     // MARK: Zoom vertical
 
     /// Nombre d'octaves visibles — la façon musicale de dire « zoom vertical ».
-    var visibleOctaves: Double {
+    public var visibleOctaves: Double {
         guard spectrogram.binCount > 0 else { return 0 }
         return Double(viewSize.height) * viewport.binsPerPoint
             / max(spectrogram.layout.binsPerOctave, 1)
@@ -464,7 +513,7 @@ import UniformTypeIdentifiers
     /// Le curseur zoome autour du **milieu de la vue** : c'est le seul point fixe
     /// qui ait un sens quand le geste ne désigne aucun endroit de l'image, alors
     /// que le pincement, lui, s'ancre sous le doigt.
-    var verticalZoom: Double {
+    public var verticalZoom: Double {
         get {
             guard spectrogram.binCount > 0, viewport.binsPerPoint > 0,
                   viewSize.height > 1 else { return 1 }
@@ -488,7 +537,7 @@ import UniformTypeIdentifiers
     /// n'est plus un bouton, c'est le repère d'ouverture — voir
     /// `restoreOpeningContrast()`. Deux commandes qui rendaient le même service au
     /// cadrage d'ensemble en font une de trop.
-    func applyAutoContrast() {
+    public func applyAutoContrast() {
         guard spectrogram.columnCount > 0 else { return }
         let found = AutoContrast.settings(basedOn: display, in: spectrogram,
                                           columns: visibleColumns, bins: visibleBins)
@@ -509,7 +558,7 @@ import UniformTypeIdentifiers
     /// Ne touche ni au gamma, ni à la palette, ni au diapason : ce sont des goûts,
     /// pas des mesures, et les remettre d'office serait défaire un réglage qu'on
     /// n'a pas demandé à défaire.
-    func restoreOpeningContrast() {
+    public func restoreOpeningContrast() {
         guard let opening = openingContrast else { return }
         display.floorDb = opening.floorDb
         display.ceilingDb = opening.ceilingDb
@@ -523,7 +572,7 @@ import UniformTypeIdentifiers
     ///
     /// Une seule définition sert au tracé *et* à l'aimantation : ce sur quoi la
     /// boucle se cale est exactement ce qu'on voit, comme dans un séquenceur.
-    var gridUnit: Double? {
+    public var gridUnit: Double? {
         guard let tempo, tempo.bpm > 0, spectrogram.columnCount > 0 else { return nil }
         return tempo.unit(pointsPerBeat: tempo.beatSeconds
                             / spectrogram.secondsPerColumn / viewport.columnsPerPoint)
@@ -536,7 +585,7 @@ import UniformTypeIdentifiers
         return gridUnit ?? Double(max(tempo.beatsPerBar, 1))
     }
 
-    func snapToGrid(_ time: Double) -> Double {
+    public func snapToGrid(_ time: Double) -> Double {
         guard let tempo, let unit = snapUnit else { return time }
         return tempo.snap(time, unit: unit)
     }
@@ -550,28 +599,24 @@ import UniformTypeIdentifiers
         if found != snap { snap = found }
         // La sinusoïde suit l'aimantation : elle se tait donc d'elle-même dès que
         // le curseur passe sur une région que les réglages rendent noire.
-        if probing { tone.play(found?.frequency) }
+        if probing { sinusoide.play(found?.frequency) }
     }
 
     // MARK: Écoute d'une raie
 
     /// Fait sonner la raie désignée, et la suit tant que le bouton reste enfoncé.
-    func beginProbe(at point: CGPoint) {
+    public func beginProbe(at point: CGPoint) {
         hover = point
         probing = true
         updateSnap()
     }
 
-    func endProbe() {
+    public func endProbe() {
         guard probing else { return }
         probing = false
-        tone.stop()
+        sinusoide.stop()
     }
 
-    /// Marge, en fraction de la largeur, que la tête de lecture ne doit pas franchir.
-    private static let margin = 0.1
-    /// Durée du tourne-page.
-    private static let turnDuration = 0.32
 
     /// Fait tourner la page quand la tête de lecture sort du cadre.
     ///
@@ -586,12 +631,12 @@ import UniformTypeIdentifiers
         // image relancerait un tourne-page tant que la tête est encore hors cadre.
         let start = turn?.to ?? viewport.startColumn
         let x = (column - start) / viewport.columnsPerPoint
-        guard x > width * (1 - Self.margin) || x < width * Self.margin else { return }
-        turnPage(to: column - width * Self.margin * viewport.columnsPerPoint)
+        guard x > width * (1 - margeDuTournePage) || x < width * margeDuTournePage else { return }
+        turnPage(to: column - width * margeDuTournePage * viewport.columnsPerPoint)
     }
 
     /// Tourne-page en cours : d'où, vers où, depuis quand.
-    @ObservationIgnored private var turn: (from: Double, to: Double, start: CFTimeInterval)?
+    @ObservationIgnored private var turn: (from: Double, to: Double, start: Double)?
 
     private func turnPage(to startColumn: Double) {
         // La destination est recadrée d'avance : en fin de fichier elle se confond
@@ -599,7 +644,7 @@ import UniformTypeIdentifiers
         // qu'une animation relancée à chaque image contre la butée.
         let target = clamped(startColumn)
         guard abs(target - viewport.startColumn) > 0.5 else { return }
-        turn = (from: viewport.startColumn, to: target, start: CACurrentMediaTime())
+        turn = (from: viewport.startColumn, to: target, start: Horloge.maintenant())
     }
 
     private func clamped(_ startColumn: Double) -> Double {
@@ -612,19 +657,19 @@ import UniformTypeIdentifiers
 
     /// Interrompt le tourne-page. Appelé dès que la main reprend la barre : rien
     /// n'est plus désagréable qu'une vue qui continue de glisser sous les doigts.
-    func cancelTurn() { turn = nil }
+    public func cancelTurn() { turn = nil }
 
     private func advanceTurn() {
         guard let turn else { return }
-        let elapsed = CACurrentMediaTime() - turn.start
-        let t = min(max(elapsed / Self.turnDuration, 0), 1)
+        let elapsed = Horloge.maintenant() - turn.start
+        let t = min(max(elapsed / dureeDuTournePage, 0), 1)
         let eased = t * t * (3 - 2 * t)          // départ et arrivée en douceur
         viewport.startColumn = turn.from + (turn.to - turn.from) * eased
         if t >= 1 { self.turn = nil }
         clampViewport()
     }
 
-    func clampViewport() {
+    public func clampViewport() {
         guard spectrogram.columnCount > 0 else { return }
         viewport.clamp(columns: spectrogram.columnCount,
                        bins: spectrogram.binCount,
@@ -640,17 +685,19 @@ import UniformTypeIdentifiers
     /// C'est un **souhait** : tant que la séparation n'est pas faite, l'affichage
     /// reste sur le mixage et la barre porte l'avancement. On ne fait pas attendre
     /// devant un écran vide ce qui prend des minutes.
-    private(set) var selection: Set<Stem> = AppModel.everything
+    public private(set) var selection: Set<Stem> = Reglages.everything
 
-    /// Tout garder, c'est ne rien retirer.
-    static let everything = Set(Stem.separated)
+
+    /// Tout garder, c'est ne rien retirer. Renvoie vers `Reglages` : un type
+    /// générique n'accepte pas de propriété statique stockée.
+    public static var everything: Set<Stem> { Reglages.everything }
     /// Vrai quand rien n'est retiré : le morceau d'origine suffit alors, et il est
     /// plus fidèle que la somme de ses parts — la séparation ne conserve pas
     /// exactement le signal.
-    var isWholeMix: Bool { selection == Self.everything }
+    public var isWholeMix: Bool { selection == Self.everything }
     /// Avancement de la séparation, puis de l'analyse de la piste (0…1).
-    private(set) var separating: Double?
-    private(set) var separationError: String?
+    public private(set) var separating: Double?
+    public private(set) var separationError: String?
 
     @ObservationIgnored private var mixSpectrogram = Spectrogram.empty
     /// Les spectrogrammes des pistes déjà regardées, gardés en mémoire : y revenir
@@ -679,7 +726,7 @@ import UniformTypeIdentifiers
     /// Un relevé est en route ; un autre est demandé derrière.
     @ObservationIgnored private var chordsRunning = false
     @ObservationIgnored private var chordsAgain = false
-    @ObservationIgnored private var job: SeparationJob?
+    @ObservationIgnored private var job: TravailAnnulable?
     /// Un préchargement des pistes voisines est en route.
     @ObservationIgnored private var precaching = false
 
@@ -697,19 +744,19 @@ import UniformTypeIdentifiers
     @ObservationIgnored private var bassNoteMap = NoteMap.empty
     @ObservationIgnored private var bassMapKey: Int?
 
-    var isSeparated: Bool {
+    public var isSeparated: Bool {
         guard let fingerprint = source?.fingerprint else { return false }
-        return StemStore.isSeparated(fingerprint)
+        return pistes.estSepare(fingerprint)
     }
 
-    var hasModel: Bool { StemStore.hasModel }
+    public var hasModel: Bool { pistes.modeleDisponible }
 
     /// Garde ou retire une piste.
     ///
     /// Ce qui reste coché est **sommé** : retirer la voix laisse basse, batterie et
     /// reste, c'est-à-dire l'accompagnement. Décocher la dernière n'aurait rien à
     /// montrer ni à jouer, et n'est donc pas permis.
-    func toggle(_ stem: Stem) {
+    public func toggle(_ stem: Stem) {
         guard stem != .mix else { return }
         var next = selection
         if next.contains(stem) { next.remove(stem) } else { next.insert(stem) }
@@ -718,7 +765,7 @@ import UniformTypeIdentifiers
     }
 
     /// Remet toutes les pistes, donc le morceau tel qu'il est.
-    func restoreWholeMix() { apply(Self.everything) }
+    public func restoreWholeMix() { apply(Self.everything) }
 
     private func apply(_ wanted: Set<Stem>) {
         guard wanted != selection, !wanted.isEmpty, source != nil else { return }
@@ -731,7 +778,7 @@ import UniformTypeIdentifiers
             return
         }
         guard let fingerprint = source?.fingerprint else { return }
-        if StemStore.isSeparated(fingerprint) {
+        if pistes.estSepare(fingerprint) {
             selection = wanted
             show(wanted)
             return
@@ -740,7 +787,7 @@ import UniformTypeIdentifiers
         // problème d'utilisation mais de construction, et se dit comme tel. On ne
         // touche pas à la sélection — la déplacer vers des pistes qu'on ne peut pas
         // montrer serait mentir sur l'état des choses.
-        guard StemStore.hasModel else {
+        guard pistes.modeleDisponible else {
             separationError = "Modèle absent de l'application : lancer ./modele.sh puis ./build.sh."
             status = separationError
             return
@@ -754,35 +801,39 @@ import UniformTypeIdentifiers
         // Sans modèle il n'y a rien à lancer, et ce n'est pas une raison pour se
         // plaindre à l'ouverture de chaque fichier : le manque est déjà dit quand on
         // demande une piste explicitement.
-        guard StemStore.hasModel else { return }
+        guard pistes.modeleDisponible else { return }
         job?.cancel()
-        let work = SeparationJob()
-        job = work
         separating = 0
         status = "Séparation des pistes…"
-        work.run(fileAt: source.url, fingerprint: fingerprint,
-                 separator: DemucsSeparator(),
-                 // L'étape est reprise telle quelle : les dix premières secondes se
-                 // passent avant la première tranche, et la barre y reste à zéro sans
-                 // rien avoir à dire d'autre.
-                 progress: { [weak self] p in
-                     guard let self, self.job === work else { return }
-                     self.separating = p.fraction * 0.8
-                     self.status = p.stage
-                 },
-                 completion: { [weak self] result in
-                     guard let self, self.job === work else { return }
-                     self.job = nil
-                     switch result {
-                     case .success:
-                         self.show(self.selection)
-                     case .failure(let error):
-                         self.separating = nil
-                         self.selection = AppModel.everything
-                         self.separationError = error.localizedDescription
-                         self.status = error.localizedDescription
-                     }
-                 })
+        // Le travail se compare à `job` avant chaque effet : un calcul annulé peut
+        // encore avoir un rappel en vol, et il n'a plus rien à dire du morceau
+        // ouvert entre-temps. La comparaison porte sur l'identité, d'où la
+        // variable posée avant l'appel.
+        var work: TravailAnnulable?
+        work = pistes.separer(
+            fichier: source.url, empreinte: fingerprint,
+            // L'étape est reprise telle quelle : les dix premières secondes se
+            // passent avant la première tranche, et la barre y reste à zéro sans
+            // rien avoir à dire d'autre.
+            avancement: { [weak self] p in
+                guard let self, self.job === work else { return }
+                self.separating = p.fraction * 0.8
+                self.status = p.stage
+            },
+            fin: { [weak self] result in
+                guard let self, self.job === work else { return }
+                self.job = nil
+                switch result {
+                case .success:
+                    self.show(self.selection)
+                case .failure(let error):
+                    self.separating = nil
+                    self.selection = Self.everything
+                    self.separationError = error.localizedDescription
+                    self.status = error.localizedDescription
+                }
+            })
+        job = work
     }
 
     /// Charge et analyse la sélection, puis la met à l'écran et dans le lecteur.
@@ -814,7 +865,7 @@ import UniformTypeIdentifiers
         // pas une raison pour perdre de vue ce qui tourne.
         let stillWorking = job != nil
         let fingerprint = source.fingerprint
-        let separated = fingerprint.map(StemStore.isSeparated) ?? false
+        let separated = fingerprint.map(pistes.estSepare) ?? false
         let visible = seen(wanted, separated: separated)
 
         // La ligne de batterie et l'image ne viennent plus du même signal : l'une de
@@ -829,7 +880,7 @@ import UniformTypeIdentifiers
         // taire, et vide sa ligne du même geste.
         let heard: URL? = wanted == Self.everything
             ? source.url
-            : fingerprint.flatMap { try? StemStore.combined(wanted, for: $0) }
+            : fingerprint.flatMap { try? pistes.urlCombinee(wanted, empreinte: $0) }
 
         // Rien de retiré et rien de séparé : le fichier d'origine, tel quel.
         if visible == Self.everything, !separated {
@@ -848,17 +899,19 @@ import UniformTypeIdentifiers
         let name = Stem.label(for: wanted)
         status = "Analyse de « \(Stem.label(for: visible)) »…"
         let settings = analysis
+        let rangement = self.pistes
+        let décodeur = self.décodeur
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             // La somme des pistes à voir est fabriquée ici, puis gardée : y revenir
             // ne doit pas coûter une seconde addition sur dix millions
             // d'échantillons.
-            guard let file = try? StemStore.combined(visible, for: fingerprint),
-                  let loaded = try? AudioSource.load(file) else {
+            guard let file = try? rangement.urlCombinee(visible, empreinte: fingerprint),
+                  let loaded = try? décodeur.charger(file) else {
                 DispatchQueue.main.async {
                     self?.separating = nil
-                    self?.selection = AppModel.everything
+                    self?.selection = Self.everything
                     self?.separationError = "« \(name) » illisible."
-                    self?.show(AppModel.everything)
+                    self?.show(Self.everything)
                 }
                 return
             }
@@ -910,7 +963,7 @@ import UniformTypeIdentifiers
     /// c'est précisément cette ligne qu'elle va remplir. Un relevé tiré du mixage
     /// s'afficherait entre-temps pour être remplacé une minute plus tard par un
     /// autre — mieux vaut une ligne vide qui dit ce qu'elle attend.
-    var drumLaneNotice: String? {
+    public var drumLaneNotice: String? {
         if let progress = separating {
             return String(format: "Séparation des pistes : %d %%",
                           Int((progress * 100).rounded()))
@@ -941,7 +994,7 @@ import UniformTypeIdentifiers
     private func precacheStems() {
         guard !precaching, separating == nil, job == nil,
               let fingerprint = source?.fingerprint,
-              StemStore.isSeparated(fingerprint) else { return }
+              pistes.estSepare(fingerprint) else { return }
 
         // La basse seule, d'abord : elle ne s'affiche presque jamais, mais le relevé
         // d'accords la lit à chaque intervalle pour en retirer les harmoniques.
@@ -959,6 +1012,8 @@ import UniformTypeIdentifiers
 
         precaching = true
         let settings = analysis
+        let pistes = self.pistes
+        let décodeur = self.décodeur
         DispatchQueue.global(qos: .utility).async { [weak self] in
             for visible in todo {
                 // Pas de garde en cours de route : interroger le fil principal
@@ -966,8 +1021,8 @@ import UniformTypeIdentifiers
                 // `sync`, donc un interblocage à écrire un jour. Trois analyses de
                 // trop sur un fichier qu'on vient de fermer coûtent une seconde en
                 // `utility` ; la garde du dépôt, elle, est sûre.
-                guard let file = try? StemStore.combined(visible, for: fingerprint),
-                      let loaded = try? AudioSource.load(file) else { continue }
+                guard let file = try? pistes.urlCombinee(visible, empreinte: fingerprint),
+                      let loaded = try? décodeur.charger(file) else { continue }
                 let matrix = OfflineAnalysis.run(samples: loaded.mono,
                                                  sampleRate: loaded.sampleRate,
                                                  settings: settings)
@@ -1003,7 +1058,7 @@ import UniformTypeIdentifiers
             return
         }
         guard wanted.contains(.drums), let fingerprint,
-              let file = StemStore.url(.drums, for: fingerprint) else {
+              let file = pistes.urlDeLaPiste(.drums, empreinte: fingerprint) else {
             percussionToken += 1
             percussion = .empty
             percussionPending = false
@@ -1023,8 +1078,9 @@ import UniformTypeIdentifiers
         }
         percussion = .empty
         percussionPending = true
+        let décodeur = self.décodeur
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let loaded = try? AudioSource.load(file) else {
+            guard let loaded = try? décodeur.charger(file) else {
                 DispatchQueue.main.async { self?.percussionPending = false }
                 return
             }
@@ -1045,14 +1101,14 @@ import UniformTypeIdentifiers
     /// Hauteur de la bande où s'écrivent les noms d'accords, en bas de l'image.
     /// Partagée par le dessin et par la désignation à la souris — sans quoi la zone
     /// sensible et la zone dessinée finiraient par se décoller.
-    static let chordBandHeight = 18.0
+    public static var chordBandHeight: Double { Reglages.chordBandHeight }
 
     /// L'accord que la souris désigne, ou `nil`.
     ///
     /// Le survol porte sur **toute la durée** de l'accord, pas sur les quelques points
     /// de son nom : viser huit caractères ne serait pas un geste, ce serait un
     /// exercice. Le nom marque le début, la zone sensible couvre ce qu'il nomme.
-    var hoveredChord: ChordSegment? {
+    public var hoveredChord: ChordSegment? {
         guard showChords, !chords.isEmpty, let hover, let unit = gridUnit else { return nil }
         guard hover.y >= viewSize.height - Self.chordBandHeight,
               hover.y <= viewSize.height else { return nil }
@@ -1068,7 +1124,7 @@ import UniformTypeIdentifiers
     /// Pas de calcul, pas de cache : le relevé les a rangées avec le segment. C'est
     /// le point du nouveau relevé — ce qu'on entoure *est* ce qui a décidé du nom, et
     /// non une seconde lecture du spectre qui pourrait dire autre chose.
-    var hoveredChordNotes: [SoundingNote] { hoveredChord?.notes ?? [] }
+    public var hoveredChordNotes: [SoundingNote] { hoveredChord?.notes ?? [] }
 
     // MARK: Écoute d'un accord
 
@@ -1094,12 +1150,12 @@ import UniformTypeIdentifiers
         guard current?.start != soundingChord?.start
                 || current?.chord != soundingChord?.chord else { return }
         soundingChord = current
-        guard let current else { return tone.stop() }
+        guard let current else { return sinusoide.stop() }
         // En triangles, et non en sinusoïdes : un accord de sinusoïdes pures n'a pas
         // de timbre, se confond avec la musique qu'il commente et ne ressemble à
         // aucun instrument qui aurait pu le jouer. La raie désignée, elle, reste une
         // sinusoïde — voir `ToneWaveform`.
-        tone.play(chord: chordFrequencies(current.chord), waveform: .triangle)
+        sinusoide.play(chord: chordFrequencies(current.chord), waveform: .triangle)
     }
 
     /// Ce qu'on fait entendre : **toutes les raies retenues**, à leur octave.
@@ -1118,13 +1174,13 @@ import UniformTypeIdentifiers
         let midi: [Int] = notes.isEmpty
             ? chord.quality.intervals.map { 48 + chord.root + $0 }
             : notes.sorted { $0.level > $1.level }
-                   .prefix(ToneGenerator.maxVoices).map(\.midi).sorted()
+                   .prefix(sinusoide.voixMaximales).map(\.midi).sorted()
         return midi.map { Pitch.frequency(ofMidi: Double($0),
                                           referenceA: display.referenceA) }
     }
 
     /// Pourquoi la ligne d'accords est vide, quand elle l'est.
-    var chordNotice: String? {
+    public var chordNotice: String? {
         guard showChords, spectrogram.columnCount > 0 else { return nil }
         if chordsPending { return "Relevé des accords…" }
         guard chords.isEmpty else { return nil }
@@ -1155,7 +1211,7 @@ import UniformTypeIdentifiers
         chordsPending = true
         let matrix = spectrogram
         let referenceA = display.referenceA
-        let prominence = Preferences.shared.chords.prominence
+        let prominence = préférences.chords.prominence
         noteMapKey = Self.mapKey(referenceA: referenceA, prominence: prominence)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let map = NoteMap.build(matrix, referenceA: referenceA, prominence: prominence)
@@ -1195,7 +1251,7 @@ import UniformTypeIdentifiers
             return
         }
         chordsRunning = true
-        let settings = Preferences.shared.chords
+        let settings = préférences.chords
         // La boucle est la portée du relevé dès qu'elle existe, quelle que soit la
         // portée réglée : entourer un passage, c'est demander son accord.
         let selection = loop
@@ -1241,8 +1297,8 @@ import UniformTypeIdentifiers
     ///
     /// La carte des notes ne se refait que si ce qui la fabrique a bougé : le
     /// diapason, ou la netteté exigée d'une raie. Tout le reste se relit dessus.
-    func reloadChords() {
-        let settings = Preferences.shared.chords
+    public func reloadChords() {
+        let settings = préférences.chords
         if noteMapKey != Self.mapKey(referenceA: display.referenceA,
                                      prominence: settings.prominence) {
             releveCarteDesNotes()
@@ -1267,7 +1323,7 @@ import UniformTypeIdentifiers
             return
         }
         let referenceA = display.referenceA
-        let prominence = Preferences.shared.chords.prominence
+        let prominence = préférences.chords.prominence
         let key = Self.mapKey(referenceA: referenceA, prominence: prominence)
         guard bassMapKey != key, let matrix = stemCache[[.bass]] else { return }
         bassMapKey = key
@@ -1285,7 +1341,7 @@ import UniformTypeIdentifiers
     /// La basse est-elle dans ce qu'on regarde ?
     private var voitLaBasse: Bool {
         guard let fingerprint = source?.fingerprint,
-              StemStore.isSeparated(fingerprint) else { return false }
+              pistes.estSepare(fingerprint) else { return false }
         return seen(selection, separated: true).contains(.bass)
     }
 
@@ -1338,7 +1394,7 @@ import UniformTypeIdentifiers
 
     /// Efface les pistes de ce morceau — de quoi refaire la séparation si le
     /// résultat déçoit, sans aller fouiller dans Application Support.
-    func forgetStems() {
+    public func forgetStems() {
         guard let fingerprint = source?.fingerprint else { return }
         job?.cancel()
         job = nil
@@ -1347,7 +1403,7 @@ import UniformTypeIdentifiers
         bassNoteMap = .empty
         bassMapKey = nil
         percussionCache.removeAll()
-        StemStore.removeStems(for: fingerprint)
+        pistes.oublierLesPistes(empreinte: fingerprint)
         selection = Self.everything
         show(Self.everything)
         status = "Pistes effacées."
@@ -1355,7 +1411,7 @@ import UniformTypeIdentifiers
 
     // MARK: Actions
 
-    func seek(to time: Double) {
+    public func seek(to time: Double) {
         playhead = min(max(time, 0), duration)
         player.seek(to: playhead)
     }
@@ -1369,7 +1425,7 @@ import UniformTypeIdentifiers
     /// Définit la boucle à partir de deux instants, dans n'importe quel ordre.
     /// Par défaut les bornes se posent sur la grille ; ⌘ pendant le geste les
     /// laisse libres, comme dans les séquenceurs.
-    func setLoop(from a: Double, to b: Double, snapping: Bool = false) {
+    public func setLoop(from a: Double, to b: Double, snapping: Bool = false) {
         loop = LoopEditing.made(from: a, to: b, duration: duration,
                                 snap: snapper(snapping))
     }
@@ -1379,30 +1435,30 @@ import UniformTypeIdentifiers
         snapping ? { [self] in snapToGrid($0) } : { $0 }
     }
 
-    func dragLoop(edge: LoopEdge, to time: Double, snapping: Bool) {
+    public func dragLoop(edge: LoopEdge, to time: Double, snapping: Bool) {
         guard let loop else { return }
         self.loop = LoopEditing.resized(loop, edge: edge, to: time, duration: duration,
                                         snap: snapper(snapping))
     }
 
-    func moveLoop(startingAt time: Double, snapping: Bool) {
+    public func moveLoop(startingAt time: Double, snapping: Bool) {
         guard let loop else { return }
         self.loop = LoopEditing.moved(loop, startingAt: time, duration: duration,
                                       snap: snapper(snapping))
     }
 
     /// Pose une borne au passage de la tête de lecture, en gardant l'autre.
-    func setLoopStart(at time: Double) {
+    public func setLoopStart(at time: Double) {
         setLoop(from: time, to: loop.map { max($0.upperBound, time + 0.2) } ?? min(time + 4, duration))
     }
 
-    func setLoopEnd(at time: Double) {
+    public func setLoopEnd(at time: Double) {
         setLoop(from: loop.map { min($0.lowerBound, time - 0.2) } ?? max(time - 4, 0), to: time)
     }
 
     /// Cale la boucle sur les mesures qui l'encadrent — c'est presque toujours ce
     /// qu'on veut quand on travaille un passage.
-    func snapLoopToBars() {
+    public func snapLoopToBars() {
         guard let loop, let tempo, tempo.barSeconds > 0 else { return }
         let first = (tempo.beat(at: loop.lowerBound) / Double(tempo.beatsPerBar)).rounded(.down)
         let last = (tempo.beat(at: loop.upperBound) / Double(tempo.beatsPerBar)).rounded(.up)
@@ -1415,7 +1471,7 @@ import UniformTypeIdentifiers
     /// Relance l'estimation, avec la signature choisie par l'utilisateur — ce qui
     /// en fait autre chose qu'un simple retour en arrière : à 3/4, la recherche du
     /// premier temps ne cherche pas au même endroit qu'à 4/4.
-    func recomputeTempo() {
+    public func recomputeTempo() {
         guard spectrogram.columnCount > 0 else { return }
         let matrix = spectrogram
         let signature = beatsPerBar
@@ -1428,7 +1484,7 @@ import UniformTypeIdentifiers
     /// Tempo saisi à la main. Ce n'est plus une estimation mais un choix, d'où la
     /// confiance remise à zéro : le « ≈ » qui prévient d'une grille incertaine n'a
     /// plus lieu d'être quand c'est l'utilisatrice qui l'a dictée.
-    func setTempo(_ value: Double) {
+    public func setTempo(_ value: Double) {
         guard value.isFinite else { return }
         guard var grid = tempo else {
             tempo = TempoGrid(bpm: min(max(value, 20), 400), origin: playhead)
@@ -1439,14 +1495,14 @@ import UniformTypeIdentifiers
         tempo = grid
     }
 
-    func nudgeTempo(by delta: Double) {
+    public func nudgeTempo(by delta: Double) {
         guard var grid = tempo else { return }
         grid.bpm = min(max(grid.bpm + delta, 20), 400)
         tempo = grid
     }
 
     /// Pose le premier temps à l'endroit de la tête de lecture.
-    func setDownbeatAtPlayhead() {
+    public func setDownbeatAtPlayhead() {
         guard var grid = tempo else {
             tempo = TempoGrid(bpm: 120, origin: playhead)
             return
@@ -1455,7 +1511,7 @@ import UniformTypeIdentifiers
         tempo = grid
     }
 
-    var beatsPerBar: Int {
+    public var beatsPerBar: Int {
         get { tempo?.beatsPerBar ?? 4 }
         set {
             guard var grid = tempo else { return }
@@ -1466,7 +1522,7 @@ import UniformTypeIdentifiers
 
     // MARK: Lecture
 
-    func togglePlayback() {
+    public func togglePlayback() {
         if player.isPlaying {
             player.pause()
             playhead = player.currentTime
@@ -1476,26 +1532,26 @@ import UniformTypeIdentifiers
     }
 
     /// Fréquence correspondant à une ordonnée de la vue (comptée depuis le haut).
-    func frequency(atPoint y: Double) -> Double {
+    public func frequency(atPoint y: Double) -> Double {
         let bin = viewport.bin(atPoint: y, height: Double(viewSize.height))
         return spectrogram.layout.frequency(atBin: bin)
     }
 
-    func time(atPoint x: Double) -> Double {
+    public func time(atPoint x: Double) -> Double {
         (viewport.column(atPoint: x) + 0.5) * spectrogram.secondsPerColumn
     }
 
     /// Abscisse d'un instant dans la vue, en points.
-    func point(ofTime t: Double) -> Double {
+    public func point(ofTime t: Double) -> Double {
         viewport.point(ofColumn: spectrogram.column(atTime: t))
     }
 
     /// Ordonnée d'une fréquence dans la vue, en points depuis le haut.
-    func point(ofFrequency f: Double) -> Double {
+    public func point(ofFrequency f: Double) -> Double {
         viewport.point(ofBin: spectrogram.layout.bin(of: f), height: Double(viewSize.height))
     }
 
-    static func format(_ seconds: Double) -> String {
+    public static func format(_ seconds: Double) -> String {
         guard seconds.isFinite, seconds >= 0 else { return "—" }
         let total = Int(seconds)
         let cents = Int((seconds - Double(total)) * 100)
