@@ -3,8 +3,8 @@ build/
 .DS_Store
 Resources/*.onnx
 Resources/*.bin
-Sources/CMiniaudio/include/miniaudio.h
-Sources/CImGui/imgui/
-Sources/CStretch/signalsmith/
+# Les images que les harnais écrivent — RenduCheck, SpectreCLI, --rendu, --photo.
+# Elles sont regardées puis jetées ; aucune n'a de raison d'être commise.
+*.ppm
 .vscode/
 .claude/settings.local.json
