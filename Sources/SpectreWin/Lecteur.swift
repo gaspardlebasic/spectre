@@ -148,14 +148,18 @@ import SpectreModele
         // nous n'avons pas de lecteur en flux, alors on décode à côté.
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let contenu = try? DecodeurWindows.lire(nouvelle)
+            // La référence faible est reprise dans une constante avant le second
+            // bloc. Dans le premier, `self` est une *variable* capturée, et un bloc
+            // imbriqué qui la relit est ce que le mode Swift 6 refusera.
+            let lecteur = self
             DispatchQueue.main.async {
-                guard let self, self.chargementEnCours == nouvelle else { return }
-                self.chargementEnCours = nil
+                guard let lecteur, lecteur.chargementEnCours == nouvelle else { return }
+                lecteur.chargementEnCours = nil
                 guard let contenu, !contenu.mono.isEmpty else {
-                    self.message = "« \(nouvelle.lastPathComponent) » n'a pas pu être lu."
+                    lecteur.message = "« \(nouvelle.lastPathComponent) » n'a pas pu être lu."
                     return
                 }
-                self.installer(contenu)
+                lecteur.installer(contenu)
             }
         }
     }

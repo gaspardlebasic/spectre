@@ -9,6 +9,7 @@ import WinSDK
 //     SpectreWindows.exe morceau.wav                      ouvre la fenêtre
 //     SpectreWindows.exe morceau.wav --rendu i.ppm        dessine hors écran
 //     SpectreWindows.exe morceau.wav --photo i.ppm        ouvre, et photographie
+//     SpectreWindows.exe morceau.wav --fluidite 10        fait défiler, et compte
 //
 // `--taille LARGEURxHAUTEUR` et `--gris` valent pour les deux rendus, et sont ceux
 // de `SpectreCLI` : c'est ce qui permet de demander la même image aux deux et de
@@ -44,6 +45,7 @@ extension SpectreModele.AppModel where Lecteur == LecteurWindows {
 var morceau: URL?
 var rendreDans: String?
 var photographierDans: String?
+var mesurerPendant: Double?
 var tailleVoulue = (largeur: 1200, hauteur: 700)
 var arguments = Array(CommandLine.arguments.dropFirst())
 var i = 0
@@ -51,6 +53,9 @@ while i < arguments.count {
     let argument = arguments[i]
     if argument == "--rendu", i + 1 < arguments.count {
         rendreDans = arguments[i + 1]
+        i += 2
+    } else if argument == "--fluidite", i + 1 < arguments.count {
+        mesurerPendant = Double(arguments[i + 1]) ?? 10
         i += 2
     } else if argument == "--photo", i + 1 < arguments.count {
         photographierDans = arguments[i + 1]
@@ -82,6 +87,11 @@ final class Application: EchosDeLaFenetre {
     let fenetre: Fenetre
     let rendu: RenduD3D11
     let modele: AppModel
+    let gestes: Gestes
+    /// Ne compte que si on l'a demandé : mesurer coûte une horloge par image, ce
+    /// qui n'est rien, mais garder cent mille intervalles en mémoire pour personne
+    /// n'a pas de sens.
+    var mesures: Mesures?
     private var enMarche = true
     private var tailleAChanger: (largeur: Int, hauteur: Int)?
 
@@ -95,6 +105,7 @@ final class Application: EchosDeLaFenetre {
         self.fenetre = fenetre
         self.rendu = rendu
         self.modele = AppModel(fenetre: fenetre.poignee)
+        self.gestes = Gestes(modele: modele, fenetre: fenetre)
         modele.renderer = rendu
         rendu.origineDesTeintes = PreferencesWindows.partagees.hueOrigin
         fenetre.echos = self
@@ -183,6 +194,8 @@ final class Application: EchosDeLaFenetre {
     private func uneImage() {
         uneImageSansPresenter()
         rendu.presenter()
+        mesures?.uneImage()
+        if rendu.fenetreCachee { mesures?.uneImageCachee() }
     }
 
     private func uneImageSansPresenter() {
@@ -233,6 +246,70 @@ final class Application: EchosDeLaFenetre {
     func fenetrePeutSeFermer() -> Bool {
         enMarche = false
         return true
+    }
+
+    func fenetreRecoitUneEntree(_ message: UINT, _ w: WPARAM, _ l: LPARAM) -> Bool {
+        gestes.mesures = mesures
+        return gestes.repondre(message, w, l)
+    }
+
+    // MARK: La fluidité
+
+    /// Fait défiler l'image pendant `secondes`, et rend le compte de ce que cela a
+    /// coûté.
+    ///
+    /// Le défilement est **posté à notre propre fenêtre** en vrais messages de
+    /// molette : le geste traverse donc exactement le même chemin qu'un doigt sur
+    /// le pavé — procédure de fenêtre, traduction, modèle, recadrage, nuanceur,
+    /// présentation. Piloter le viewport directement mesurerait le rendu, pas
+    /// l'application.
+    func mesurerLaFluidite(secondes: Double) -> String {
+        let compteur = Mesures()
+        mesures = compteur
+        fenetre.montrer()
+
+        // On laisse d'abord l'analyse finir : mesurer pendant qu'un cœur calcule la
+        // matrice donnerait le coût de l'analyse, pas celui du défilement.
+        let limite = Horloge.maintenant() + 30
+        while modele.spectrogram.columnCount == 0, Horloge.maintenant() < limite {
+            viderLaFilePrincipale()
+            _ = fenetre.traiterLesMessages()
+            rendu.attendreLImageSuivante()
+            uneImage()
+        }
+        // Une seconde de chauffe, jetée. La chaîne d'échange met quelques images à
+        // se caler sur le balayage, et la première image après l'analyse porte
+        // encore le téléversement de la matrice — des centaines de mégaoctets vers
+        // la carte, qui n'ont rien à voir avec le défilement qu'on mesure.
+        let chauffe = Horloge.maintenant() + 1
+        while Horloge.maintenant() < chauffe {
+            viderLaFilePrincipale()
+            _ = fenetre.traiterLesMessages()
+            rendu.attendreLImageSuivante()
+            uneImage()
+        }
+        compteur.recommencer()
+
+        let echeance = Horloge.maintenant() + secondes
+        var sens = 1
+        var tours = 0
+        while Horloge.maintenant() < echeance {
+            // Un cran de molette à chaque image, et l'on change de sens de temps en
+            // temps pour rester dans la matrice plutôt que de buter contre son bord.
+            tours += 1
+            if tours % 120 == 0 { sens = -sens }
+            if let poignee = fenetre.poignee {
+                let cran = WPARAM(UInt32(bitPattern: Int32(sens * 120) << 16))
+                PostMessageW(poignee, UINT(WM_MOUSEHWHEEL), cran, 0)
+            }
+            viderLaFilePrincipale()
+            _ = fenetre.traiterLesMessages()
+            appliquerLaTaille()
+            rendu.attendreLImageSuivante()
+            uneImage()
+        }
+        mesures = nil
+        return compteur.rapport(carte: rendu.nomDeLaCarte)
     }
 }
 
@@ -297,5 +374,9 @@ guard let application = Application() else { exit(1) }
 if let morceau { application.ouvrir(morceau) }
 if let photographierDans {
     exit(application.photographier(dans: photographierDans) ? 0 : 1)
+}
+if let mesurerPendant {
+    print(application.mesurerLaFluidite(secondes: mesurerPendant))
+    exit(0)
 }
 application.tourner()

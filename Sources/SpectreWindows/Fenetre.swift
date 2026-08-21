@@ -22,6 +22,13 @@ public protocol EchosDeLaFenetre: AnyObject {
     func fenetreDemandeUneImage()
     /// L'application s'en va. Rendre `false` pour l'en empêcher.
     func fenetrePeutSeFermer() -> Bool
+    /// Un message d'entrée — souris, molette, clavier. Rendre `true` s'il a été
+    /// traité, `false` pour le laisser à Windows.
+    ///
+    /// La fenêtre ne sait rien de ce que ces messages veulent dire : c'est
+    /// `Gestes` qui les traduit, et le modèle qui décide. Une fenêtre qui
+    /// interpréterait elle-même un clic serait le début du second cerveau.
+    func fenetreRecoitUneEntree(_ message: UINT, _ w: WPARAM, _ l: LPARAM) -> Bool
 }
 
 public final class Fenetre {
@@ -138,6 +145,23 @@ public final class Fenetre {
 
     fileprivate func repondre(_ message: UINT, _ w: WPARAM, _ l: LPARAM) -> LRESULT? {
         switch Int32(message) {
+        case WM_MOUSEWHEEL, WM_MOUSEHWHEEL, WM_LBUTTONDOWN, WM_LBUTTONUP,
+             WM_MOUSEMOVE, WM_MOUSELEAVE, WM_KEYDOWN:
+            guard echos?.fenetreRecoitUneEntree(message, w, l) == true else { return nil }
+            // On ne redessine **pas** ici. La boucle tourne à la cadence de l'écran
+            // et prendra le geste au tour suivant, c'est-à-dire dans moins d'une
+            // période — on ne peut pas montrer une image plus tôt que le balayage
+            // suivant, quoi qu'on fasse. Dessiner ici en plus ne rapproche rien et
+            // double le travail de la carte, ce que la mesure de fluidité voit tout
+            // de suite : deux fois plus d'images que de tours de boucle.
+            return 0
+
+        case WM_SETCURSOR:
+            // Sans cela, Windows repose le curseur de la classe à chaque mouvement,
+            // et celui que le geste a choisi ne tient pas le temps d'être vu.
+            if motBas(UInt64(l)) == Int(HTCLIENT) { return 1 }
+            return nil
+
         case WM_SIZE:
             // Réduite, la fenêtre annonce une zone cliente nulle. Redimensionner la
             // chaîne d'échange à zéro la ferait échouer, et l'image ne reviendrait

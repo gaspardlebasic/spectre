@@ -112,6 +112,10 @@ void spectre_rendu_dessiner(SpectreRendu *rendu, const SpectreUniformes *u);
 ///
 /// La chaîne est en modèle *flip* sans attente du balayage : c'est
 /// `spectre_rendu_attendre` qui cadence, et lui seul.
+///
+/// - Returns: 0 en cas d'échec, 1 si l'image est partie, **2 si la fenêtre est
+///   cachée** — auquel cas la carte cesse de cadencer, et un relevé de fluidité
+///   pris à ce moment-là compte des images que personne ne voit.
 int spectre_rendu_presenter(SpectreRendu *rendu);
 
 /// Attend que la carte réclame l'image suivante.

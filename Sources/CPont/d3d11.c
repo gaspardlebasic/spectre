@@ -478,10 +478,29 @@ void spectre_rendu_dessiner(SpectreRendu *rendu, const SpectreUniformes *u) {
 
 int spectre_rendu_presenter(SpectreRendu *rendu) {
     if (!rendu || !rendu->chaine) { return 0; }
-    // Intervalle zéro : c'est l'objet d'attente qui cadence, pas la présentation.
-    // Attendre ici *en plus* ajouterait une image entière de retard.
-    HRESULT hr = IDXGISwapChain2_Present(rendu->chaine, 0, 0);
-    return SUCCEEDED(hr);
+    // Intervalle **un**, et non zéro.
+    //
+    // C'est le contraire de ce qu'on croit en lisant « objet d'attente » : l'objet
+    // ne compte pas les balayages, il compte les images *en file*. À l'intervalle
+    // zéro, la carte présente sans attendre le balayage, la file ne se remplit
+    // jamais, et l'objet est signalé en permanence — la boucle tourne alors à deux
+    // mille images par seconde, brûle un cœur, et n'en montre que cent vingt.
+    //
+    // La mesure de fluidité a trouvé ce défaut au premier essai, et c'est
+    // exactement pour cela qu'elle existe : à l'œil, une boucle qui tourne trop
+    // vite est indiscernable d'une boucle qui tourne juste.
+    //
+    // Avec l'intervalle à un et une seule image en vol, on obtient les deux à la
+    // fois : le balayage cadence, et l'attente a lieu **avant** de dessiner, si
+    // bien que l'image montrée porte l'état le plus frais possible.
+    HRESULT hr = IDXGISwapChain2_Present(rendu->chaine, 1, 0);
+    // `DXGI_STATUS_OCCLUDED` n'est pas une erreur : la fenêtre est cachée, et la
+    // carte cesse alors de cadencer. C'est **ce qu'il faut savoir** avant de lire un
+    // relevé de fluidité — sans cette réponse, on prend des dizaines de milliers
+    // d'images par seconde pour une bonne nouvelle, alors qu'elles veulent dire
+    // qu'aucune n'est montrée.
+    if (hr == DXGI_STATUS_OCCLUDED) { return 2; }
+    return SUCCEEDED(hr) ? 1 : 0;
 }
 
 void spectre_rendu_attendre(SpectreRendu *rendu) {

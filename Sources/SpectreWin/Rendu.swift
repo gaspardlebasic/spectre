@@ -400,7 +400,15 @@ public final class RenduD3D11: RenduSpectrogramme {
         withUnsafePointer(to: &u) { spectre_rendu_dessiner(pont, $0) }
     }
 
-    public func presenter() { _ = spectre_rendu_presenter(pont) }
+    /// Vrai quand la fenêtre est cachée : la carte cesse alors de cadencer, et tout
+    /// relevé de fluidité pris pendant ce temps compte des images que personne ne
+    /// voit. Il faut le dire, sinon on lit dix mille images par seconde comme une
+    /// bonne nouvelle.
+    public private(set) var fenetreCachee = false
+
+    public func presenter() {
+        fenetreCachee = spectre_rendu_presenter(pont) == 2
+    }
 
     /// Attend que la carte réclame l'image suivante.
     ///

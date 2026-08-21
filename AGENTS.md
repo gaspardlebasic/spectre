@@ -41,6 +41,7 @@ plateformes ; c'est ce que mesure `verification.yml`. Qui touche à `SpectreDSP`
 | `./build.sh` | Compile et assemble `build/Spectre.app` (signature ad-hoc, enregistrement LaunchServices). |
 | `./check.sh` | Les harnais hors écran : couche numérique, WAV, batterie, accords, analyse, rendu, séparation, lecture. Aucun fichier audio, aucune fenêtre. |
 | `./essai.sh` | **L'épreuve complète, application comprise** — voir plus bas. |
+| `.\essai.ps1` | La même épreuve, sous Windows : douze harnais, la fenêtre, et un relevé de fluidité. |
 | `./modele.sh` | Refabrique `Resources/htdemucs.onnx` (les poids de Demucs, ~166 Mo, hors dépôt). |
 | `./logo.sh` | Refabrique l'icône. |
 | `swift build -c release` | Compile tout, sans assembler le paquet. |

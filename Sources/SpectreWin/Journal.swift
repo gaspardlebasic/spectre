@@ -14,15 +14,22 @@ import WinSDK
 /// lit ; lancée par un double-clic, il reste attrapable.
 public enum Journal {
     public static func erreur(_ message: String) {
-        ecrire("Spectre : \(message)")
+        ecrire("Spectre : \(message)", surLErreur: true)
     }
 
+    /// Une note va sur la **sortie ordinaire**, et pas sur celle d'erreur.
+    ///
+    /// La distinction n'est pas cosmétique : PowerShell tient pour une erreur tout
+    /// ce qu'un exécutable écrit sur la sortie d'erreur, et l'annonce comme telle
+    /// au milieu d'une épreuve qui se passe bien. Un nom de carte graphique n'est
+    /// pas une erreur.
     public static func note(_ message: String) {
-        ecrire("Spectre : \(message)")
+        ecrire("Spectre : \(message)", surLErreur: false)
     }
 
-    private static func ecrire(_ ligne: String) {
-        FileHandle.standardError.write(Data((ligne + "\n").utf8))
+    private static func ecrire(_ ligne: String, surLErreur: Bool) {
+        let flux = surLErreur ? FileHandle.standardError : FileHandle.standardOutput
+        flux.write(Data((ligne + "\n").utf8))
         ligne.withCString(encodedAs: UTF16.self) { OutputDebugStringW($0) }
     }
 }

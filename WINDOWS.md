@@ -606,6 +606,154 @@ une demande de lecture arrivée entre-temps est retenue plutôt que perdue.
 arrêter le moteur, et la séparation n'est pas portée — c'est l'étape 9. L'appelant
 recharge franchement, ce qui est correct et se voit à peine.
 
+## Étape 6 — les gestes, et la fluidité
+
+**Faite.** La molette défile et zoome, le glisser déplace la tête et trace la
+boucle, le clavier fait le reste. Et la fluidité a cessé d'être une opinion :
+`--fluidite` en fait des nombres, qui ont trouvé un défaut au premier essai.
+
+### Le même geste, pas un geste qui lui ressemble
+
+Chaque ligne de `Sources/SpectreWindows/Gestes.swift` a son pendant exact dans
+`Sources/Spectre/TimelineView.swift`, et appelle **la même méthode du modèle** :
+`setLoop`, `dragLoop`, `moveLoop`, `beginProbe`, `seek`, `cancelTurn`,
+`clampViewport`. C'est la seule discipline qui empêche les deux applications de
+diverger — dès qu'un geste est réimplémenté au lieu d'être rebranché, il perd une
+subtilité par mois.
+
+Ce qui change d'une plateforme à l'autre, ce sont les **touches**, et rien d'autre.
+
+| geste | macOS | Windows |
+|---|---|---|
+| zoom sur le temps | ⌥ ou ⌘ + molette | Ctrl + molette |
+| zoom sur les fréquences | ⇧ + molette | ⇧ + molette |
+| tracer une boucle n'importe où | ⇧ + glisser | ⇧ + glisser |
+| libérer de la grille | ⌘ pendant le glisser | Ctrl pendant le glisser |
+
+Le pincement d'un pavé tactile de précision arrive tout seul : Windows le traduit
+lui-même en Ctrl + molette, il n'y avait rien à écrire pour l'obtenir.
+
+Le déplacement d'un cran de molette suit `SPI_GETWHEELSCROLLLINES`, le réglage de
+l'utilisateur. Une valeur en dur ferait défiler trop vite chez qui a réglé
+finement, et c'est le genre de détail qui distingue une application native.
+
+### Les quatre pièges de l'étape 6
+
+**La position d'un message de molette est en coordonnées de l'écran.** Tous les
+autres messages de souris sont en coordonnées de la fenêtre. L'oublier ancre le
+zoom à côté du curseur, d'autant plus loin que la fenêtre est basse sur l'écran —
+et le zoom ancré est précisément ce qui rend un pincement naturel.
+
+**La souris doit être capturée pendant le glisser.** Sans `SetCapture`, tirer une
+boucle jusqu'au bord de la fenêtre — ce qu'on fait à chaque fois — lâche le geste
+dès qu'on sort.
+
+**Windows n'annonce pas la sortie du curseur si on ne l'a pas demandée**, et la
+demande ne vaut que pour une seule sortie : il faut la reposer à chaque mouvement.
+Sans elle, la note survolée reste affichée après que la souris a quitté la fenêtre.
+
+**`WM_SETCURSOR` repose le curseur de la classe à chaque mouvement.** Celui que le
+geste a choisi — la double flèche sur un bord de boucle, la main sur son corps — ne
+tient pas le temps d'être vu si l'on ne répond pas à ce message.
+
+### La fluidité, et le défaut qu'elle a trouvé
+
+`--fluidite N` fait défiler l'image pendant N secondes et compte. Le défilement est
+**posté à notre propre fenêtre** en vrais messages de molette : le geste traverse
+donc exactement le même chemin qu'un doigt sur le pavé. Piloter la vue directement
+mesurerait le rendu, pas l'application.
+
+Au premier relevé : **deux mille images par seconde**. C'était trop beau, et c'était
+un défaut.
+
+**L'objet d'attente d'une chaîne d'échange ne compte pas les balayages, il compte
+les images en file.** À l'intervalle de présentation zéro — que le code posait, avec
+un commentaire affirmant que l'objet d'attente cadençait — la carte présente sans
+attendre le balayage, la file ne se remplit jamais, et l'objet est signalé en
+permanence. La boucle tournait donc à deux mille images par seconde, brûlait un
+cœur, et n'en montrait que cent vingt. **À l'œil, une boucle qui tourne trop vite
+est indiscernable d'une boucle qui tourne juste** ; c'est exactement pour cela que
+cette mesure existe.
+
+Avec l'intervalle à un et une seule image en vol, on obtient les deux à la fois : le
+balayage cadence, et l'attente a lieu **avant** de dessiner, si bien que l'image
+montrée porte l'état le plus frais possible.
+
+Le second défaut trouvé au passage : une entrée déclenchait un redessin immédiat *en
+plus* de celui de la boucle, soit deux images pour un cran de molette. On ne peut pas
+montrer une image plus tôt que le balayage suivant, quoi qu'on fasse — le redessin
+immédiat ne rapprochait rien et doublait le travail de la carte.
+
+Relevé après correction, machine virtuelle Parallels, carte paravirtualisée :
+
+```
+  écran annoncé à 120 Hz, cadence obtenue 120.2 Hz
+  960 images mesurées
+  intervalle : moyen 8.34 ms, médian 8.32 ms
+  la queue   : 95ᵉ 9.58 ms, 99ᵉ 10.88 ms, pire 16.11 ms
+  images qui ont manqué leur tour : 5 (0.52 %)
+  molette → affichage : médian 8.28 ms, 95ᵉ 9.55 ms, pire 16.06 ms
+```
+
+**Ce qu'on regarde n'est pas la moyenne** — elle est toujours bonne — mais la queue.
+Une image sur cent qui prend trois fois trop de temps se voit, et se voit exactement
+là où on regarde, parce qu'elle arrive quand la charge monte, c'est-à-dire pendant
+qu'on fait un geste.
+
+**La référence est la cadence obtenue, pas celle que l'écran annonce.** Les deux ne
+sont pas la même chose, et la machine virtuelle l'a montré crûment : Windows y
+annonce 120 Hz — c'est l'écran du Mac hôte — et la chaîne d'échange s'est trouvée
+cadencée à 60 lors d'un relevé. Compter les images perdues contre les 120 annoncés
+en donnait les trois quarts, ce qui ne disait rien de la fluidité et beaucoup sur la
+façon dont Parallels compose.
+
+Le relevé signale aussi les images **présentées fenêtre cachée** : `Present` rend
+alors `DXGI_STATUS_OCCLUDED`, la carte cesse de cadencer, et l'on prendrait des
+dizaines de milliers d'images par seconde pour une bonne nouvelle.
+
+### Ce que l'épreuve n'exige pas, et pourquoi
+
+`essai.ps1` **ne fait pas échouer l'épreuve sur ces nombres.** Le même relevé donne
+0,4 % d'images manquées sur une machine au repos et 45 % dix secondes après une
+construction, sans qu'une ligne du code ait changé. Un seuil poserait une épreuve
+qui échoue au hasard, et une épreuve qui échoue au hasard finit par ne plus être
+lue. Ce qui est exigé, c'est que **l'instrument ait fonctionné** : qu'il y ait eu des
+images, et qu'elles aient été montrées.
+
+## L'épreuve complète, sous Windows
+
+`essai.ps1` est le pendant d'`essai.sh`, et il fait tout en une commande :
+
+```powershell
+.\essai.ps1                 # tout
+.\essai.ps1 -Rapide         # sans les harnais hors écran
+.\essai.ps1 -Fluidite 20    # et un relevé plus long
+```
+
+Il monte l'environnement de construction lui-même — les trois choses de l'étape 0 —
+construit en release, passe les douze harnais, fabrique le morceau témoin, le fait
+passer par la ligne de commande **et** par la fenêtre, confronte les deux images, et
+relève la fluidité.
+
+### Les deux pièges de l'épreuve elle-même
+
+**`SPECTRE_RANGEMENT` doit être posé sur un dossier neuf**, et ce n'est pas une
+précaution de style. Sans lui, l'épreuve écrit dans les sessions de l'utilisateur —
+et, plus vicieux, elle *relit* la sienne d'une fois sur l'autre : le relevé de
+fluidité fait défiler l'image, la session le retient, et la photographie suivante
+montre une vue décalée qu'aucune modification du code n'explique. Une demi-heure
+perdue là-dessus, pour une règle qui est dans `AGENTS.md` depuis toujours.
+
+Au passage, cela a montré que **les sessions fonctionnent déjà sous Windows** :
+`SessionStore` et `RecentFiles` sont dans le noyau, portables, et honorent
+`SPECTRE_RANGEMENT`. L'étape 8 sera courte.
+
+**Un `.ps1` sans marque d'octets est lu en ANSI par Windows PowerShell 5.1.** Tous
+les accents deviennent du charabia, et — bien pire — une chaîne qui en contient peut
+casser l'analyse du script, si bien que le corps d'une fonction s'imprime au lieu de
+s'exécuter. Le fichier porte donc une marque d'octets UTF-8, contrairement à tout le
+reste du dépôt.
+
 ## Comment on vérifie ce qu'on ne peut pas compiler
 
 Le portage se mène désormais **depuis Windows** — une machine virtuelle Parallels
@@ -643,7 +791,7 @@ moins une borne inférieure entre deux essais sur du matériel réel.
 | 3. Une fenêtre, et l'image dedans | **faite** — l'image relue s'accorde au rendu processeur |
 | 4. Le son qui entre | **faite** — Media Foundation seule, et identique au bit près sur le WAV |
 | 5. Le son qui sort | **faite** — WASAPI, et un étireur écrit dans le noyau |
-| 6. Les gestes, et la fluidité | à faire — et les mesures qui la disent |
+| 6. Les gestes, et la fluidité | **faite** — et les mesures ont trouvé un défaut |
 | 7. L'interface Windows 11 | à faire — Direct2D, Fluent, Mica |
 | 8. Sessions et préférences | à faire — `SessionStore` est déjà portable |
 | 9. La séparation | à faire — ONNX Runtime en C, et un WAV multicanal |
