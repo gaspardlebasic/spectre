@@ -135,8 +135,8 @@ cd spectre && ./build.sh
 
 ## Autres plateformes
 
-**Windows** — portage en cours : le noyau compile et passe ses vérifications,
-l'interface reste à écrire. Trois étapes sur onze.
+**Windows** — le portage est terminé : onze étapes sur onze. Il n'y a pas encore
+de version publiée ; `build.ps1` fabrique l'application.
 
 **Linux** — prévu après Windows.
 
@@ -268,8 +268,8 @@ cd spectre && ./build.sh
 
 ## Other platforms
 
-**Windows** — port under way: the core compiles and passes its checks, the
-interface is still to be written. Three steps out of eleven.
+**Windows** — the port is finished: eleven steps out of eleven. There is no
+published build yet; `build.ps1` makes the app.
 
 **Linux** — planned after Windows.
 
@@ -400,8 +400,8 @@ cd spectre && ./build.sh
 
 ## Otras plataformas
 
-**Windows** — port en marcha: el núcleo compila y pasa sus comprobaciones, falta
-escribir la interfaz. Tres etapas de once.
+**Windows** — el port está terminado: once etapas de once. Aún no hay versión
+publicada; `build.ps1` genera la aplicación.
 
 **Linux** — previsto después de Windows.
 
@@ -534,8 +534,8 @@ cd spectre && ./build.sh
 
 ## Andere Plattformen
 
-**Windows** — Portierung läuft: Der Kern kompiliert und besteht seine Prüfungen,
-die Oberfläche muss noch geschrieben werden. Drei von elf Schritten.
+**Windows** — die Portierung ist fertig: elf von elf Schritten. Es gibt noch keine
+veröffentlichte Version; `build.ps1` baut die Anwendung.
 
 **Linux** — nach Windows geplant.
 
@@ -665,8 +665,8 @@ cd spectre && ./build.sh
 
 ## Inne platformy
 
-**Windows** — port w toku: rdzeń kompiluje się i przechodzi testy, interfejs
-pozostaje do napisania. Trzy kroki z jedenastu.
+**Windows** — port jest gotowy: jedenaście kroków z jedenastu. Nie ma jeszcze
+opublikowanej wersji; `build.ps1` buduje aplikację.
 
 **Linux** — planowany po Windows.
 
