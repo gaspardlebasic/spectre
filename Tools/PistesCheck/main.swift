@@ -261,6 +261,125 @@ if Reseau.fichier == nil {
             "la séparation est proposée si et seulement si les deux sont là")
 }
 
+titre("Demucs lui-même")
+
+// Tout ce qui précède éprouve l'ossature. Ici c'est le réseau, sur un mélange dont on
+// connaît les trois composantes — une frappe grave, une note tenue, un aigu — et dont
+// on sait donc ce qu'une séparation doit à peu près en faire.
+//
+// Sauté quand les poids ne sont pas installés : ce sont 166 Mo qui n'ont leur place
+// ni dans le dépôt ni sur la machine d'intégration.
+if !Reseau.disponible {
+    print("  · réseau absent, séparation sautée")
+} else {
+    // Trois secondes suffisent : le réseau complète la tranche par du silence, et
+    // c'est une tranche entière qui est calculée de toute façon.
+    let duree = Int(frequence * 3)
+    let melange = (0..<duree).map { i -> Float in
+        let t = Double(i) / frequence
+        let frappe = t.truncatingRemainder(dividingBy: 0.5) < 0.02 ? 1.0 : 0.0
+        return Float(0.5 * frappe * sin(2 * .pi * 60 * t)
+                     + 0.25 * sin(2 * .pi * 220 * t)
+                     + 0.15 * sin(2 * .pi * 1500 * t))
+    }
+    let fichier = atelier.appendingPathComponent("melange.wav")
+    _ = try? WAVFile.ecrire([melange, melange], echantillonnage: frequence, vers: fichier)
+
+    let debut = Date()
+    do {
+        let pistes = try SeparateurWindows().separate(fileAt: fichier, progress: { _ in },
+                                                      isCancelled: { false })
+        let secondes = Date().timeIntervalSince(debut)
+        verifie(Set(pistes.channels.keys) == Set(Stem.separated),
+                "les quatre pistes reviennent",
+                String(format: "%.1f s de calcul", secondes))
+        // La fréquence rendue est celle du réseau, pas celle du fichier : c'est
+        // l'invariant dont la violation faisait jouer les pistes 8,8 % trop vite.
+        verifie(pistes.sampleRate == Demucs.sampleRate,
+                "le moteur annonce la fréquence à laquelle il a travaillé",
+                String(format: "%.0f Hz", pistes.sampleRate))
+
+        var toutesFinies = true, toutesLaBonneLongueur = true
+        var sommeDesCretes = 0.0
+        for piste in Stem.separated {
+            guard let canaux = pistes.channels[piste], let g = canaux.first else {
+                toutesFinies = false; continue
+            }
+            toutesLaBonneLongueur = toutesLaBonneLongueur && g.count == duree
+                && canaux.count == Demucs.channels
+            toutesFinies = toutesFinies && canaux.allSatisfy { $0.allSatisfy(\.isFinite) }
+            sommeDesCretes += Double(g.map(abs).max() ?? 0)
+        }
+        verifie(toutesLaBonneLongueur, "chacune fait la longueur du morceau, en stéréo")
+        verifie(toutesFinies, "et ne porte aucune valeur non finie")
+        verifie(sommeDesCretes > 0.05, "elles ne sont pas muettes",
+                String(format: "crêtes cumulées %.3f", sommeDesCretes))
+
+        // ── Ce que la somme des pistes prouve, et ce qu'elle ne prouve pas ───
+        //
+        // Demucs n'est **pas** conservatif : ses quatre sorties ne redonnent pas le
+        // mélange au bit près, et sur une synthèse — trois sinusoïdes et un clic,
+        // c'est-à-dire tout ce que sa musique d'entraînement n'est pas — l'écart
+        // maximal atteint la moitié de l'amplitude. Exiger l'égalité ici échouerait
+        // sur un réseau qui va très bien, comme cela a été mesuré.
+        //
+        // Ce qui se vérifie, en revanche, c'est que la somme reste **la même chose,
+        // à la même échelle** : une erreur dans le recollement des deux branches,
+        // dans le retour à l'échelle ou dans la disposition des tenseurs — la partie
+        // qu'on a écrite — ne laisserait ni la corrélation ni le niveau intacts.
+        // La comparaison porte sur **ce que le réseau a reçu**, et non sur le tableau
+        // de départ. Les deux diffèrent d'un facteur deux, et c'est voulu : le
+        // mélange d'essai a été écrit par `WAVFile.ecrire`, donc avec la réserve de
+        // niveau, que rien ne rattrape à la relecture puisque ce fichier-là n'est pas
+        // une de nos pistes. Comparer au tableau de départ donnait ×0,48 et faisait
+        // chercher un facteur deux dans le retour à l'échelle, où il n'était pas.
+        let entree = try SeparateurWindows.lirePourLeReseau(fichier)[0]
+        var somme = [Double](repeating: 0, count: duree)
+        for i in 0..<duree {
+            for piste in Stem.separated { somme[i] += Double(pistes.channels[piste]![0][i]) }
+        }
+        var produit = 0.0, carreSomme = 0.0, carreMelange = 0.0
+        for i in 0..<min(duree, entree.count) {
+            produit += somme[i] * Double(entree[i])
+            carreSomme += somme[i] * somme[i]
+            carreMelange += Double(entree[i]) * Double(entree[i])
+        }
+        let correlation = produit / max((carreSomme * carreMelange).squareRoot(), 1e-12)
+        let rapport = (carreSomme / max(carreMelange, 1e-12)).squareRoot()
+        verifie(correlation > 0.9, "leur somme est bien le mélange, au timbre près",
+                String(format: "corrélation %.3f", correlation))
+        verifie(rapport > 0.7 && rapport < 1.4, "et à la même échelle",
+                String(format: "×%.3f", rapport))
+
+        // ── Et qu'elle a séparé, plutôt que recopié ──────────────────────────
+        //
+        // Le mélange porte une frappe grave toutes les demi-secondes, sur vingt
+        // millisecondes, et deux notes tenues d'un bout à l'autre. Entre deux
+        // frappes, il ne reste donc que les notes tenues — que la batterie ne doit
+        // pas porter. Un moteur qui rendrait quatre copies de l'entrée passerait
+        // tous les contrôles précédents et échouerait ici.
+        var creuxBatterie = 0.0, creuxMelange = 0.0, points = 0.0
+        for i in 0..<min(duree, entree.count) {
+            let t = Double(i) / frequence
+            guard t.truncatingRemainder(dividingBy: 0.5) > 0.15 else { continue }
+            let b = Double(pistes.channels[.drums]![0][i])
+            creuxBatterie += b * b
+            creuxMelange += Double(entree[i]) * Double(entree[i])
+            points += 1
+        }
+        //
+        // Le seuil est à 45 % et non à 10 : une synthèse de sinusoïdes pures n'est
+        // pas ce que ce réseau a appris, et il en laisse passer un quart — mesuré,
+        // 24,7 %. Ce qu'on refuse, c'est la copie conforme, qui donnerait 100 %.
+        let fuite = (creuxBatterie / max(creuxMelange, 1e-12)).squareRoot()
+        verifie(points > 0 && fuite < 0.45,
+                "la batterie ne garde pas les notes tenues",
+                String(format: "%.1f %% du niveau entre les frappes", fuite * 100))
+    } catch {
+        verifie(false, "la séparation aboutit", "\(error)")
+    }
+}
+
 print("")
 if echecs == 0 {
     print("Tout est bon.")

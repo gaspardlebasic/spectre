@@ -10,11 +10,13 @@ chaque chose fait et pourquoi elle est faite ainsi — est dans le
 [README](README.md), qui est long et qui vaut d'être lu avant d'inventer quoi que
 ce soit.
 
-L'application ne tourne aujourd'hui que sur macOS, mais **un portage vers Windows
-est en cours**, et Linux suivra. Le noyau compile et passe déjà sur les trois
-plateformes ; c'est ce que mesure `verification.yml`. Qui touche à `SpectreDSP` ou
-à `SpectreCore` travaille donc pour trois systèmes, pas pour un —
-[WINDOWS.md](WINDOWS.md) tient l'état du chantier et les pièges déjà payés.
+**Elle tourne aussi sous Windows**, où le portage couvre désormais tout ce que fait
+la version Mac sauf le verre — la fenêtre, le son, les gestes, les réglages, les
+sessions et la séparation des pistes — et Linux suivra. Le noyau compile et passe sur
+les trois plateformes ; c'est ce que mesure `verification.yml`. Qui touche à
+`SpectreDSP`, à `SpectreCore` ou à `SpectreModele` travaille donc pour trois
+systèmes, pas pour un — [WINDOWS.md](WINDOWS.md) tient l'état du chantier, ce qui
+reste, et les pièges déjà payés.
 
 ## Les règles de la maison
 
@@ -43,7 +45,9 @@ plateformes ; c'est ce que mesure `verification.yml`. Qui touche à `SpectreDSP`
 | `./essai.sh` | **L'épreuve complète, application comprise** — voir plus bas. |
 | `.\essai.ps1` | La même épreuve, sous Windows : quatorze harnais, la fenêtre, et un relevé de fluidité. |
 | `./modele.sh` | Refabrique `Resources/htdemucs.onnx` (les poids de Demucs, ~166 Mo, hors dépôt). |
+| `.\build.ps1` | Assemble `build\Spectre` sous Windows — l'exécutable et ce qu'il lui faut — et l'éprouve dans un dossier propre. |
 | `.\onnx.ps1` | Installe ONNX Runtime pour Windows, hors dépôt lui aussi. Sans lui, la séparation est compilée absente. |
+| `.\logo.ps1` | Refabrique `Resources\Spectre.ico` à partir du `.icns`, et la ressource que l'exécutable porte. |
 | `./logo.sh` | Refabrique l'icône. |
 | `swift build -c release` | Compile tout, sans assembler le paquet. |
 

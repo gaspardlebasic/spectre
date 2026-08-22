@@ -59,6 +59,13 @@ let onnxInclude = racineDuPaquet
 let avecOnnx = surWindows && FileManager.default.fileExists(
     atPath: onnxInclude.appendingPathComponent("onnxruntime_c_api.h").path)
 
+// L'icône et le numéro de version, quand `logo.ps1` les a compilés. Même règle que
+// ci-dessus : absents, il ne manque que l'icône — l'exécutable porte alors celle que
+// Windows donne à ce qui n'en a pas.
+let ressourceIcone = racineDuPaquet.appendingPathComponent("build/spectre.res")
+let avecIcone = surWindows
+    && FileManager.default.fileExists(atPath: ressourceIcone.path)
+
 // Le noyau ne connaît que la couche numérique. `Crypto` n'est tiré que là où
 // CryptoKit n'existe pas ; il porte le seul usage qu'on en fait, l'empreinte
 // SHA-256 qui rattache une session à un fichier.
@@ -305,7 +312,7 @@ if surWindows {
                 .linkedLibrary("shell32"),
                 .linkedLibrary("comdlg32"),
                 .linkedLibrary("dwmapi"),
-            ]
+            ] + (avecIcone ? [.unsafeFlags(["-Xlinker", ressourceIcone.path])] : [])
         ),
         // Le pendant Windows de `RenderCheck` : la vraie chaîne — téléversement,
         // nuanceur, relecture — mais hors écran, donc mesurable là où personne ne

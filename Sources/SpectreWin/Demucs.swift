@@ -182,7 +182,7 @@ public struct SeparateurWindows: StemSeparator {
     /// notre lecteur en Swift ne rééchantillonne pas, et un WAV à 48 kHz passerait
     /// donc au réseau tel quel. Media Foundation lit le WAV aussi bien, et la
     /// conversion est ce qu'on vient chercher ici.
-    static func lirePourLeReseau(_ url: URL) throws -> [[Float]] {
+    public static func lirePourLeReseau(_ url: URL) throws -> [[Float]] {
         let resultat = url.path.withCString {
             spectre_mf_decoder_entrelace($0, Demucs.sampleRate, Int32(Demucs.channels))
         }

@@ -46,31 +46,10 @@ function Verdict($nom, $ok, $detail) {
 
 # ── L'environnement de construction ──────────────────────────────────────────
 #
-# Trois choses à poser, et pas deux : l'environnement de MSVC (Swift n'a pas
-# d'éditeur de liens à lui), `SDKROOT` (la bibliothèque standard), et le chemin des
-# bibliothèques d'exécution — sans lequel `swift.exe` s'arrête sur `0xC0000135`
-# sans écrire un mot.
-
-$swift = "$env:LOCALAPPDATA\Programs\Swift"
-$version = (Get-ChildItem "$swift\Toolchains" -Directory | Sort-Object Name |
-            Select-Object -Last 1).Name
-$court = $version -replace '\+.*$', ''
-$env:SDKROOT = "$swift\Platforms\$court\Windows.platform\Developer\SDKs\Windows.sdk"
-$env:PATH = "$swift\Runtimes\$court\usr\bin;$swift\Toolchains\$version\usr\bin;$env:PATH"
-
-$vsdev = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat"
-if (-not (Test-Path $vsdev)) { throw "VsDevCmd.bat introuvable : $vsdev" }
-# On importe l'environnement de MSVC en le faisant s'imprimer, puis en le relisant :
-# un fichier de commandes ne peut pas modifier le nôtre autrement.
-cmd /c "call `"$vsdev`" -arch=arm64 -host_arch=arm64 >nul 2>nul && set" | ForEach-Object {
-    if ($_ -match '^([^=]+)=(.*)$') {
-        if ($matches[1] -notin @('SDKROOT')) {
-            Set-Item -Path "env:$($matches[1])" -Value $matches[2] -ErrorAction SilentlyContinue
-        }
-    }
-}
-# `set` ci-dessus a écrasé le PATH avec celui de MSVC : on remet Swift devant.
-$env:PATH = "$swift\Runtimes\$court\usr\bin;$swift\Toolchains\$version\usr\bin;$env:PATH"
+# Les trois choses à poser, et les raisons de chacune, sont dans `atelier.ps1` —
+# `build.ps1` en a besoin des mêmes, et deux copies d'un environnement finissent par
+# ne plus poser tout à fait la même chose.
+. (Join-Path $racine "atelier.ps1")
 
 # ── Un dossier à soi ─────────────────────────────────────────────────────────
 
@@ -94,6 +73,11 @@ if (-not $construit) { Write-Host "`n$echecs vérification(s) en échec."; exit 
 
 if (-not $Rapide) {
     Etape "Les harnais hors écran"
+    # Le réseau du dépôt, quand il a été fabriqué : sans lui, `PistesCheck` éprouve
+    # l'ossature de la séparation et saute la séparation elle-même. C'est ce que fait
+    # déjà `check.sh` avec `SeparationCheck`.
+    $modele = Join-Path $racine "Resources\htdemucs.onnx"
+    if (Test-Path $modele) { $env:SPECTRE_MODELE = $modele }
     $harnais = @("DSPCheck", "WAVCheck", "SessionCheck", "AnalysisCheck",
                  "PercussionCheck", "HarmonyCheck", "FilterCheck", "ChainCheck",
                  "GaplessCheck", "EtirementCheck", "RenduCheck", "DecodeCheck",

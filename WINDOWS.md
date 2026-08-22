@@ -999,10 +999,10 @@ batterie à l'étape 6 — la question méritait d'être posée, la réponse est
 
 ## Étape 9 — la séparation
 
-**L'ossature est faite et mesurée ; la vraie séparation n'a pas encore tourné sur
-cette machine.** Les poids de Demucs pèsent 166 Mo, ne sont dans aucun dépôt, et se
-fabriquent par `modele.sh` — qui demande PyTorch. Ce qui suit dit exactement ce qui
-est éprouvé et ce qui ne l'est pas.
+**Faite, et vue.** Les poids de Demucs ont été apportés du Mac — 166 Mo, dans aucun
+dépôt, fabriqués par `modele.sh` — et le morceau témoin a été séparé sous Windows :
+la batterie ne garde que les frappes, le reste garde les huit blocs d'accords, et
+les spectrogrammes des quatre pistes le montrent sans qu'il faille écouter.
 
 ### Ce qui est descendu dans le noyau, et pourquoi
 
@@ -1123,17 +1123,119 @@ Vérifier qu'un morceau effacé ne laisse rien **après** avoir appelé `estSepa
 recréait donc la coquille qu'on venait d'effacer, et le contrôle passait en disant le
 contraire de ce qu'il vérifiait.
 
-### Ce qui n'est pas éprouvé, et qu'il ne faut pas croire fait
+### Ce que la vraie séparation a montré
 
-**Aucune vraie séparation n'a tourné ici.** Que les pistes sortent justes se juge en
-écoutant, et demande les 166 Mo de poids. Un harnais vert ne vaut pas une séparation
-vérifiée, et c'est pourquoi ce qui précède dit ce qu'il mesure.
+Sur trois secondes de synthèse — une frappe grave toutes les demi-secondes, deux
+notes tenues — le réseau met **5,8 secondes** de calcul, poids relus compris, et rend
+quatre pistes finies et non muettes à 44,1 kHz. Le morceau témoin entier, dix-sept
+secondes, est séparé en une vingtaine par l'application elle-même, écriture des
+pistes et somme des combinaisons comprises.
+
+Ce qui se mesure sur ces quatre pistes :
+
+- leur somme est le mélange à **0,997 de corrélation** et à ×0,96 d'échelle. Ce n'est
+  pas une égalité, et ce ne peut pas en être une — Demucs n'est pas conservatif — mais
+  une erreur dans le recollement des deux branches, dans la disposition des tenseurs
+  ou dans le retour à l'échelle ne laisserait ni l'une ni l'autre intactes ;
+- **entre deux frappes, la batterie ne porte plus que 24,7 % du niveau** du mélange.
+  Le seuil du contrôle est à 45 % : ce qu'on refuse est la copie conforme, qui
+  donnerait 100 %, et non le quart qu'un réseau entraîné sur de la musique laisse
+  passer sur des sinusoïdes pures.
+
+Et ce que les nombres ne disent pas, l'image le dit : les spectrogrammes de `drums`
+et de `other` rendus par `SpectreCLI` montrent l'un les seules frappes, l'autre les
+seuls blocs d'accords. C'est le contrôle qui a réellement clos l'étape.
+
+Un piège s'y est logé, et il est du harnais et non du code : le mélange d'essai est
+écrit par `WAVFile.ecrire`, **donc avec la réserve de niveau**, que rien ne rattrape
+à la relecture puisque ce fichier-là n'est pas une de nos pistes. Comparer la somme
+des pistes au tableau de départ donnait ×0,48 et faisait chercher un facteur deux
+dans le retour à l'échelle, où il n'était pas. La comparaison porte donc sur ce que
+le réseau a **reçu**, ce qui éprouve au passage le chargement lui-même.
+
+### Ce qui n'est pas là, et qu'il ne faut pas croire fait
 
 **L'accélération matérielle n'y est pas.** ONNX Runtime sait passer par DirectML,
 mais cela demande un second paquet — `Microsoft.ML.OnnxRuntime.DirectML`, qui
 remplace la DLL au lieu de s'y ajouter — et le fournisseur ne se choisit pas à
 l'exécution. Sur le Mac, le GPU ramène une tranche de 1,07 s à 0,27 s ; ici, tout
 passe par les cœurs. Ce sera une étape à soi.
+
+## Étape 10 — la distribution
+
+**Faite.** `.\build.ps1` assemble `build\Spectre`, et l'épreuve du dossier propre dit
+que ce dossier suffit.
+
+### Ce qu'assembler veut dire ici
+
+Sur le Mac, `build.sh` fabrique un paquet `.app` : un dossier dont la forme est
+décrite par le système, et que LaunchServices sait enregistrer. Windows n'a rien de
+tel — une application y est un exécutable et les bibliothèques qu'il lui faut, dans
+le même dossier.
+
+Ce qui compte est donc **la liste**. `SpectreWindows.exe` dépend de la bibliothèque
+standard de Swift, de Foundation, de dispatch et du runtime de Visual Studio, dont
+aucun n'est présent sur une machine qui n'a pas la chaîne de compilation. L'oublier
+ne donne pas une erreur lisible : Windows refuse d'ouvrir le programme sur
+`0xC0000135`, sans un mot. C'est le premier piège de l'étape 0, et c'est celui qu'une
+distribution ratée rejoue chez l'utilisateur — cette fois sans personne pour le
+diagnostiquer.
+
+La liste n'est pas écrite à la main. `dumpbin /dependents` la donne, et l'on suit la
+chaîne de proche en proche : ce qui se trouve dans le dossier des exécutions de Swift
+est copié, le reste — les DLL de Windows — est laissé où il est. **Seize
+bibliothèques sur les trente-trois** que ce dossier porte, et le paquet fait 73 Mo au
+lieu de 100. Copier le dossier entier aurait été plus simple et aurait embarqué, entre
+autres, un `swiftRemoteMirror.dll` qui sert à déboguer et un `plutil.exe` qui n'a rien
+à faire là.
+
+### L'épreuve du dossier propre est le seul contrôle qui compte
+
+Le programme est copié dans un dossier temporaire, puis lancé depuis un **processus
+neuf** dont le `PATH` ne porte plus ni Swift, ni Visual Studio, ni le SDK Windows.
+C'est la machine de quelqu'un d'autre, autant qu'on puisse la simuler sans en avoir
+une.
+
+Le processus neuf n'est pas une précaution de style : retirer un dossier d'une
+variable d'environnement ne décharge pas les DLL qu'un processus a déjà ouvertes, et
+l'épreuve passerait toujours si on la faisait sur place.
+
+### L'icône vient du .icns, faute de savoir lire un SVG
+
+`logo.sh` part de `Resources/icone.svg` et le fait rastériser par le système : sur le
+Mac, `NSImage` charge un SVG en vectoriel, si bien que chaque taille est dessinée à sa
+résolution propre. Rien sous Windows ne sait faire cela — ni WIC, ni Direct2D, ni
+GDI+ — et embarquer un moteur SVG pour un fichier de trente kilo-octets serait
+absurde.
+
+`logo.ps1` repart donc du `.icns`, qui est versionné et qui porte déjà un carré de
+1024 points dessiné à cette résolution. Les six tailles de l'icône Windows en sont
+réduites, et l'effet de bord est une propriété qu'on veut : **les deux icônes ne
+peuvent pas diverger**, l'une étant faite de l'autre. La plaque arrondie de macOS
+vient avec ; avoir deux dessins pour la même application serait pire que d'avoir une
+marge.
+
+Trois détails qui coûtent chacun un essai :
+
+- **le format ICO accepte des PNG**, depuis Vista, à toutes les tailles. L'ancien
+  chemin — un bitmap et son masque en un bit — pèse quatre fois plus et n'apporte
+  rien ici. L'icône est relue à 16 points juste après avoir été écrite : une entrée
+  que Windows ne saurait pas décoder ne se voit pas dans le fichier, elle se voit
+  dans une barre des tâches vide ;
+- **`hIcon` et `hIconSm` sont deux champs**, et n'en poser qu'un laisse Windows
+  réduire la grande, ce qui se voit ;
+- **`Package.swift` lie le `.res` s'il le trouve**, exactement comme il compile la
+  séparation s'il trouve les en-têtes d'ONNX Runtime. Une construction ordinaire n'a
+  donc pas besoin de `rc.exe`, et l'application porte alors l'icône que Windows donne
+  à ce qui n'en a pas.
+
+### Un seul environnement de construction
+
+`essai.ps1` et `build.ps1` ont besoin des trois mêmes choses — MSVC, `SDKROOT`, le
+chemin des exécutions — et elles sont désormais dans `atelier.ps1`, que les deux
+appellent. Deux copies d'un environnement finissent par ne plus poser tout à fait la
+même chose, et c'est le genre d'écart qui se paie sur un message d'erreur qui désigne
+autre chose.
 
 ## L'épreuve complète, sous Windows
 
@@ -1209,10 +1311,26 @@ moins une borne inférieure entre deux essais sur du matériel réel.
 | 6. Les gestes, et la fluidité | **faite** — et les mesures ont trouvé un défaut |
 | 7. L'interface Windows 11 | **faite** — la frise, les accords, la batterie, la barre |
 | 8. Sessions et préférences | **faite** — un panneau qui règle, et un harnais qui a trouvé un défaut |
-| 9. La séparation | **l'ossature est faite** — reste à la faire tourner sur les vrais poids |
-| 10. La distribution | à faire — `build.ps1`, et les bibliothèques d'exécution |
+| 9. La séparation | **faite** — le calcul descend dans le noyau, et les quatre pistes sortent justes |
+| 10. La distribution | **faite** — seize bibliothèques, et une épreuve en dossier propre |
 
 L'étape 2 est la seule qui puisse casser l'application Mac. Elle est placée tôt,
 elle est neutre en comportement, et elle se termine par une vérification sur le
 Mac. Si elle tourne mal, c'est un `git revert` et le portage continue avec deux
 cerveaux — moins bien, mais pas bloqué.
+
+## Ce qui reste
+
+Le portage est fait au sens où l'application se pilote, s'écoute, se règle et se
+distribue. Ce qui manque encore, et qu'il ne faut pas croire fait :
+
+- **L'accélération de la séparation.** Tout passe par les cœurs ; DirectML demande un
+  autre paquet et un fournisseur choisi à la compilation. Sur le Mac, le GPU divise le
+  temps par quatre.
+- **Le Mac n'a pas revu les étapes 8 à 10.** Elles ne touchent au noyau que par
+  `SessionStore`, `WAVFile`, `Demucs` et `Separation` — mais l'étape 9 a déplacé du
+  code de `SpectreMac`, et l'intégration continue ne fait que le compiler. La
+  séparation du Mac est à repasser une fois, à l'oreille.
+- **Linux.** Le coureur mesure tous les jours que le noyau reste écrit sans rien
+  connaître du système ; la fenêtre, elle, reste à écrire — SDL3 et OpenGL, comme dit
+  au début de ce document.

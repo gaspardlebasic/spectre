@@ -65,6 +65,14 @@ public final class Fenetre {
             classe.lpfnWndProc = procedure
             classe.hInstance = instance
             classe.hCursor = LoadCursorW(nil, curseurFleche)
+            // L'icône que `logo.ps1` compile dans l'exécutable, sous le numéro 1.
+            // `LoadIconW` rend nul quand la ressource n'y est pas — une construction
+            // ordinaire, sans icône — et Windows donne alors la sienne. Les deux
+            // champs plutôt qu'un : `hIcon` est celle de la barre des tâches et du
+            // sélecteur, `hIconSm` celle de la barre de titre, et ne poser que la
+            // première laisse Windows réduire la grande, ce qui se voit.
+            classe.hIcon = LoadIconW(instance, ressource(1))
+            classe.hIconSm = classe.hIcon
             // Aucun pinceau de fond : c'est Direct3D qui remplit chaque pixel, et
             // laisser Windows effacer d'abord fait clignoter en blanc au
             // redimensionnement.

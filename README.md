@@ -75,15 +75,16 @@ Les vérifications de `check.sh` sont des exécutables du paquet plutôt que des
 compilations à la main. Celles qui ne tirent que le noyau — couche numérique, WAV,
 analyse, relevé de la batterie, Fourier — tournent partout où Swift compile.
 
-**Un portage Windows est en cours**, et Linux suivra. Il y en avait déjà eu un —
-SDL3, OpenGL, Dear ImGui — abandonné parce qu'il tenait un second modèle
+**Spectre tourne aussi sous Windows**, et Linux suivra. Il y avait déjà eu un
+portage — SDL3, OpenGL, Dear ImGui — abandonné parce qu'il tenait un second modèle
 d'application, plus fruste, qui divergeait un peu plus chaque semaine ; il reste
 dans l'historique, à `577c6a8`. Celui-ci ne refait pas la même erreur :
 `SpectreModele` est né de là, et Windows n'a que ses protocoles à remplir pour
-avoir **la même** application. La fenêtre est en Win32 sans intermédiaire, l'image
-en Direct3D 11, l'habillage en Direct2D, le son en Media Foundation et WASAPI.
-[WINDOWS.md](WINDOWS.md) tient l'état du chantier, étape par étape, et surtout les
-pièges déjà payés.
+avoir **la même** application, geste pour geste. La fenêtre est en Win32 sans
+intermédiaire, l'image en Direct3D 11, l'habillage en Direct2D, le son en Media
+Foundation et WASAPI, la séparation en ONNX Runtime. Ce qui manque encore y est
+dit franchement : [WINDOWS.md](WINDOWS.md) tient l'état du chantier, étape par
+étape, et surtout les pièges déjà payés.
 
 ## L'analyse
 

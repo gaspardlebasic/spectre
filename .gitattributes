@@ -17,3 +17,4 @@
 *.bin  binary
 *.png  binary
 *.ppm  binary
+*.ico  binary
