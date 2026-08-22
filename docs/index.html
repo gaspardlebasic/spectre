@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spectre — a tool for listening to music closely</title>
+<meta name="description" content="A spectrogram for transcribing music by ear: a colour per note, automatic chord detection, stem separation. For macOS.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="img/icone.png">
+<link rel="apple-touch-icon" href="img/icone.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Spectre">
+<meta property="og:description" content="A spectrogram for transcribing music by ear.">
+<meta property="og:image" content="https://gaspardlebasic.github.io/spectre/img/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+:root{
+  --bg:#000; --fg:#f3f3f3; --dim:#8d8d8d;
+  --hair:rgba(255,255,255,.15); --grid:rgba(255,255,255,.045);
+  --teal:#00E0BA; --purple:#C41ABF; --pink:#FF3483; --yellow:#FFCF00;
+  --pad:24px; --max:1180px;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font:400 17px/1.55 var(--sans); letter-spacing:-.005em;
+  -webkit-font-smoothing:antialiased;
+}
+body::before{                       /* la réglette verticale, en fond */
+  content:""; position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:repeating-linear-gradient(90deg,var(--grid) 0 1px,transparent 1px 80px);
+}
+.wrap{position:relative; z-index:1; max-width:var(--max); margin:0 auto; padding:0 var(--pad)}
+a{color:inherit}
+img{max-width:100%; height:auto; display:block}
+
+/* ---- barre du haut ---- */
+.bar{
+  position:sticky; top:0; z-index:10;
+  background:rgba(0,0,0,.78); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--hair);
+}
+.bar .wrap{display:flex; align-items:center; gap:16px; height:56px}
+.brand{display:flex; align-items:center; gap:10px; text-decoration:none; font-weight:600; letter-spacing:-.02em}
+.brand img{width:24px; height:24px}
+.langs{margin-left:auto; display:flex; gap:2px; font:500 12px/1 var(--mono); letter-spacing:.06em}
+.langs button{
+  background:none; border:0; color:var(--dim); font:inherit; cursor:pointer;
+  padding:7px 7px; border-bottom:1px solid transparent;
+}
+.langs button:hover{color:var(--fg)}
+.langs button[aria-current="true"]{color:var(--fg); border-bottom-color:var(--fg)}
+
+/* ---- en-tête ---- */
+.hero{padding:clamp(56px,11vw,120px) 0 0}
+h1{
+  margin:0; font-size:clamp(58px,14vw,148px); line-height:.92;
+  font-weight:600; letter-spacing:-.045em;
+}
+.tagline{margin:.6em 0 0; font-size:clamp(19px,2.7vw,28px); line-height:1.3; letter-spacing:-.02em; max-width:22ch}
+.cta{margin:clamp(30px,5vw,46px) 0 0}
+.btn{
+  display:inline-block; padding:15px 28px; text-decoration:none;
+  font-weight:550; letter-spacing:-.01em;
+  border:1px solid transparent;
+  border-image:linear-gradient(90deg,var(--teal),var(--purple),var(--pink),var(--yellow)) 1;
+  transition:background .18s ease;
+}
+.btn:hover{background:rgba(255,255,255,.07)}
+.btn.quiet{border-image:none; border-color:var(--hair)}
+.meta{margin:14px 0 0; color:var(--dim); font:400 14px/1.5 var(--mono); letter-spacing:0}
+.alt{margin:8px 0 0; font-size:14px}
+.alt a{color:var(--dim); text-underline-offset:3px}
+.alt a:hover{color:var(--fg)}
+.crete{width:100%; height:clamp(90px,13vw,150px); margin:clamp(44px,7vw,80px) 0 0; opacity:.92}
+
+/* ---- une capture, un titre ---- */
+.shot{padding:clamp(52px,8vw,96px) 0 0}
+.rule{display:flex; align-items:center; gap:14px; padding-bottom:20px}
+.num{font:500 12px/1 var(--mono); letter-spacing:.1em; color:var(--c); flex:none}
+.rule h2{margin:0; font-size:clamp(20px,3.1vw,34px); line-height:1.15; font-weight:550; letter-spacing:-.03em}
+.rule .fill{flex:1 1 40px; height:1px; background:var(--c); opacity:.6; min-width:16px}
+figure{margin:0}
+figure img{border-top:1px solid var(--hair)}
+
+/* ---- installer, plateformes, pied ---- */
+.block{padding:clamp(56px,9vw,104px) 0 0}
+.block h2{margin:0 0 18px; font-size:clamp(20px,3.1vw,34px); font-weight:550; letter-spacing:-.03em}
+.block p{margin:0 0 16px; max-width:62ch; color:var(--dim)}
+.block p strong{color:var(--fg); font-weight:550}
+.cmd{
+  display:flex; align-items:center; gap:12px; margin:0 0 12px;
+  border:1px solid var(--hair); padding:12px 14px; max-width:62ch;
+}
+.cmd code{font:400 13.5px/1.5 var(--mono); color:var(--fg); overflow-x:auto; white-space:pre; flex:1}
+.cmd button{
+  flex:none; background:none; border:1px solid var(--hair); color:var(--dim);
+  font:500 11px/1 var(--mono); letter-spacing:.06em; padding:7px 9px; cursor:pointer;
+}
+.cmd button:hover{color:var(--fg); border-color:var(--fg)}
+footer{margin-top:clamp(64px,10vw,120px); border-top:1px solid var(--hair); padding:26px 0 60px}
+footer .wrap{display:flex; flex-wrap:wrap; gap:10px 22px; color:var(--dim); font-size:14px}
+footer a{text-underline-offset:3px}
+footer a:hover{color:var(--fg)}
+
+@media (max-width:640px){
+  body{font-size:16px}
+  .rule{align-items:flex-start; flex-wrap:wrap}
+  .rule .fill{flex-basis:100%; order:3; margin-top:4px}
+  .cmd{flex-direction:column; align-items:stretch; gap:10px}
+  .cmd code{overflow-x:auto}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="bar"><div class="wrap">
+  <a class="brand" href="./"><img src="img/icone.png" alt="" width="24" height="24"><span>Spectre</span></a>
+  <nav class="langs" id="langs" aria-label="Language"></nav>
+</div></header>
+
+<main>
+<section class="hero"><div class="wrap">
+  <h1>Spectre</h1>
+  <p class="tagline" data-t="tagline">A tool for listening to music closely.</p>
+  <div class="cta">
+    <a class="btn" id="btn" href="https://github.com/gaspardlebasic/spectre/releases/latest/download/Spectre.zip">Download for macOS</a>
+    <p class="meta" id="btnmeta">Free and open source · macOS 26 or later · 104 MB</p>
+    <p class="alt" id="btnalt" hidden><a id="btnalta" href="https://github.com/gaspardlebasic/spectre/releases/latest/download/Spectre.zip"></a></p>
+  </div>
+  <img class="crete" src="img/crete.svg" alt="" width="1200" height="200">
+</div></section>
+
+<section class="shot" style="--c:var(--teal)"><div class="wrap">
+  <div class="rule"><b class="num">01</b><h2 data-t="s1">The whole track in one image</h2><i class="fill"></i></div>
+  <figure><img src="img/apercu.webp" width="2000" height="1314" alt="" data-alt="s1"></figure>
+</div></section>
+
+<section class="shot" style="--c:var(--purple)"><div class="wrap">
+  <div class="rule"><b class="num">02</b><h2 data-t="s2">One colour per note</h2><i class="fill"></i></div>
+  <figure><img src="img/couleurs.webp" width="1600" height="1124" alt="" data-alt="s2" loading="lazy"></figure>
+</div></section>
+
+<section class="shot" style="--c:var(--pink)"><div class="wrap">
+  <div class="rule"><b class="num">03</b><h2 data-t="s3">Automatic chord detection</h2><i class="fill"></i></div>
+  <figure style="max-width:430px"><img src="img/voicings.webp" width="574" height="852" alt="" data-alt="s3" loading="lazy"></figure>
+</div></section>
+
+<section class="shot" style="--c:var(--yellow)"><div class="wrap">
+  <div class="rule"><b class="num">04</b><h2 data-t="s4">Vocals, chords, drums</h2><i class="fill"></i></div>
+  <figure style="max-width:640px"><img src="img/voix-accords-batterie.webp" width="934" height="1150" alt="" data-alt="s4" loading="lazy"></figure>
+</div></section>
+
+<section class="shot" style="--c:var(--teal)"><div class="wrap">
+  <div class="rule"><b class="num">05</b><h2 data-t="s5">Stem separation: bass, drums, vocals, other</h2><i class="fill"></i></div>
+  <figure style="max-width:920px"><img src="img/pistes.webp" width="1200" height="984" alt="" data-alt="s5" loading="lazy"></figure>
+</div></section>
+
+<section class="shot" style="--c:var(--purple)"><div class="wrap">
+  <div class="rule"><b class="num">06</b><h2 data-t="s6">Loop and slow down a section</h2><i class="fill"></i></div>
+  <figure><img src="img/boucle.webp" width="1706" height="920" alt="" data-alt="s6" loading="lazy"></figure>
+</div></section>
+
+<section class="block"><div class="wrap">
+  <h2 data-t="installH">Install</h2>
+  <p data-t="installP">The app is not signed with an Apple developer ID, so macOS quarantines it on download. Once it is in Applications:</p>
+  <div class="cmd"><code id="c1">xattr -dr com.apple.quarantine /Applications/Spectre.app</code><button data-copy="c1" data-t="copy">copy</button></div>
+  <p data-t="buildP">Or build it yourself — Xcode is not required:</p>
+  <div class="cmd"><code id="c2">git clone https://github.com/gaspardlebasic/spectre.git
+cd spectre &amp;&amp; ./build.sh</code><button data-copy="c2" data-t="copy">copy</button></div>
+</div></section>
+
+<section class="block"><div class="wrap">
+  <h2 data-t="otherH">Other platforms</h2>
+  <p data-t="otherWin"><strong>Windows</strong> — port under way: the core compiles and passes its checks, the interface is still to be written. Three steps out of eleven.</p>
+  <p data-t="otherLin"><strong>Linux</strong> — planned after Windows.</p>
+</div></section>
+</main>
+
+<footer><div class="wrap">
+  <span data-t="footFree">Free software</span>
+  <a href="https://github.com/gaspardlebasic/spectre" data-t="footSrc">Source on GitHub</a>
+  <a href="https://github.com/gaspardlebasic/spectre/blob/main/LICENSE" data-t="footLic">Licence</a>
+  <a href="https://github.com/facebookresearch/demucs" data-t="footDemucs">Separation by Demucs v4</a>
+</div></footer>
+
+<script>
+const DL = "https://github.com/gaspardlebasic/spectre/releases/latest/download/Spectre.zip";
+const REPO = "https://github.com/gaspardlebasic/spectre";
+const WIN = REPO + "/blob/main/WINDOWS.md";
+
+const T = {
+en:{title:"Spectre — a tool for listening to music closely",
+ desc:"A spectrogram for transcribing music by ear: a colour per note, automatic chord detection, stem separation. For macOS.",
+ tagline:"A tool for listening to music closely.",
+ s1:"The whole track in one image", s2:"One colour per note",
+ s3:"Automatic chord detection", s4:"Vocals, chords, drums",
+ s5:"Stem separation: bass, drums, vocals, other", s6:"Loop and slow down a section",
+ dlMac:"Download for macOS", dlWin:"See the Windows port status", dlLin:"View the source code",
+ mMac:"Free and open source · macOS 26 or later · 104 MB",
+ mWin:"Spectre is macOS-only for now.", mLin:"Linux is planned after Windows.",
+ mMob:"Spectre is a desktop app. Free and open source · macOS 26 or later · 104 MB",
+ altMac:"Download for macOS anyway (104 MB)",
+ installH:"Install",
+ installP:"The app is not signed with an Apple developer ID, so macOS quarantines it on download. Once it is in Applications:",
+ buildP:"Or build it yourself — Xcode is not required:",
+ otherH:"Other platforms",
+ otherWin:"<strong>Windows</strong> — port under way: the core compiles and passes its checks, the interface is still to be written. Three steps out of eleven.",
+ otherLin:"<strong>Linux</strong> — planned after Windows.",
+ copy:"copy", copied:"copied",
+ footFree:"Free software", footSrc:"Source on GitHub", footLic:"Licence", footDemucs:"Separation by Demucs v4"},
+
+fr:{title:"Spectre — une aide à l'écoute active de la musique",
+ desc:"Un spectrogramme pour transcrire la musique à l'oreille : une couleur par note, détection automatique des accords, séparation des pistes. Pour macOS.",
+ tagline:"Une aide à l'écoute active de la musique.",
+ s1:"Tout le morceau dans une image", s2:"Une couleur par note",
+ s3:"Détection automatique des accords", s4:"Voix, accords, batterie",
+ s5:"Séparation des pistes : basse, batterie, voix, autres", s6:"Boucler et ralentir une section",
+ dlMac:"Télécharger pour macOS", dlWin:"Voir l'avancement du portage Windows", dlLin:"Voir le code source",
+ mMac:"Libre et gratuit · macOS 26 ou plus récent · 104 Mo",
+ mWin:"Spectre n'existe pour l'instant que sur macOS.", mLin:"Linux est prévu après Windows.",
+ mMob:"Spectre est une application de bureau. Libre et gratuit · macOS 26 ou plus récent · 104 Mo",
+ altMac:"Télécharger quand même pour macOS (104 Mo)",
+ installH:"Installer",
+ installP:"L'application n'est pas signée par un identifiant Apple : macOS la met en quarantaine au téléchargement. Une fois glissée dans Applications :",
+ buildP:"Ou construire soi-même — Xcode n'est pas nécessaire :",
+ otherH:"Autres plateformes",
+ otherWin:"<strong>Windows</strong> — portage en cours : le noyau compile et passe ses vérifications, l'interface reste à écrire. Trois étapes sur onze.",
+ otherLin:"<strong>Linux</strong> — prévu après Windows.",
+ copy:"copier", copied:"copié",
+ footFree:"Logiciel libre", footSrc:"Code source sur GitHub", footLic:"Licence", footDemucs:"Séparation par Demucs v4"},
+
+es:{title:"Spectre — una ayuda para la escucha activa",
+ desc:"Un espectrograma para sacar música de oído: un color por nota, detección automática de acordes, separación de pistas. Para macOS.",
+ tagline:"Una ayuda para la escucha activa.",
+ s1:"Todo el tema en una imagen", s2:"Un color por nota",
+ s3:"Detección automática de acordes", s4:"Voz, acordes, batería",
+ s5:"Separación de pistas: bajo, batería, voz, resto", s6:"Hacer un bucle y ralentizar",
+ dlMac:"Descargar para macOS", dlWin:"Ver el avance del port a Windows", dlLin:"Ver el código fuente",
+ mMac:"Libre y gratuito · macOS 26 o posterior · 104 MB",
+ mWin:"Por ahora Spectre solo existe en macOS.", mLin:"Linux está previsto después de Windows.",
+ mMob:"Spectre es una aplicación de escritorio. Libre y gratuito · macOS 26 o posterior · 104 MB",
+ altMac:"Descargar igualmente para macOS (104 MB)",
+ installH:"Instalar",
+ installP:"La aplicación no está firmada con un identificador de desarrollador de Apple, así que macOS la pone en cuarentena al descargarla. Una vez en Aplicaciones:",
+ buildP:"O compilarla uno mismo — no hace falta Xcode:",
+ otherH:"Otras plataformas",
+ otherWin:"<strong>Windows</strong> — port en marcha: el núcleo compila y pasa sus comprobaciones, falta escribir la interfaz. Tres etapas de once.",
+ otherLin:"<strong>Linux</strong> — previsto después de Windows.",
+ copy:"copiar", copied:"copiado",
+ footFree:"Software libre", footSrc:"Código en GitHub", footLic:"Licencia", footDemucs:"Separación con Demucs v4"},
+
+de:{title:"Spectre — eine Hilfe zum aufmerksamen Hören",
+ desc:"Ein Spektrogramm zum Heraushören von Musik: eine Farbe pro Ton, automatische Akkorderkennung, Spurtrennung. Für macOS.",
+ tagline:"Eine Hilfe zum aufmerksamen Hören.",
+ s1:"Das ganze Stück in einem Bild", s2:"Eine Farbe pro Ton",
+ s3:"Automatische Akkorderkennung", s4:"Gesang, Akkorde, Schlagzeug",
+ s5:"Spurtrennung: Bass, Schlagzeug, Gesang, Rest", s6:"Abschnitt loopen und verlangsamen",
+ dlMac:"Für macOS herunterladen", dlWin:"Stand der Windows-Portierung ansehen", dlLin:"Quellcode ansehen",
+ mMac:"Frei und quelloffen · macOS 26 oder neuer · 104 MB",
+ mWin:"Spectre gibt es vorerst nur für macOS.", mLin:"Linux ist nach Windows geplant.",
+ mMob:"Spectre ist eine Desktop-App. Frei und quelloffen · macOS 26 oder neuer · 104 MB",
+ altMac:"Trotzdem für macOS herunterladen (104 MB)",
+ installH:"Installieren",
+ installP:"Die App ist nicht mit einer Apple-Entwickler-ID signiert, deshalb stellt macOS sie beim Herunterladen unter Quarantäne. Sobald sie in „Programme“ liegt:",
+ buildP:"Oder selbst bauen — Xcode wird nicht gebraucht:",
+ otherH:"Andere Plattformen",
+ otherWin:"<strong>Windows</strong> — Portierung läuft: Der Kern kompiliert und besteht seine Prüfungen, die Oberfläche muss noch geschrieben werden. Drei von elf Schritten.",
+ otherLin:"<strong>Linux</strong> — nach Windows geplant.",
+ copy:"kopieren", copied:"kopiert",
+ footFree:"Freie Software", footSrc:"Quellcode auf GitHub", footLic:"Lizenz", footDemucs:"Trennung mit Demucs v4"},
+
+pl:{title:"Spectre — pomoc w uważnym słuchaniu muzyki",
+ desc:"Spektrogram do wyciągania muzyki ze słuchu: jeden kolor na dźwięk, automatyczne rozpoznawanie akordów, rozdzielanie ścieżek. Na macOS.",
+ tagline:"Pomoc w uważnym słuchaniu muzyki.",
+ s1:"Cały utwór na jednym obrazie", s2:"Jeden kolor na dźwięk",
+ s3:"Automatyczne rozpoznawanie akordów", s4:"Wokal, akordy, perkusja",
+ s5:"Rozdzielanie ścieżek: bas, perkusja, wokal, reszta", s6:"Zapętlenie i spowolnienie fragmentu",
+ dlMac:"Pobierz na macOS", dlWin:"Zobacz postęp portu na Windows", dlLin:"Zobacz kod źródłowy",
+ mMac:"Wolne i otwarte · macOS 26 lub nowszy · 104 MB",
+ mWin:"Na razie Spectre działa tylko na macOS.", mLin:"Linux planowany po Windows.",
+ mMob:"Spectre to aplikacja na komputer. Wolne i otwarte · macOS 26 lub nowszy · 104 MB",
+ altMac:"Pobierz mimo to na macOS (104 MB)",
+ installH:"Instalacja",
+ installP:"Aplikacja nie jest podpisana identyfikatorem dewelopera Apple, więc macOS poddaje ją kwarantannie po pobraniu. Gdy znajdzie się w Aplikacjach:",
+ buildP:"Albo zbudować samodzielnie — Xcode nie jest potrzebny:",
+ otherH:"Inne platformy",
+ otherWin:"<strong>Windows</strong> — port w toku: rdzeń kompiluje się i przechodzi testy, interfejs pozostaje do napisania. Trzy kroki z jedenastu.",
+ otherLin:"<strong>Linux</strong> — planowany po Windows.",
+ copy:"kopiuj", copied:"skopiowano",
+ footFree:"Wolne oprogramowanie", footSrc:"Kod na GitHubie", footLic:"Licencja", footDemucs:"Rozdzielanie: Demucs v4"}
+};
+
+const LANGS = ["en","fr","es","de","pl"];
+
+function detectOS(){
+  const ua = navigator.userAgent || "";
+  const plat = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
+  const s = plat + " " + ua;
+  if (/iPhone|iPod|Android/i.test(s)) return "mobile";
+  if (/iPad/i.test(s)) return "mobile";
+  if (/Mac/i.test(s)) return navigator.maxTouchPoints > 1 ? "mobile" : "mac";   // iPadOS se dit Mac
+  if (/Win/i.test(s)) return "win";
+  if (/Linux|X11|CrOS/i.test(s)) return "linux";
+  return "mac";
+}
+
+function detectLang(){
+  const ok = c => c && LANGS.includes(c) ? c : null;
+  const q = ok(new URLSearchParams(location.search).get("lang"));
+  if (q) return q;
+  let saved = null;
+  try { saved = ok(localStorage.getItem("spectre-lang")); } catch(e){}
+  if (saved) return saved;
+  const nav = navigator.languages || [navigator.language || "en"];
+  for (const l of nav){ const c = ok(l.slice(0,2).toLowerCase()); if (c) return c; }
+  return "en";
+}
+
+const os = detectOS();
+
+function apply(lang){
+  const t = T[lang] || T.en;
+  document.documentElement.lang = lang;
+  document.title = t.title;
+  const d = document.querySelector('meta[name="description"]');
+  if (d) d.setAttribute("content", t.desc);
+
+  document.querySelectorAll("[data-t]").forEach(el => {
+    const v = t[el.dataset.t];
+    if (v == null) return;
+    if (v.indexOf("<") >= 0) el.innerHTML = v; else el.textContent = v;
+  });
+  document.querySelectorAll("img[data-alt]").forEach(el => {
+    el.alt = t[el.dataset.alt] || "";
+  });
+
+  const btn = document.getElementById("btn");
+  const meta = document.getElementById("btnmeta");
+  const alt = document.getElementById("btnalt");
+  const alta = document.getElementById("btnalta");
+  if (os === "win"){
+    btn.textContent = t.dlWin; btn.href = WIN; btn.removeAttribute("download");
+    btn.classList.add("quiet"); meta.textContent = t.mWin;
+    alta.textContent = t.altMac; alt.hidden = false;
+  } else if (os === "linux"){
+    btn.textContent = t.dlLin; btn.href = REPO; btn.classList.add("quiet");
+    meta.textContent = t.mLin;
+    alta.textContent = t.altMac; alt.hidden = false;
+  } else {
+    btn.textContent = t.dlMac; btn.href = DL; btn.classList.remove("quiet");
+    meta.textContent = (os === "mobile") ? t.mMob : t.mMac;
+    alt.hidden = true;
+  }
+
+  document.querySelectorAll("#langs button").forEach(b => {
+    b.setAttribute("aria-current", String(b.dataset.lang === lang));
+  });
+}
+
+const nav = document.getElementById("langs");
+LANGS.forEach(l => {
+  const b = document.createElement("button");
+  b.type = "button"; b.dataset.lang = l; b.textContent = l.toUpperCase();
+  b.addEventListener("click", () => {
+    try { localStorage.setItem("spectre-lang", l); } catch(e){}
+    apply(l);
+  });
+  nav.appendChild(b);
+});
+
+document.querySelectorAll("[data-copy]").forEach(b => {
+  b.addEventListener("click", async () => {
+    const code = document.getElementById(b.dataset.copy).textContent;
+    try { await navigator.clipboard.writeText(code); } catch(e){ return; }
+    const lang = document.documentElement.lang;
+    const t = T[lang] || T.en;
+    b.textContent = t.copied;
+    setTimeout(() => { b.textContent = t.copy; }, 1600);
+  });
+});
+
+apply(detectLang());
+</script>
+</body>
+</html>
