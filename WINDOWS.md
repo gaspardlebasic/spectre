@@ -1128,8 +1128,11 @@ contraire de ce qu'il vérifiait.
 Sur trois secondes de synthèse — une frappe grave toutes les demi-secondes, deux
 notes tenues — le réseau met **5,8 secondes** de calcul, poids relus compris, et rend
 quatre pistes finies et non muettes à 44,1 kHz. Le morceau témoin entier, dix-sept
-secondes, est séparé en une vingtaine par l'application elle-même, écriture des
-pistes et somme des combinaisons comprises.
+secondes, est séparé en une vingtaine par l'application elle-même. L'écriture des
+pistes, elle, a depuis quitté ce compte : elle se fait derrière la fenêtre, une fois
+les pistes rendues, et les combinaisons ne sont plus des fichiers du tout — les quatre
+pistes tiennent en mémoire et le lecteur en tire la somme (voir « La banque en
+mémoire » dans le README).
 
 Ce qui se mesure sur ces quatre pistes :
 

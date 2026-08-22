@@ -45,46 +45,63 @@ public final class SeparationJob {
     /// - Parameters:
     ///   - fingerprint: identifie le morceau ; c'est sous ce nom que les pistes sont rangées.
     ///   - progress: sur le fil principal.
-    ///   - completion: sur le fil principal.
+    ///   - completion: sur le fil principal, **dès que le réseau a fini** — les pistes
+    ///     ne sont pas encore sur le disque.
+    ///   - stored: sur le fil principal, quand l'écriture en FLAC est finie.
+    ///
+    /// L'ordre des deux derniers est tout l'objet de cette classe. Les pistes étaient
+    /// écrites avant d'être rendues : quatorze secondes d'encodage FLAC pendant
+    /// lesquelles la fenêtre montrait une barre figée à 80 %, alors que le son et
+    /// l'image étaient prêts en mémoire. On rend d'abord, on range ensuite.
     public func run(fileAt url: URL,
              fingerprint: String,
              separator: StemSeparator,
              progress: @escaping (SeparationProgress) -> Void,
-             completion: @escaping (Result<Void, Error>) -> Void) {
+             completion: @escaping (Result<BanqueDePistes, Error>) -> Void,
+             stored: @escaping (Error?) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async { [self] in
-            let outcome: Result<Void, Error>
+            let banque: BanqueDePistes
             do {
-                let stems = try separator.separate(fileAt: url,
+                var stems = try separator.separate(fileAt: url,
                                                    progress: { p in
                                                        DispatchQueue.main.async { progress(p) }
                                                    },
                                                    isCancelled: { self.isCancelled })
                 guard !isCancelled else { throw SeparationFailure.cancelled }
-
                 // La fréquence vient du moteur, jamais du fichier d'entrée : c'est
                 // exactement la confusion qui faisait jouer les pistes trop vite.
-                for (stem, channels) in stems.channels {
-                    guard let destination = StemStore.url(stem, for: fingerprint)
-                    else { continue }
-                    try StemStore.write(channels, sampleRate: stems.sampleRate,
-                                        to: destination)
+                guard let montée = BanqueDePistes(empreinte: fingerprint,
+                                                  sampleRate: stems.sampleRate,
+                                                  pistes: &stems.channels),
+                      montée.complete else {
+                    throw SeparationFailure.engine("le réseau n'a pas rendu les quatre pistes")
                 }
+                banque = montée
+            } catch {
+                DispatchQueue.main.async { completion(.failure(error)) }
+                return
+            }
+            DispatchQueue.main.async { completion(.success(banque)) }
+
+            // Le rangement, derrière la fenêtre. Un morceau fermé entre-temps garde
+            // tout de même ses pistes : le calcul est fait, les jeter obligerait à le
+            // refaire, et rien de ce qui suit ne touche à ce qui est affiché.
+            var échec: Error?
+            do {
+                try StemStore.ecrire(banque, pour: fingerprint)
                 // C'est ici que le dossier grossit, donc ici qu'on fait le ménage — et
                 // en épargnant le morceau qu'on vient de calculer, qui serait sinon le
                 // premier candidat sur une machine dont le cache est déjà plein.
                 StemStore.markUsed(fingerprint)
                 StemStore.pruneCache(keeping: fingerprint)
-                outcome = .success(())
             } catch {
-                // Un échec en cours d'écriture laisserait un jeu de pistes
-                // incomplet, que l'application prendrait ensuite pour un travail
-                // fait. On préfère ne rien garder.
-                if !(error is SeparationFailure) || isCancelled {
-                    StemStore.removeStems(for: fingerprint)
-                }
-                outcome = .failure(error)
+                // Une écriture incomplète laisserait un jeu de pistes que la séance
+                // suivante prendrait pour un travail fait. On préfère ne rien garder.
+                StemStore.removeStems(for: fingerprint)
+                échec = error
             }
-            DispatchQueue.main.async { completion(outcome) }
+            let rapport = échec
+            DispatchQueue.main.async { stored(rapport) }
         }
     }
 }

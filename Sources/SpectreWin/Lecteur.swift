@@ -45,6 +45,13 @@ import SpectreModele
     public var message: String?
 
     @ObservationIgnored private var url: URL?
+    /// La banque en cours et la sélection qu'on en tire, pour ne pas resommer ce qui
+    /// est déjà sous le doigt.
+    @ObservationIgnored private var banque: BanqueDePistes?
+    @ObservationIgnored private var gardees: Set<Stem> = []
+    /// Change à chaque demande : une somme qui revient après qu'on a cliqué ailleurs
+    /// n'a plus rien à installer.
+    @ObservationIgnored private var jeton = 0
     /// Ce qu'on nous a demandé pendant que le fichier se décodait encore.
     @ObservationIgnored private var enAttenteDeLecture: Double?
     @ObservationIgnored private var chargementEnCours: URL?
@@ -137,6 +144,9 @@ import SpectreModele
 
     public func load(url nouvelle: URL) {
         stop()
+        banque = nil
+        gardees = []
+        jeton += 1
         url = nouvelle
         duration = 0
         message = nil
@@ -164,29 +174,68 @@ import SpectreModele
         }
     }
 
+    /// Joue la somme des pistes cochées, prise dans la banque.
+    ///
+    /// Les combinaisons ne sont plus des fichiers : elles se somment ici, en mémoire,
+    /// et il n'y a plus rien à écrire, à relire ni à décoder. La somme se fait à côté —
+    /// deux dixièmes de seconde sur un morceau long — pour que la fenêtre ne se fige
+    /// pas sur un clic.
+    public func charger(_ nouvelle: BanqueDePistes, gardant pistes: Set<Stem>) {
+        guard banque !== nouvelle || gardees != pistes else { return }
+        banque = nouvelle
+        gardees = pistes
+        url = nil
+        chargementEnCours = nil
+        message = nil
+        jeton += 1
+        let attendu = jeton
+        let reprise = currentTime
+        let jouait = isPlaying
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let mono = nouvelle.melangeMono(pistes)
+            let lecteur = self
+            DispatchQueue.main.async {
+                guard let lecteur, lecteur.jeton == attendu else { return }
+                lecteur.installer(mono: mono, frequence: nouvelle.sampleRate,
+                                  reprenant: reprise, enJouant: jouait)
+            }
+        }
+    }
+
     private func installer(_ contenu: WAVFile.Contents) {
+        installer(mono: contenu.mono, frequence: contenu.sampleRate,
+                  reprenant: nil, enJouant: false)
+    }
+
+    private func installer(mono: [Float], frequence frequenceDuSignal: Double,
+                           reprenant reprise: Double?, enJouant jouait: Bool) {
         verrou.lock()
-        var neuve = PlaybackChain(samples: contenu.mono, channels: 1,
-                                  sampleRate: contenu.sampleRate)
+        var neuve = PlaybackChain(samples: mono, channels: 1,
+                                  sampleRate: frequenceDuSignal)
         neuve.volume = Float(min(max(volume, 0), 1))
         neuve.setLoop(loop)
+        // Cocher une piste ne change pas de morceau : la tête de lecture reste où elle
+        // était, sans quoi comparer deux pistes serait insupportable.
+        if let reprise { neuve.currentTime = reprise }
         chaine = neuve
-        etireur = Etireur(sampleRate: contenu.sampleRate)
+        etireur = Etireur(sampleRate: frequenceDuSignal)
         etireur.vitesse = min(max(vitesseRangee, 1.0 / 32), 4)
         etireur.demiTons = min(max(transpositionRangee, -24), 24)
-        positionBrute = 0
+        positionBrute = reprise ?? 0
         verrou.unlock()
 
-        duration = contenu.duration
+        duration = neuve.duration
 
         // Le périphérique est rouvert dès que la fréquence change, et pas à chaque
         // fichier : rouvrir coûte quelques dizaines de millisecondes, qui
         // s'entendraient comme un retard à la première note.
-        if sortie == nil || frequence != contenu.sampleRate {
-            ouvrirLaSortie(frequence: contenu.sampleRate)
+        if sortie == nil || frequence != frequenceDuSignal {
+            ouvrirLaSortie(frequence: frequenceDuSignal)
         }
 
-        if let depart = enAttenteDeLecture {
+        if jouait {
+            play(from: reprise)
+        } else if let depart = enAttenteDeLecture {
             enAttenteDeLecture = nil
             play(from: depart)
         }
@@ -219,15 +268,6 @@ import SpectreModele
                          + "au lieu de \(Int(voulue)) Hz")
         }
     }
-
-    /// Changer de fichier sans arrêter le moteur.
-    ///
-    /// Rend `false` : cela sert à passer du mixage à une piste isolée, et la
-    /// séparation n'est pas portée — c'est l'étape 9. Le faire quand même
-    /// demanderait de décoder sur le fil principal, donc de figer la fenêtre le
-    /// temps du décodage, pour un chemin que rien n'emprunte encore. L'appelant
-    /// recharge franchement, ce qui est correct et se voit à peine.
-    public func replace(with url: URL) -> Bool { false }
 
     // MARK: Jouer
 

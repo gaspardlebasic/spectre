@@ -228,6 +228,11 @@ if surMac {
                           path: "Tools/RenderCheck"),
         .executableTarget(name: "SeparationCheck", dependencies: ["SpectreCore", "SpectreMac"],
                           path: "Tools/SeparationCheck"),
+        // Le chronomètre de l'ouverture : combien coûte chaque étape, du décodage
+        // au relevé de batterie sur la piste isolée.
+        .executableTarget(name: "Chrono",
+                          dependencies: ["SpectreCore", "SpectreModele", "SpectreMac"],
+                          path: "Tools/Chrono"),
         // Le numéro de la fenêtre de l'application, pour la photographier sans
         // photographier ce qui la recouvre. Sert à `essai.sh`, à rien d'autre.
         .executableTarget(name: "Fenetre", path: "Tools/Fenetre"),
@@ -237,6 +242,7 @@ if surMac {
         .executable(name: "PlaybackCheck", targets: ["PlaybackCheck"]),
         .executable(name: "RenderCheck", targets: ["RenderCheck"]),
         .executable(name: "SeparationCheck", targets: ["SeparationCheck"]),
+        .executable(name: "Chrono", targets: ["Chrono"]),
         .executable(name: "Fenetre", targets: ["Fenetre"]),
     ]
 }

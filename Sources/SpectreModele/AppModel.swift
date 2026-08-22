@@ -318,6 +318,12 @@ private let dureeDuTournePage = 0.32
         stemCache.removeAll()
         bassNoteMap = .empty
         bassMapKey = nil
+        // Les pistes du morceau précédent quittent la mémoire ici — six cent soixante
+        // mégaoctets sur un morceau de huit minutes, qu'il n'y a aucune raison de
+        // garder pour un fichier qu'on vient de fermer.
+        banque = nil
+        enAttenteDeBanque = nil
+        chargementDesPistes = false
         job?.cancel()
         job = nil
         separating = nil
@@ -730,6 +736,25 @@ private let dureeDuTournePage = 0.32
     /// Un préchargement des pistes voisines est en route.
     @ObservationIgnored private var precaching = false
 
+    /// Les quatre pistes du morceau, décodées, en mémoire. Tout ce qui s'écoute et
+    /// tout ce qui s'analyse en sort — il n'y a plus de fichier de combinaison.
+    @ObservationIgnored private var banque: BanqueDePistes?
+    /// Ce qu'on montrera dès que la banque sera montée. Rouvrir un morceau déjà
+    /// séparé demande une seconde de lecture, pendant laquelle la demande attend
+    /// plutôt que de se perdre.
+    @ObservationIgnored private var enAttenteDeBanque: Set<Stem>?
+    public private(set) var chargementDesPistes = false
+
+    /// Ce que le moteur de séparation dit être en train de faire, et depuis quand.
+    @ObservationIgnored private var etapeDeSeparation = ""
+    @ObservationIgnored private var etapeDepuis = 0.0
+    /// L'instant de la première tranche finie, et la fraction qu'elle portait : de
+    /// quoi dire combien de temps il reste.
+    @ObservationIgnored private var tranchesDepuis: Double?
+    /// Battement d'une seconde pendant la séparation. Sans lui, un message qui
+    /// compte les secondes ne serait redessiné qu'au changement d'étape.
+    private var horlogeDeSeparation = 0
+
     /// La carte des notes de la **piste de basse seule**, quand elle existe.
     ///
     /// Elle ne sert qu'à une chose : retirer du relevé les harmoniques de la basse,
@@ -744,8 +769,17 @@ private let dureeDuTournePage = 0.32
     @ObservationIgnored private var bassNoteMap = NoteMap.empty
     @ObservationIgnored private var bassMapKey: Int?
 
+    /// Un calcul de pistes est en route : séparation, ou simple montée en mémoire de
+    /// pistes déjà rangées. La ligne de batterie reste vide dans les deux cas — elle
+    /// *pourrait* montrer le relevé du mixage, mais il est approximatif et serait
+    /// remplacé dans la minute par celui de la piste isolée.
+    public var calculEnCours: Bool { separating != nil || chargementDesPistes }
+
     public var isSeparated: Bool {
         guard let fingerprint = source?.fingerprint else { return false }
+        // La banque d'abord : à la fin d'une séparation, les pistes sont en mémoire et
+        // parfaitement utilisables alors qu'elles finissent seulement de s'écrire.
+        if banque?.empreinte == fingerprint { return true }
         return pistes.estSepare(fingerprint)
     }
 
@@ -778,7 +812,7 @@ private let dureeDuTournePage = 0.32
             return
         }
         guard let fingerprint = source?.fingerprint else { return }
-        if pistes.estSepare(fingerprint) {
+        if banque?.empreinte == fingerprint || pistes.estSepare(fingerprint) {
             selection = wanted
             show(wanted)
             return
@@ -804,7 +838,9 @@ private let dureeDuTournePage = 0.32
         guard pistes.modeleDisponible else { return }
         job?.cancel()
         separating = 0
-        status = "Séparation des pistes…"
+        etape("Préparation du morceau…")
+        tranchesDepuis = nil
+        battre()
         // Le travail se compare à `job` avant chaque effet : un calcul annulé peut
         // encore avoir un rappel en vol, et il n'a plus rien à dire du morceau
         // ouvert entre-temps. La comparaison porte sur l'identité, d'où la
@@ -812,19 +848,26 @@ private let dureeDuTournePage = 0.32
         var work: TravailAnnulable?
         work = pistes.separer(
             fichier: source.url, empreinte: fingerprint,
-            // L'étape est reprise telle quelle : les dix premières secondes se
-            // passent avant la première tranche, et la barre y reste à zéro sans
-            // rien avoir à dire d'autre.
             avancement: { [weak self] p in
                 guard let self, self.job === work else { return }
-                self.separating = p.fraction * 0.8
-                self.status = p.stage
+                if p.stage != self.etapeDeSeparation { self.etape(p.stage) }
+                self.separating = p.fraction
+                if p.fraction > 0, self.tranchesDepuis == nil {
+                    self.tranchesDepuis = Horloge.maintenant()
+                }
+                self.status = self.messageDeSeparation ?? p.stage
             },
             fin: { [weak self] result in
                 guard let self, self.job === work else { return }
                 self.job = nil
                 switch result {
-                case .success:
+                case .success(let montée):
+                    // Les pistes sont là, en mémoire. Rien n'attend le disque : ce qui
+                    // suit — le son, l'image, la ligne de batterie — se sert de la
+                    // banque, et le FLAC s'écrit derrière.
+                    self.banque = montée
+                    self.separating = nil
+                    self.enAttenteDeBanque = nil
                     self.show(self.selection)
                 case .failure(let error):
                     self.separating = nil
@@ -832,8 +875,102 @@ private let dureeDuTournePage = 0.32
                     self.separationError = error.localizedDescription
                     self.status = error.localizedDescription
                 }
+            },
+            rangement: { [weak self] error in
+                guard let self else { return }
+                // Le rangement ne concerne plus ce qui est à l'écran ; il ne se dit que
+                // pour ce qu'il change vraiment — un échec, qui obligera à recalculer
+                // la prochaine fois.
+                if let error {
+                    self.status = "Pistes non enregistrées : \(error.localizedDescription)"
+                }
             })
         job = work
+    }
+
+    /// Change d'étape, et remet le compteur de secondes à zéro.
+    private func etape(_ quoi: String) {
+        etapeDeSeparation = quoi
+        etapeDepuis = Horloge.maintenant()
+    }
+
+    /// Fait battre le message une fois par seconde tant qu'un calcul est en cours.
+    ///
+    /// C'est ce battement qui répond au reproche d'origine : l'ouverture du réseau est
+    /// un seul appel opaque, dont il n'y a rien à mesurer, et une ligne immobile
+    /// pendant quinze secondes passe pour une panne. Elle compte donc les secondes,
+    /// ce qui ne prétend rien savoir de plus mais montre que le travail avance.
+    private func battre() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self, self.separating != nil || self.chargementDesPistes else { return }
+            self.horlogeDeSeparation += 1
+            self.status = self.messageDeSeparation ?? self.status
+            self.battre()
+        }
+    }
+
+    /// Ce qui se passe en ce moment, dit en toutes lettres.
+    ///
+    /// Les étapes ne se ressemblent pas : l'une dure une seconde, une autre quinze,
+    /// une autre une minute la première fois — et une seule des trois se mesure. On
+    /// dit donc **laquelle**, depuis **combien de temps**, et, quand c'est mesurable,
+    /// combien il reste.
+    private var messageDeSeparation: String? {
+        _ = horlogeDeSeparation                 // le message compte les secondes
+        if chargementDesPistes {
+            return "Lecture des pistes déjà séparées…"
+        }
+        guard let separating else { return nil }
+        if separating > 0 {
+            let pourcent = Int((separating * 100).rounded())
+            guard let depuis = tranchesDepuis else {
+                return "Séparation des pistes : \(pourcent) %"
+            }
+            let écoulé = Horloge.maintenant() - depuis
+            guard separating > 0.05, écoulé > 2 else {
+                return "Séparation des pistes : \(pourcent) %"
+            }
+            let restant = écoulé * (1 - separating) / separating
+            return "Séparation des pistes : \(pourcent) % — encore \(Self.duree(restant))"
+        }
+        let écoulé = Horloge.maintenant() - etapeDepuis
+        let quoi = etapeDeSeparation.isEmpty ? "Séparation des pistes…" : etapeDeSeparation
+        // Sous deux secondes, le compteur clignoterait pour rien.
+        return écoulé < 2 ? quoi : "\(quoi) \(Self.duree(écoulé))"
+    }
+
+    /// Une durée en toutes lettres, sans décimale : personne ne lit « 43,7 s ».
+    private static func duree(_ secondes: Double) -> String {
+        let s = Int(secondes.rounded())
+        if s < 60 { return "\(max(s, 1)) s" }
+        let m = s / 60, r = s % 60
+        return r == 0 ? "\(m) min" : "\(m) min \(r) s"
+    }
+
+    /// Monte en mémoire les pistes déjà rangées, puis montre ce qu'on attendait.
+    private func chargerLaBanque(_ fingerprint: String) {
+        guard !chargementDesPistes else { return }
+        chargementDesPistes = true
+        battre()
+        pistes.chargerLesPistes(empreinte: fingerprint) { [weak self] montée in
+            guard let self else { return }
+            self.chargementDesPistes = false
+            guard self.source?.fingerprint == fingerprint else { return }
+            guard let montée else {
+                // Les fichiers sont là mais ne se lisent pas : plutôt que de rester
+                // sur une promesse, on revient au mixage et on le dit.
+                self.enAttenteDeBanque = nil
+                self.selection = Self.everything
+                self.separationError = "Pistes illisibles ; le mixage est resté."
+                self.status = self.separationError
+                self.show(Self.everything)
+                return
+            }
+            self.banque = montée
+            let voulu = self.enAttenteDeBanque ?? self.selection
+            self.enAttenteDeBanque = nil
+            self.show(voulu)
+        }
     }
 
     /// Charge et analyse la sélection, puis la met à l'écran et dans le lecteur.
@@ -865,94 +1002,117 @@ private let dureeDuTournePage = 0.32
         // pas une raison pour perdre de vue ce qui tourne.
         let stillWorking = job != nil
         let fingerprint = source.fingerprint
-        let separated = fingerprint.map(pistes.estSepare) ?? false
+        let separated = isSeparated
         let visible = seen(wanted, separated: separated)
+
+        // Rien de retiré et rien de séparé : le fichier d'origine, tel quel.
+        if visible == Self.everything, !separated {
+            relevePercussion(Self.everything, from: source.mono, sampleRate: source.sampleRate)
+            if !stillWorking { separating = nil }
+            adopt(spectrogram: mixSpectrogram, ecoutant: .fichier(source.url))
+            return
+        }
+        guard let fingerprint else { return }
+
+        // Séparé, mais les pistes ne sont pas encore montées : on retient la demande
+        // et on va les chercher. Une seconde, une fois par morceau.
+        guard let banque, banque.empreinte == fingerprint else {
+            enAttenteDeBanque = wanted
+            chargerLaBanque(fingerprint)
+            return
+        }
 
         // La ligne de batterie et l'image ne viennent plus du même signal : l'une de
         // la piste de batterie seule, l'autre de tout le reste. Elles se demandent
         // donc séparément.
-        relevePercussion(keeping: wanted, separated: separated, fingerprint: fingerprint,
-                         mix: source)
+        relevePercussion(keeping: wanted, banque: banque)
         // Les accords, eux, se relèvent sur l'image : ils suivront tout seuls,
         // quand la nouvelle matrice sera adoptée.
 
         // Ce qui se joue reste ce qui est coché — décocher la batterie la fait
-        // taire, et vide sa ligne du même geste.
-        let heard: URL? = wanted == Self.everything
-            ? source.url
-            : fingerprint.flatMap { try? pistes.urlCombinee(wanted, empreinte: $0) }
+        // taire, et vide sa ligne du même geste. Tout coché, c'est le fichier
+        // d'origine qui sort : la somme des quatre pistes lui ressemble beaucoup, mais
+        // le morceau tel qu'il est ne se remplace pas par une approximation.
+        let écoute: Ecoute = wanted == Self.everything
+            ? .fichier(source.url)
+            : .pistes(wanted)
 
-        // Rien de retiré et rien de séparé : le fichier d'origine, tel quel.
-        if visible == Self.everything, !separated {
-            if !stillWorking { separating = nil }
-            adopt(spectrogram: mixSpectrogram, playing: heard)
-            return
-        }
-        guard let fingerprint else { return }
         if let ready = stemCache[visible] {
             if !stillWorking { separating = nil }
-            adopt(spectrogram: ready, playing: heard)
+            adopt(spectrogram: ready, ecoutant: écoute)
             return
         }
 
-        separating = separating ?? 0.8
+        // Le son d'abord, l'image ensuite : la somme est déjà en mémoire, il n'y a
+        // aucune raison de faire attendre l'oreille le quart de seconde que coûte
+        // l'analyse.
+        adopt(spectrogram: spectrogram, ecoutant: écoute, gardantLImage: true)
+
         let name = Stem.label(for: wanted)
         status = "Analyse de « \(Stem.label(for: visible)) »…"
         let settings = analysis
-        let rangement = self.pistes
-        let décodeur = self.décodeur
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             // La somme des pistes à voir est fabriquée ici, puis gardée : y revenir
             // ne doit pas coûter une seconde addition sur dix millions
             // d'échantillons.
-            guard let file = try? rangement.urlCombinee(visible, empreinte: fingerprint),
-                  let loaded = try? décodeur.charger(file) else {
-                DispatchQueue.main.async {
-                    self?.separating = nil
-                    self?.selection = Self.everything
-                    self?.separationError = "« \(name) » illisible."
-                    self?.show(Self.everything)
-                }
-                return
-            }
-            let matrix = OfflineAnalysis.run(samples: loaded.mono,
-                                             sampleRate: loaded.sampleRate,
-                                             settings: settings) { p in
-                DispatchQueue.main.async { self?.separating = 0.8 + p * 0.2 }
-            }
+            let mono = banque.melangeMono(visible)
+            let matrix = OfflineAnalysis.run(samples: mono,
+                                             sampleRate: banque.sampleRate,
+                                             settings: settings)
             DispatchQueue.main.async {
-                guard let self, self.selection == wanted else { return }
+                guard let self, self.selection == wanted,
+                      self.banque === banque else { return }
                 self.stemCache[visible] = matrix
-                self.separating = nil
                 self.status = name
-                self.adopt(spectrogram: matrix, playing: heard)
+                self.adopt(spectrogram: matrix, ecoutant: .rien)
             }
         }
+    }
+
+    /// Ce qui doit sortir des haut-parleurs.
+    private enum Ecoute {
+        /// Le morceau tel qu'il est, lu depuis son fichier.
+        case fichier(URL)
+        /// La somme des pistes cochées, prise dans la banque.
+        case pistes(Set<Stem>)
+        /// Ne rien toucher : le son est déjà le bon, seule l'image change.
+        case rien
     }
 
     /// Bascule l'image et le son sans rien perdre de ce qui est en cours : la
     /// fenêtre visible, la boucle et la position de lecture survivent au changement
     /// de piste, sans quoi comparer deux pistes serait insupportable.
-    private func adopt(spectrogram matrix: Spectrogram, playing file: URL?) {
-        spectrogram = matrix
-        // L'image qu'on vient de montrer est le nouveau point de départ : ce qui est
-        // à un clic d'ici se prépare en fond.
-        defer { precacheStems() }
-        // L'image a changé : la carte des notes aussi, et les accords avec elle.
-        releveCarteDesNotes()
-        renderer?.layout = matrix.layout
-        renderer?.upload(matrix)
-        snap = nil
-        guard let file else { return }
-        // Cocher une piste change de fichier sans changer de morceau : le format est
-        // le même, donc le moteur audio n'a pas à être arrêté. C'est lui qu'on
-        // entendait, pas la lecture du nouveau fichier.
-        if player.replace(with: file) { return }
-        let wasPlaying = player.isPlaying
-        let at = playhead
-        player.load(url: file)
-        player.setLoop(loopEnabled ? loop : nil)
-        if wasPlaying { player.play(from: at) } else { player.seek(to: at) }
+    private func adopt(spectrogram matrix: Spectrogram, ecoutant écoute: Ecoute,
+                       gardantLImage: Bool = false) {
+        // L'image qu'on vient de montrer est le nouveau point de départ : ce qui est à
+        // un clic d'ici se prépare en fond. En `defer` parce que la bascule du son
+        // sort par plusieurs chemins, et qu'aucun ne doit sauter le préchargement.
+        defer { if !gardantLImage { precacheStems() } }
+        if !gardantLImage {
+            spectrogram = matrix
+            // L'image a changé : la carte des notes aussi, et les accords avec elle.
+            releveCarteDesNotes()
+            renderer?.layout = matrix.layout
+            renderer?.upload(matrix)
+            snap = nil
+        }
+        switch écoute {
+        case .rien:
+            return
+        case .pistes(let gardées):
+            // Cocher une piste ne change plus de fichier : elle change un masque que
+            // le fil audio relit à chaque bloc. Rien à rouvrir, rien à reprogrammer,
+            // et pas une image perdue.
+            guard let banque else { return }
+            player.charger(banque, gardant: gardées)
+            player.setLoop(loopEnabled ? loop : nil)
+        case .fichier(let url):
+            let wasPlaying = player.isPlaying
+            let at = playhead
+            player.load(url: url)
+            player.setLoop(loopEnabled ? loop : nil)
+            if wasPlaying { player.play(from: at) } else { player.seek(to: at) }
+        }
     }
 
     /// Ce que la ligne de batterie a à dire quand elle n'a rien à montrer. Une ligne
@@ -963,11 +1123,15 @@ private let dureeDuTournePage = 0.32
     /// c'est précisément cette ligne qu'elle va remplir. Un relevé tiré du mixage
     /// s'afficherait entre-temps pour être remplacé une minute plus tard par un
     /// autre — mieux vaut une ligne vide qui dit ce qu'elle attend.
+    ///
+    /// **Elle dit l'étape, et pas seulement un pourcentage.** Une séparation, ce n'est
+    /// pas une barre qui monte : c'est un décodage d'une seconde, une ouverture de
+    /// réseau de quinze secondes dont rien ne se mesure — une minute la première fois,
+    /// le temps de le compiler pour la machine —, puis quatre-vingts tranches qui,
+    /// elles, se comptent. Un seul « 0 % » pour les seize premières secondes passait
+    /// pour une panne. Voir `messageDeSeparation`.
     public var drumLaneNotice: String? {
-        if let progress = separating {
-            return String(format: "Séparation des pistes : %d %%",
-                          Int((progress * 100).rounded()))
-        }
+        if let message = messageDeSeparation { return message }
         if percussionPending { return "Relevé de la batterie…" }
         guard percussion.hits.isEmpty else { return nil }
         if isSeparated, !selection.contains(.drums) { return "Batterie retirée" }
@@ -976,11 +1140,9 @@ private let dureeDuTournePage = 0.32
 
     /// Prépare en fond les images qu'un seul clic peut demander.
     ///
-    /// Cocher une piste demandait jusqu'ici de sommer les fichiers, de les décoder et
-    /// de les analyser. Sur un morceau long, c'est près d'une seconde — et toujours
-    /// au pire moment, celui où l'on vient de cliquer et où l'on attend de voir. Le
-    /// calcul est le même ; il a seulement lieu pendant qu'on regarde l'image
-    /// précédente, au lieu de pendant qu'on attend la suivante.
+    /// Le **son**, lui, n'a plus rien à précharger : il se somme à l'instant où il
+    /// sort. Ne reste que l'image, un quart de seconde d'analyse, qu'on prend d'avance
+    /// pendant qu'on regarde la précédente plutôt qu'au moment du clic.
     ///
     /// Seulement ce qui est **à un geste d'ici** : les quatre bascules depuis la
     /// sélection courante, soit trois images en pratique — retirer la batterie ne
@@ -994,7 +1156,7 @@ private let dureeDuTournePage = 0.32
     private func precacheStems() {
         guard !precaching, separating == nil, job == nil,
               let fingerprint = source?.fingerprint,
-              pistes.estSepare(fingerprint) else { return }
+              let banque, banque.empreinte == fingerprint else { return }
 
         // La basse seule, d'abord : elle ne s'affiche presque jamais, mais le relevé
         // d'accords la lit à chaque intervalle pour en retirer les harmoniques.
@@ -1012,8 +1174,6 @@ private let dureeDuTournePage = 0.32
 
         precaching = true
         let settings = analysis
-        let pistes = self.pistes
-        let décodeur = self.décodeur
         DispatchQueue.global(qos: .utility).async { [weak self] in
             for visible in todo {
                 // Pas de garde en cours de route : interroger le fil principal
@@ -1021,10 +1181,8 @@ private let dureeDuTournePage = 0.32
                 // `sync`, donc un interblocage à écrire un jour. Trois analyses de
                 // trop sur un fichier qu'on vient de fermer coûtent une seconde en
                 // `utility` ; la garde du dépôt, elle, est sûre.
-                guard let file = try? pistes.urlCombinee(visible, empreinte: fingerprint),
-                      let loaded = try? décodeur.charger(file) else { continue }
-                let matrix = OfflineAnalysis.run(samples: loaded.mono,
-                                                 sampleRate: loaded.sampleRate,
+                let matrix = OfflineAnalysis.run(samples: banque.melangeMono(visible),
+                                                 sampleRate: banque.sampleRate,
                                                  settings: settings)
                 DispatchQueue.main.async {
                     guard let self, self.source?.fingerprint == fingerprint else { return }
@@ -1051,44 +1209,30 @@ private let dureeDuTournePage = 0.32
     ///   qui ne correspond plus à ce qui sort des haut-parleurs.
     /// - **pas encore séparé** : le mixage, faute de mieux. Le relevé y est
     ///   approximatif, et c'est dit dans le README plutôt que caché.
-    private func relevePercussion(keeping wanted: Set<Stem>, separated: Bool,
-                                  fingerprint: String?, mix: AudioSource) {
-        guard separated else {
-            relevePercussion(Self.everything, from: mix.mono, sampleRate: mix.sampleRate)
-            return
-        }
-        guard wanted.contains(.drums), let fingerprint,
-              let file = pistes.urlDeLaPiste(.drums, empreinte: fingerprint) else {
+    private func relevePercussion(keeping wanted: Set<Stem>, banque: BanqueDePistes) {
+        guard wanted.contains(.drums) else {
             percussionToken += 1
             percussion = .empty
             percussionPending = false
             return
         }
-        relevePercussion([.drums], loading: file)
-    }
-
-    /// Relève la batterie d'un fichier qu'il faut d'abord lire — la piste isolée.
-    private func relevePercussion(_ key: Set<Stem>, loading file: URL) {
         percussionToken += 1
         let token = percussionToken
-        if let ready = percussionCache[key] {
+        if let ready = percussionCache[[.drums]] {
             percussion = ready
             percussionPending = false
             return
         }
         percussion = .empty
         percussionPending = true
-        let décodeur = self.décodeur
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let loaded = try? décodeur.charger(file) else {
-                DispatchQueue.main.async { self?.percussionPending = false }
-                return
-            }
-            let track = PercussionDetector.detect(samples: loaded.mono,
-                                                  sampleRate: loaded.sampleRate)
+            // La somme mono se fait ici : elle coûte une trentaine de millisecondes sur
+            // un morceau long, et le fil principal n'a pas à les payer.
+            let track = PercussionDetector.detect(samples: banque.melangeMono([.drums]),
+                                                  sampleRate: banque.sampleRate)
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.percussionCache[key] = track
+                self.percussionCache[[.drums]] = track
                 guard self.percussionToken == token else { return }
                 self.percussion = track
                 self.percussionPending = false
@@ -1403,6 +1547,10 @@ private let dureeDuTournePage = 0.32
         bassNoteMap = .empty
         bassMapKey = nil
         percussionCache.removeAll()
+        // La banque aussi : sans cela, « effacer les pistes » les laisserait à l'écran
+        // et dans les haut-parleurs, et le morceau passerait encore pour séparé.
+        banque = nil
+        enAttenteDeBanque = nil
         pistes.oublierLesPistes(empreinte: fingerprint)
         selection = Self.everything
         show(Self.everything)

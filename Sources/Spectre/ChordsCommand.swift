@@ -44,16 +44,23 @@ enum ChordsCommand {
             ? [.bass, .other] : [.bass, .other, .vocals]
         if !arguments.contains("--mixage"), let fingerprint = source.fingerprint,
            StemStore.isSeparated(fingerprint),
-           let combined = try? StemStore.combined(wanted, for: fingerprint),
-           let stems = try? AudioSource.load(combined) {
-            source = stems
+           let banque = try? StemStore.banque(pour: fingerprint) {
+            // Les combinaisons ne sont plus des fichiers : les quatre pistes montent en
+            // mémoire une fois, et toutes les sommes en sortent. C'est aussi ce que
+            // fait la fenêtre, donc les chiffres restent comparables.
+            source = AudioSource(url: source.url, sampleRate: banque.sampleRate,
+                                 frameCount: banque.frameCount,
+                                 mono: banque.melangeMono(wanted),
+                                 fingerprint: fingerprint)
             lu = wanted.contains(.vocals) ? "pistes sans batterie" : "basse et accompagnement"
             // La basse toute seule : c'est elle qui dira lesquelles de ses raies sont
             // ses propres harmoniques. `--sans-carte-basse` l'écarte, pour mesurer ce
             // qu'elle change.
-            if !arguments.contains("--sans-carte-basse"),
-               let file = try? StemStore.combined([.bass], for: fingerprint) {
-                basseSeule = try? AudioSource.load(file)
+            if !arguments.contains("--sans-carte-basse") {
+                basseSeule = AudioSource(url: source.url, sampleRate: banque.sampleRate,
+                                         frameCount: banque.frameCount,
+                                         mono: banque.melangeMono([.bass]),
+                                         fingerprint: fingerprint)
             }
         }
 

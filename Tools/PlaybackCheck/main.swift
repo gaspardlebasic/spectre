@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import SpectreCore
+import SpectreMac
 
 // Vérification de la chaîne de lecture, en rendu hors ligne : aucun périphérique
 // audio, donc reproductible partout.
@@ -259,6 +260,118 @@ check("une note retirée de l'accord s'en va vraiment",
 check("et elle s'en va sans claquer",
       biggestStep(dropped[...]) < 0.02,
       String(format: "plus grand écart entre deux échantillons %.4f", biggestStep(dropped[...])))
+
+// MARK: - La somme des pistes, au moment où le son sort
+
+// Les combinaisons ne sont plus des fichiers : le fil audio somme les pistes cochées
+// à chaque bloc, depuis la banque en mémoire. C'est le mélangeur du lecteur qui est
+// monté ici — pas une copie —, dans le même rendu hors ligne : ce qui se vérifie, ce
+// sont les échantillons qu'entendra vraiment quelqu'un qui décoche une piste.
+
+print("")
+print("=== La somme des pistes en mémoire ===")
+
+let frequenceBanque = StemStore.stemSampleRate
+let imagesBanque = 4096
+/// Une piste par voie, chacune à sa propre fréquence : la somme se reconnaît alors
+/// note par note, et une piste qui sort de la mauvaise case s'entend tout de suite.
+var pistesDEssai = [Stem: [[Float]]]()
+let tons: [Stem: Double] = [.drums: 110, .bass: 220, .other: 440, .vocals: 880]
+for piste in Stem.separated {
+    let f = tons[piste] ?? 100
+    let canal = (0..<imagesBanque).map { i in
+        Float(0.2 * sin(2 * .pi * f * Double(i) / frequenceBanque))
+    }
+    // Le canal droit décalé : un mélangeur qui confondrait les canaux se verrait.
+    pistesDEssai[piste] = [canal, canal.map { -$0 }]
+}
+let banque = BanqueDePistes(empreinte: "essai", sampleRate: frequenceBanque,
+                            pistes: &pistesDEssai)!
+
+/// Rend `images` images de la banque à travers le mélangeur du lecteur, hors ligne.
+func rendreLaBanque(_ gardées: Set<Stem>, images: Int,
+                    boucle: (Int64, Int64)? = nil) -> [[Float]] {
+    let source = SourceDeBanque()
+    source.installer(banque: banque, masque: banque.masque(gardées))
+    source.boucle(boucle)
+    source.jouer(true)
+
+    let format = AVAudioFormat(standardFormatWithSampleRate: frequenceBanque, channels: 2)!
+    let engine = AVAudioEngine()
+    let noeud = source.noeudDeRendu(format: format)
+    engine.attach(noeud)
+    engine.connect(noeud, to: engine.mainMixerNode, format: format)
+    try! engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 512)
+    try! engine.start()
+    defer { engine.stop(); source.liberer() }
+
+    var sortie = [[Float]](repeating: [], count: 2)
+    let tampon = AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat,
+                                  frameCapacity: 512)!
+    var rendues = 0
+    while rendues < images {
+        let combien = AVAudioFrameCount(min(512, images - rendues))
+        guard (try? engine.renderOffline(combien, to: tampon)) == .success else { break }
+        let n = Int(tampon.frameLength)
+        for c in 0..<2 {
+            sortie[c].append(contentsOf:
+                UnsafeBufferPointer(start: tampon.floatChannelData![c], count: n))
+        }
+        rendues += n
+    }
+    return sortie
+}
+
+func ecartMax(_ a: [Float], _ b: [Float]) -> Float {
+    zip(a, b).map { abs($0 - $1) }.max() ?? 1
+}
+
+let attenduTout = banque.melangeStereo(Set(Stem.separated))
+let renduTout = rendreLaBanque(Set(Stem.separated), images: 2048)
+check("tout coché rend la somme des quatre pistes",
+      ecartMax(renduTout[0], Array(attenduTout[0].prefix(renduTout[0].count))) < 1e-6,
+      String(format: "écart %.1e", ecartMax(renduTout[0],
+                                            Array(attenduTout[0].prefix(renduTout[0].count)))))
+check("et le canal droit reste le canal droit",
+      ecartMax(renduTout[1], Array(attenduTout[1].prefix(renduTout[1].count))) < 1e-6,
+      String(format: "écart %.1e", ecartMax(renduTout[1],
+                                            Array(attenduTout[1].prefix(renduTout[1].count)))))
+
+let sansVoix: Set<Stem> = [.drums, .bass, .other]
+let attenduSansVoix = banque.melangeStereo(sansVoix)
+let renduSansVoix = rendreLaBanque(sansVoix, images: 2048)
+check("décocher une piste la retire vraiment du son",
+      ecartMax(renduSansVoix[0], Array(attenduSansVoix[0].prefix(renduSansVoix[0].count))) < 1e-6,
+      String(format: "écart %.1e",
+             ecartMax(renduSansVoix[0], Array(attenduSansVoix[0].prefix(renduSansVoix[0].count)))))
+check("et ce n'est pas le même son qu'avec elle",
+      ecartMax(renduSansVoix[0], Array(renduTout[0].prefix(renduSansVoix[0].count))) > 0.01,
+      "les deux rendus diffèrent")
+
+let uneSeule = rendreLaBanque([.bass], images: 1024)
+let attenduBasse = banque.melangeStereo([.bass])
+check("une piste seule est elle-même",
+      ecartMax(uneSeule[0], Array(attenduBasse[0].prefix(uneSeule[0].count))) < 1e-6,
+      String(format: "écart %.1e",
+             ecartMax(uneSeule[0], Array(attenduBasse[0].prefix(uneSeule[0].count)))))
+
+let rien = rendreLaBanque([], images: 512)
+check("rien de coché ne rend que du silence",
+      rien[0].allSatisfy { $0 == 0 }, "silence")
+
+// La boucle est tenue par le fil audio lui-même : elle doit repartir à son début
+// sans un trou ni une image de trop.
+let bouclé = rendreLaBanque(Set(Stem.separated), images: 1536, boucle: (0, 512))
+var tourJuste = true
+for i in 512..<1536 where abs(bouclé[0][i] - bouclé[0][i % 512]) > 1e-6 { tourJuste = false }
+check("la boucle repart exactement à son début", tourJuste,
+      "trois tours de 512 images identiques")
+
+// La fin du morceau : du silence, et pas une relecture depuis le début.
+let jusquAuBout = rendreLaBanque(Set(Stem.separated), images: imagesBanque + 512)
+check("la fin du morceau est du silence, pas un retour au début",
+      jusquAuBout[0][imagesBanque...].allSatisfy { $0 == 0 },
+      "\(jusquAuBout[0].count - imagesBanque) images de silence")
 
 print("")
 if failures == 0 {

@@ -156,16 +156,33 @@ print()
 print("=== Séparation ===")
 var seen: [Double] = []
 var done = false
+var rangé = false
+var banqueRendue: BanqueDePistes?
 let job = SeparationJob()
 job.run(fileAt: sourceFile, fingerprint: fingerprint, separator: BandSeparator(),
         progress: { seen.append($0.fraction) },
         completion: { result in
-            check((try? result.get()) != nil, "la séparation aboutit")
+            banqueRendue = try? result.get()
+            check(banqueRendue != nil, "la séparation aboutit")
+            // Les pistes sont rendues **avant** d'être écrites : c'est tout l'objet du
+            // découpage, et le seul contrôle qui le prouve depuis l'extérieur.
+            check(!StemStore.isSeparated(fingerprint),
+                  "les pistes sont rendues avant d'être sur le disque")
             done = true
+        },
+        stored: { erreur in
+            check(erreur == nil, "le rangement en fond aboutit",
+                  erreur?.localizedDescription ?? "")
+            rangé = true
         })
 while !done { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+while !rangé { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
 
-check(StemStore.isSeparated(fingerprint), "les quatre pistes sont sur le disque")
+check(StemStore.isSeparated(fingerprint), "les quatre pistes finissent sur le disque")
+if let banqueRendue {
+    check(banqueRendue.complete, "la banque porte les quatre pistes")
+    check(banqueRendue.empreinte == fingerprint, "et sait de quel morceau elle vient")
+}
 check(seen.count > 4 && seen == seen.sorted(), "l'avancement progresse sans reculer",
       "\(seen.count) relevés")
 check(seen.allSatisfy { $0 >= 0 && $0 <= 1 }, "l'avancement reste entre 0 et 1")
@@ -181,34 +198,61 @@ if let bass = StemStore.url(.bass, for: fingerprint),
     check(false, "une piste se relit comme un morceau", "illisible")
 }
 
-// MARK: - Combinaisons
+// MARK: - La banque
 
 print()
-print("=== Combinaisons ===")
-if let melange = try? StemStore.combined([.bass, .drums], for: fingerprint),
-   let somme = try? StemStore.readChannels(from: melange),
+print("=== La banque en mémoire ===")
+if let montée = try? StemStore.banque(pour: fingerprint),
    let basse = StemStore.url(.bass, for: fingerprint),
    let batterie = StemStore.url(.drums, for: fingerprint),
    let a = try? StemStore.readChannels(from: basse),
    let b = try? StemStore.readChannels(from: batterie) {
+    check(montée.complete, "les quatre pistes remontent en mémoire")
+    check(abs(montée.frameCount - frames) <= 1, "la longueur est conservée",
+          "\(montée.frameCount) contre \(frames)")
+    check(montée.sampleRate == rate, "la fréquence aussi")
+
+    let somme = montée.melangeStereo([.bass, .drums])
     let attendu = zip(a.channels[0], b.channels[0]).map(+)
-    let ecart = zip(somme.channels[0], attendu).map { abs($0 - $1) }.max() ?? 1
+    let ecart = zip(somme[0], attendu).map { abs($0 - $1) }.max() ?? 1
     check(ecart < 1e-6, "deux pistes ensemble donnent leur somme",
           String(format: "écart maximal %.1e", ecart))
-    check(melange.lastPathComponent == "bass+drums.flac",
-          "le nom de la combinaison est trié", melange.lastPathComponent)
-    // Deuxième appel : le fichier existe déjà et doit être rendu tel quel.
-    let encore = try? StemStore.combined([.drums, .bass], for: fingerprint)
-    check(encore == melange, "l'ordre des clics ne fabrique pas deux fichiers")
+
+    // Le mono est la **moyenne** des canaux, comme celui du décodeur : sommer les
+    // rendrait six décibels plus haut que le mixage dont ils sortent, et le contraste
+    // sauterait à chaque bascule.
+    let mono = montée.melangeMono([.bass])
+    let attenduMono = a.channels.count == 1
+        ? a.channels[0]
+        : (0..<a.channels[0].count).map { i in
+            a.channels.reduce(Float(0)) { $0 + $1[i] } / Float(a.channels.count)
+        }
+    let ecartMono = zip(mono, attenduMono).map { abs($0 - $1) }.max() ?? 1
+    check(ecartMono < 1e-6, "le mono moyenne les canaux",
+          String(format: "écart maximal %.1e", ecartMono))
+
+    // Le masque est ce qui traverse la frontière du fil audio : deux sélections
+    // différentes ne doivent jamais donner le même mot.
+    check(montée.masque([.bass]) != montée.masque([.drums]),
+          "le masque distingue les pistes")
+    check(montée.masque(Set(Stem.separated)) == (1 << UInt32(montée.ordre.count)) - 1,
+          "tout coché allume tous les bits")
+    check(montée.masque([]) == 0, "rien de coché n'allume rien")
+    check(montée.melangeMono([]).isEmpty, "une sélection vide ne rend aucun son")
 } else {
-    check(false, "deux pistes ensemble donnent leur somme", "combinaison impossible")
+    check(false, "les quatre pistes remontent en mémoire", "banque impossible")
 }
-if let seule = try? StemStore.combined([.vocals], for: fingerprint) {
-    check(seule.lastPathComponent == "vocals.flac",
-          "une piste seule n'est pas recopiée", seule.lastPathComponent)
+
+// Les sommes d'hier — un fichier par combinaison — n'ont plus lieu d'être, et le
+// ménage doit les emporter : elles pesaient soixante pour cent du cache.
+if let dossier = StemStore.folder(for: fingerprint) {
+    let vieille = dossier.appendingPathComponent("bass+drums.flac")
+    try? Data(repeating: 0, count: 4096).write(to: vieille)   // une survivante d'hier
+    StemStore.pruneCache(keeping: fingerprint, limit: Int.max)
+    check(!FileManager.default.fileExists(atPath: vieille.path),
+          "le ménage emporte les anciennes combinaisons")
+    check(StemStore.isSeparated(fingerprint), "sans toucher aux quatre pistes")
 }
-check((try? StemStore.combined([], for: fingerprint)) ?? nil == nil,
-      "une sélection vide ne désigne aucun fichier")
 
 // MARK: - Annulation
 
@@ -224,7 +268,8 @@ cancellable.run(fileAt: sourceFile, fingerprint: fingerprint,
                 completion: { result in
                     if case .failure(let error) = result { cancelledOutcome = error }
                     done = true
-                })
+                },
+                stored: { _ in })
 RunLoop.main.run(until: Date().addingTimeInterval(0.05))
 cancellable.cancel()
 while !done { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
@@ -243,7 +288,8 @@ SeparationJob().run(fileAt: sourceFile, fingerprint: fingerprint,
                     completion: { result in
                         if case .success = result { check(false, "une panne doit échouer") }
                         done = true
-                    })
+                    },
+                    stored: { _ in })
 while !done { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
 check(!StemStore.isSeparated(fingerprint),
       "une panne ne laisse pas un jeu de pistes incomplet")
@@ -325,7 +371,8 @@ done = false
 SeparationJob().run(fileAt: source48, fingerprint: empreinte48,
                     separator: ResamplingSeparator(outputRate: 44100),
                     progress: { _ in },
-                    completion: { _ in done = true })
+                    completion: { _ in },
+                    stored: { _ in done = true })
 while !done { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
 
 if let piste = StemStore.url(.drums, for: empreinte48),

@@ -50,6 +50,7 @@ reste, et les pièges déjà payés.
 | `.\logo.ps1` | Refabrique `Resources\Spectre.ico` à partir du `.icns`, et la ressource que l'exécutable porte. |
 | `./logo.sh` | Refabrique l'icône. |
 | `swift build -c release` | Compile tout, sans assembler le paquet. |
+| `Chrono morceau.mp3` | Chronomètre l'ouverture et la séparation étape par étape (`Tools/Chrono`). Travaille dans un rangement à part : `SPECTRE_RANGEMENT=/tmp/mesure SPECTRE_MODELE=$PWD/Resources/htdemucs.onnx`. |
 
 Xcode n'est pas nécessaire ; SwiftPM suffit. Il faut **macOS 26 ou plus récent** :
 l'interface est bâtie sur Liquid Glass, qui n'existe pas avant, et le SDK 26 est

@@ -34,7 +34,7 @@ struct Batterie {
         // relevé du mixage, mais ce relevé-là est approximatif et sera remplacé dans
         // la minute par celui de la piste de batterie isolée : l'afficher reviendrait
         // à faire lire deux fois deux rythmes différents.
-        if modele.separating == nil {
+        if !modele.calculEnCours {
             for voie in DrumVoice.allCases {
                 courbe(voie)
                 coups(voie)

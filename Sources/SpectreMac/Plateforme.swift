@@ -79,8 +79,12 @@ public final class RangementApple: ServiceDeSeparation {
         StemStore.url(piste, for: empreinte)
     }
 
-    public func urlCombinee(_ pistes: Set<Stem>, empreinte: String) throws -> URL? {
-        try StemStore.combined(pistes, for: empreinte)
+    public func chargerLesPistes(empreinte: String,
+                                 fin: @escaping (BanqueDePistes?) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let banque = try? StemStore.banque(pour: empreinte)
+            DispatchQueue.main.async { fin(banque) }
+        }
     }
 
     public func oublierLesPistes(empreinte: String) {
@@ -93,11 +97,12 @@ public final class RangementApple: ServiceDeSeparation {
 
     public func separer(fichier: URL, empreinte: String,
                         avancement: @escaping (SeparationProgress) -> Void,
-                        fin: @escaping (Result<Void, Error>) -> Void) -> TravailAnnulable {
+                        fin: @escaping (Result<BanqueDePistes, Error>) -> Void,
+                        rangement: @escaping (Error?) -> Void) -> TravailAnnulable {
         let travail = SeparationJob()
         travail.run(fileAt: fichier, fingerprint: empreinte,
                     separator: DemucsSeparator(),
-                    progress: avancement, completion: fin)
+                    progress: avancement, completion: fin, stored: rangement)
         return travail
     }
 }
