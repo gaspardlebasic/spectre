@@ -51,6 +51,7 @@ enum GlisserDeBoucle {
 final class Gestes {
     private let modele: AppModel
     private let fenetre: Fenetre
+    private let panneau: Panneau
     private var glisser: GlisserDeBoucle?
     private var suitLaSouris = false
     private var dernierClic = 0.0
@@ -60,9 +61,23 @@ final class Gestes {
     /// depuis quand on attend une image.
     var mesures: Mesures?
 
-    init(modele: AppModel, fenetre: Fenetre) {
+    init(modele: AppModel, fenetre: Fenetre, panneau: Panneau) {
         self.modele = modele
         self.fenetre = fenetre
+        self.panneau = panneau
+    }
+
+    /// Hauteur que le panneau peut occuper : la fenêtre moins la barre d'état, qu'il
+    /// ne recouvre pas — c'est là que se lit ce que le modèle a à dire, y compris
+    /// pendant qu'on tourne un réglage.
+    private var hauteurUtile: Double {
+        max(fenetre.taillePoints.hauteur - hauteurDeLaBarre, 80)
+    }
+
+    /// Vrai quand ce point tombe dans le panneau ouvert.
+    private func dansLePanneau(_ p: CGPoint) -> Bool {
+        panneau.contient(p, largeurFenetre: fenetre.taillePoints.largeur,
+                         hauteurUtile: hauteurUtile)
     }
 
     /// Le point sous le curseur, **en points depuis le coin haut-gauche** — comme
@@ -85,6 +100,8 @@ final class Gestes {
         case WM_MOUSEMOVE:       sourisDeplacee(w, l); return true
         case WM_LBUTTONUP:       boutonRelache(l); return true
         case WM_MOUSELEAVE:      sourisSortie(); return true
+        case WM_RBUTTONUP:       menu(l); return true
+        case WM_COMMAND:         commandeDuMenu = motBas(UInt64(w)); return true
         case WM_KEYDOWN:         return touche(w)
         default:                 return false
         }
@@ -102,6 +119,14 @@ final class Gestes {
         let y = Double(p.y) / fenetre.echelle
 
         let crans = Double(Int16(truncatingIfNeeded: motHaut(UInt64(w)))) / 120
+
+        // Le panneau défile pour lui-même quand la molette le survole. Sans cela, la
+        // liste des réglages serait la seule chose de la fenêtre qu'on ne pourrait
+        // pas faire défiler — et l'image, elle, zoomerait sous un panneau immobile.
+        if !horizontale, dansLePanneau(CGPoint(x: x, y: y)) {
+            panneau.defiler(crans * 48)
+            return
+        }
 
         // Combien de lignes vaut un cran, d'après les réglages de l'utilisateur.
         // Une valeur en dur ferait défiler trop vite chez qui a réglé finement, et
@@ -155,6 +180,17 @@ final class Gestes {
 
     private func boutonEnfonce(_ l: LPARAM) {
         let p = point(l)
+
+        // Le panneau d'abord : un clic qui visait un curseur ne doit pas déplacer la
+        // tête de lecture par-dessous. La souris est capturée comme pour un glisser
+        // de boucle, faute de quoi tirer un curseur jusqu'au bord du panneau le
+        // lâcherait en chemin.
+        if dansLePanneau(p) {
+            if let poignee = fenetre.poignee { SetCapture(poignee) }
+            panneau.appuiA(p)
+            return
+        }
+
         modele.cancelTurn()
 
         // Le double-clic dans la réglette efface la boucle. Windows sait le dire
@@ -190,6 +226,18 @@ final class Gestes {
     private func sourisDeplacee(_ w: WPARAM, _ l: LPARAM) {
         let p = point(l)
         demanderLeMessageDeSortie()
+        panneau.sourisA(p)
+
+        // Le panneau est posé **sur** l'image : sans ce garde-fou, viser un curseur
+        // ferait afficher par-dessous la note et la fréquence du point qu'il cache.
+        // C'est le même `pointerOverControls` que la vue macOS pose au survol de ses
+        // commandes flottantes.
+        let survole = dansLePanneau(p) || panneau.glisseEnCours
+        if modele.pointerOverControls != survole { modele.pointerOverControls = survole }
+        if survole {
+            SetCursor(LoadCursorW(nil, curseurFleche))
+            return
+        }
 
         if w & WPARAM(MK_LBUTTON) != 0 {
             modele.hover = p
@@ -220,14 +268,18 @@ final class Gestes {
 
     private func boutonRelache(_ l: LPARAM) {
         ReleaseCapture()
+        let tenaitUnReglage = panneau.glisseEnCours
+        panneau.relache()
         glisser = nil
         modele.endProbe()
+        guard !tenaitUnReglage else { return }
         curseur(point(l))
     }
 
     private func sourisSortie() {
         suitLaSouris = false
         modele.hover = nil
+        panneau.sourisPartie()
         SetCursor(LoadCursorW(nil, curseurFleche))
     }
 
@@ -254,10 +306,54 @@ final class Gestes {
         }
     }
 
+    // MARK: Le menu du clic droit
+
+    /// Ce que le menu vient de faire choisir. Retenu plutôt qu'exécuté sur-le-champ :
+    /// `WM_COMMAND` arrive **pendant** la boucle modale du menu, et ouvrir un
+    /// dialogue de fichiers là-dedans emboîterait deux boucles modales.
+    private var commandeDuMenu: Int?
+
+    private func menu(_ l: LPARAM) {
+        guard let poignee = fenetre.poignee else { return }
+        var p = POINT(x: LONG(positionX(l)), y: LONG(positionY(l)))
+        _ = ClientToScreen(poignee, &p)
+
+        commandeDuMenu = nil
+        MenuContextuel(recents: modele.recentFiles, panneauOuvert: panneau.ouvert)
+            .montrer(dans: poignee, a: p)
+        guard let choix = commandeDuMenu else { return }
+        commandeDuMenu = nil
+
+        switch choix {
+        case CommandeDuMenu.ouvrir:          modele.openPanel()
+        case CommandeDuMenu.reglages:        basculerLePanneau()
+        case CommandeDuMenu.viderLesRecents: modele.clearRecentFiles()
+        case CommandeDuMenu.quitter:
+            // Par `WM_CLOSE` et non `PostQuitMessage` : c'est le chemin qui passe
+            // par `fenetrePeutSeFermer`, donc par l'écriture de la session. Quitter
+            // par le menu ne doit pas coûter plus que quitter par la croix.
+            _ = PostMessageW(poignee, UINT(WM_CLOSE), 0, 0)
+        case CommandeDuMenu.premierRecent...:
+            let rang = choix - CommandeDuMenu.premierRecent
+            let recents = modele.recentFiles
+            guard rang < recents.count else { return }
+            modele.open(recents[rang])
+        default:
+            break
+        }
+    }
+
     // MARK: Le clavier
 
     private func touche(_ w: WPARAM) -> Bool {
         let majuscule = self.majuscule
+        // Ctrl+O est le raccourci d'ouverture de toutes les applications Windows ;
+        // il passe donc avant tout le reste, y compris le « O » nu qui n'est lié à
+        // rien.
+        if controle, Int32(w) == 0x4F {
+            modele.openPanel()
+            return true
+        }
         switch Int32(w) {
         case VK_SPACE:  modele.togglePlayback()
         case VK_LEFT:   modele.seek(to: modele.playhead - (majuscule ? 5 : 1))
@@ -272,8 +368,20 @@ final class Gestes {
         case 0x4C:      modele.loopEnabled.toggle()                // L
         case 0x42:      modele.snapLoopToBars()                    // B
         case 0x31:      modele.setDownbeatAtPlayhead()             // 1
+        case 0x52:      basculerLePanneau()                        // R, comme Réglages
         default:        return false
         }
         return true
+    }
+
+    /// Ouvre ou referme le panneau des réglages.
+    ///
+    /// `pointerOverControls` est remis d'aplomb ici et pas seulement au mouvement
+    /// suivant : refermer le panneau au clavier, curseur immobile là où il était,
+    /// laisserait sinon l'image muette — plus de note survolée, plus de raie
+    /// désignée — jusqu'à ce qu'on bouge la souris, ce qui se lit comme une panne.
+    func basculerLePanneau() {
+        panneau.ouvert.toggle()
+        if !panneau.ouvert { modele.pointerOverControls = false }
     }
 }

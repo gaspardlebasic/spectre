@@ -109,21 +109,35 @@ public struct RecentsWindows: DocumentsRecents {
 
 // MARK: - Les réglages
 
-/// Les réglages qui valent pour l'application entière.
+/// Les réglages qui valent pour l'application entière, et non pour un morceau.
 ///
-/// Rangés en JSON dans `%APPDATA%\Spectre`, et non dans la base de registres :
-/// `ChordSettings` sait déjà s'encoder, le dossier est celui que Windows destine
-/// aux réglages d'application, et un fichier se lit quand on cherche pourquoi un
-/// réglage ne revient pas.
+/// Rangés en JSON dans le dossier de `Storage`, et non dans la base de registres :
+/// `ChordSettings` sait déjà s'encoder, c'est là que vivent déjà les sessions et la
+/// liste des morceaux récents, et un fichier se lit quand on cherche pourquoi un
+/// réglage ne revient pas. Le pendant macOS, lui, passe par `UserDefaults` — ce que
+/// le protocole a justement pour rôle de ne pas faire savoir au modèle.
 ///
-/// L'écriture viendra avec l'étape 8, qui porte les sessions ; pour l'instant les
-/// valeurs sont lues si le fichier existe, et sont celles d'origine sinon.
+/// ─────────────────────────────────────────────────────────────────────────────
+/// POURQUOI L'ÉCRITURE EST DIFFÉRÉE
+///
+/// Tirer un curseur change la valeur à chaque image, soit cent vingt fois par
+/// seconde. Écrire le fichier à chaque fois ferait payer un aller-retour au disque
+/// pour un réglage qu'on est encore en train de chercher — et le laisserait à
+/// moitié écrit si la fenêtre se fermait au mauvais moment.
+///
+/// On marque donc, et l'on écrit quand la valeur a cessé de bouger. C'est
+/// exactement ce que fait `AppModel.autosave` pour les sessions, et pour la même
+/// raison. `enregistrerMaintenant` court-circuite l'attente à la fermeture.
+/// ─────────────────────────────────────────────────────────────────────────────
 public final class PreferencesWindows: PreferencesGlobales {
     public static let partagees = PreferencesWindows()
 
-    public private(set) var reassignment = true
-    public private(set) var chords = ChordSettings()
-    public private(set) var hueOrigin = 0
+    public var reassignment = true { didSet { marquer(reassignment != oldValue) } }
+    public var chords = ChordSettings() { didSet { marquer(chords != oldValue) } }
+    public var hueOrigin = 0 { didSet { marquer(hueOrigin != oldValue) } }
+
+    /// Depuis quand un réglage a changé sans avoir été écrit. `nil` : rien à écrire.
+    private var enAttenteDepuis: Double?
 
     private init() {
         guard let donnees = try? Data(contentsOf: Self.fichier),
@@ -132,26 +146,70 @@ public final class PreferencesWindows: PreferencesGlobales {
         reassignment = lues.reassignment
         chords = lues.chords
         hueOrigin = lues.hueOrigin
+        // Relire n'est pas modifier : sans cela, le premier tour de boucle
+        // réécrirait le fichier avec ce qu'il vient d'en sortir.
+        enAttenteDepuis = nil
     }
 
+    private func marquer(_ aChange: Bool) {
+        guard aChange else { return }
+        if enAttenteDepuis == nil { enAttenteDepuis = Horloge.maintenant() }
+    }
+
+    /// À appeler une fois par image. Écrit quand plus rien ne bouge depuis une
+    /// demi-seconde.
+    public func enregistrerSiBesoin() {
+        guard let depuis = enAttenteDepuis,
+              Horloge.maintenant() - depuis > 0.5 else { return }
+        enregistrerMaintenant()
+    }
+
+    /// Écrit sans attendre — la fenêtre se ferme, et quitter ne doit rien coûter.
+    public func enregistrerMaintenant() {
+        guard enAttenteDepuis != nil else { return }
+        enAttenteDepuis = nil
+        let contenu = Enregistrement(reassignment: reassignment, chords: chords,
+                                     hueOrigin: hueOrigin)
+        let encodeur = JSONEncoder()
+        // Lisible : ce fichier est le seul endroit où l'on peut aller voir pourquoi
+        // un réglage ne revient pas, et une ligne unique de mille caractères ne s'y
+        // prête pas.
+        encodeur.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let donnees = try? encodeur.encode(contenu) else { return }
+        try? FileManager.default.createDirectory(at: Self.dossier,
+                                                 withIntermediateDirectories: true)
+        try? donnees.write(to: Self.fichier, options: .atomic)
+    }
+
+    /// Décodage tolérant aux champs manquants, pour la raison qui vaut déjà dans
+    /// `DisplaySettings` : un réglage ajouté ne doit pas effacer en silence tous
+    /// ceux qui étaient déjà écrits.
     private struct Enregistrement: Codable {
         var reassignment: Bool
         var chords: ChordSettings
         var hueOrigin: Int
-    }
 
-    static var dossier: URL {
-        // `SPECTRE_RANGEMENT` détourne le rangement vers un dossier à soi : c'est ce
-        // qui permet à un harnais de ne pas écraser les réglages de l'utilisateur,
-        // et `check.sh` comme `essai.sh` le posent déjà sur macOS.
-        if let impose = ProcessInfo.processInfo.environment["SPECTRE_RANGEMENT"] {
-            return URL(fileURLWithPath: impose)
+        init(reassignment: Bool, chords: ChordSettings, hueOrigin: Int) {
+            self.reassignment = reassignment
+            self.chords = chords
+            self.hueOrigin = hueOrigin
         }
-        let base = FileManager.default.urls(for: .applicationSupportDirectory,
-                                            in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        return base.appendingPathComponent("Spectre", isDirectory: true)
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            reassignment = try c.decodeIfPresent(Bool.self, forKey: .reassignment) ?? true
+            chords = try c.decodeIfPresent(ChordSettings.self, forKey: .chords)
+                ?? ChordSettings()
+            hueOrigin = try c.decodeIfPresent(Int.self, forKey: .hueOrigin) ?? 0
+        }
     }
 
-    private static var fichier: URL { dossier.appendingPathComponent("reglages.json") }
+    /// Le même dossier que les sessions et les morceaux récents — donc le même
+    /// `SPECTRE_RANGEMENT`, qui est ce par quoi un harnais évite d'écraser les
+    /// réglages de l'utilisateur.
+    static var dossier: URL {
+        Storage.root ?? URL(fileURLWithPath: NSTemporaryDirectory())
+    }
+
+    static var fichier: URL { dossier.appendingPathComponent("reglages.json") }
 }

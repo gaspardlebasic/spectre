@@ -722,8 +722,9 @@ images, et qu'elles aient été montrées.
 
 ## Étape 7 — l'interface Windows 11
 
-**Faite pour la frise, entamée pour le reste** — et la limite est dite plus bas
-plutôt que passée sous silence.
+**Faite.** Elle s'était arrêtée à la frise, ce que la section « ce qui n'était pas
+là » disait plus bas plutôt que de le passer sous silence ; l'étape 8 a porté le
+reste.
 
 La fenêtre porte la réglette et ses horodatages, la grille métrique avec ses
 numéros de mesure, les repères d'octave, la boucle et sa durée, la tête de lecture,
@@ -816,24 +817,185 @@ donc deux : celle qu'on regarde, et celle qu'on mesure. Les nombres de la second
 sont **inchangés au centième** depuis l'étape 3, ce qui est la preuve que
 l'habillage n'a pas dérangé l'image.
 
-### Ce qui n'est pas là, et qu'il ne faut pas croire fait
+L'étape 8 en a ajouté une troisième, `--reglages`, qui ne se mesure pas non plus :
+un panneau de commandes n'a aucun nombre à rendre, et c'est le seul moyen d'en juger
+l'allure sans être devant la machine.
 
-Sur le Mac, `Controls.swift` pose des commandes flottantes en verre — curseurs de
-vitesse et de transposition, sélecteur de pistes, boutons de palette — et
-`Preferences.swift` un panneau de réglages entier : quarante-huit kilo-octets de
-SwiftUI à eux deux. **Rien de tout cela n'est porté.**
+### Ce qui n'était pas là, et qui l'est depuis l'étape 8
 
-Ce qui est là est ce sans quoi l'application ne se pilote pas du tout : la barre du
-bas dit où en est la lecture, à quelle vitesse, dans quel ton, à quel tempo, et ce
-que le modèle a à dire. Tout le reste passe par le clavier, dont la barre rappelle
-les touches — parce qu'une interface qui cache ses raccourcis n'en a pas.
+Au moment où cette étape s'est arrêtée, `Controls.swift` et `Preferences.swift` —
+quarante-huit kilo-octets de SwiftUI à eux deux — n'avaient aucun pendant : la
+fenêtre montrait tout et ne réglait rien. Le porter était une étape à soi ; c'est
+l'étape 8 qui l'a faite.
 
-Le neutre ne s'affiche pas : une barre qui répète « ×1,00 +0 » à longueur de journée
-apprend à ne plus être lue, et c'est précisément le jour où l'on a oublié un ralenti
-qu'on aurait voulu la voir.
+Ce qui reste de l'étape 7 dans la barre du bas, en revanche, tient toujours : elle
+dit où en est la lecture, à quelle vitesse, dans quel ton, à quel tempo, et ce que
+le modèle a à dire — et **le neutre ne s'y affiche pas**. Une barre qui répète
+« ×1,00 +0 » à longueur de journée apprend à ne plus être lue, et c'est précisément
+le jour où l'on a oublié un ralenti qu'on aurait voulu la voir.
 
-Porter les commandes et les préférences est une étape à soi. L'annoncer faite ici
-serait mentir sur ce que la fenêtre montre.
+## Étape 8 — sessions et préférences
+
+**Faite.** Elle devait être courte — les sessions marchaient déjà — et elle ne l'a
+pas été, parce qu'elle a fini l'étape 7 : la fenêtre règle maintenant ce qu'elle
+montre.
+
+### Les sessions marchaient, mais rien ne le disait
+
+`SessionStore`, `RecentFiles` et `Storage` sont dans le noyau, portables, et
+honorent `SPECTRE_RANGEMENT`. Ils tournaient donc sous Windows depuis l'étape 0 —
+sans que rien ne l'ait jamais vérifié. « Ça compile, donc c'est porté » est
+exactement la phrase que ce document existe pour ne pas écrire.
+
+`Tools/SessionCheck` est donc écrit, et **portable** : il tourne sur le Mac, sous
+Windows et sur le coureur Linux. Il pose lui-même son `SPECTRE_RANGEMENT` — un
+harnais des sessions qui écrirait dans les vraies serait le pire de tous — puis
+mesure l'empreinte, l'aller-retour d'une session complète, la liste des récents et
+son plafond.
+
+**Il a trouvé un défaut le jour où il a tourné.** `DisplaySettings` et
+`ChordSettings` portaient depuis longtemps un décodage tolérant aux champs
+manquants, avec le commentaire qui dit pourquoi : `SessionStore.load` avale l'échec
+par un `try?`, si bien qu'un réglage ajouté rendrait illisibles **toutes** les
+sessions déjà écrites — cadrage, contraste, boucle, grille remis à zéro pour tous
+les morceaux, sans un mot. Or `FileSession`, qui les *contient*, ne l'avait pas. La
+protection portait sur les pièces et pas sur l'objet. Elle y est maintenant, et
+c'est un défaut de macOS autant que de Windows : le noyau est commun.
+
+Un détail qui coûte une compilation : **`setenv` n'existe pas sous Windows.** C'est
+`SetEnvironmentVariableW` qui écrit dans le bloc que `ProcessInfo` relit. Trois
+lignes, mais c'est le genre de chose qui arrête un harnais « portable » sur la
+plateforme pour laquelle il a été écrit.
+
+### Les réglages s'écrivent enfin, et pas à chaque image
+
+`PreferencesWindows` lisait `reglages.json` sans jamais l'écrire. Il l'écrit
+maintenant dans le dossier de `Storage` — le même que les sessions, donc le même
+`SPECTRE_RANGEMENT` —, en JSON lisible, et avec un décodage tolérant pour la raison
+ci-dessus.
+
+**L'écriture est différée d'une demi-seconde.** Tirer un curseur change la valeur
+cent vingt fois par seconde ; écrire le fichier à chaque fois ferait payer un
+aller-retour au disque pour un réglage qu'on est encore en train de chercher. On
+marque, et l'on écrit quand plus rien ne bouge — exactement ce que fait
+`AppModel.autosave` pour les sessions. `enregistrerMaintenant` court-circuite
+l'attente à la fermeture.
+
+### Un panneau dessiné à la main, et pourquoi
+
+Windows sait faire des curseurs et des cases à cocher : `msctls_trackbar32`,
+`BUTTON`, une fenêtre fille par commande. C'est ce qu'on ferait pour une boîte de
+dialogue, et c'était ici une erreur.
+
+Une fenêtre fille est une surface que Windows compose lui-même, **par-dessus la
+chaîne d'échange** : elle ne peut pas être posée sur le spectrogramme, elle arrive
+avec une image de retard sur ce que le nuanceur vient de dessiner, et elle sort du
+seul tampon que l'application présente — ce qui ferait disparaître les réglages de
+la photographie d'`essai.ps1`, précisément l'instrument qui sert à les regarder.
+
+`Panneau.swift` est donc une petite boîte à outils en **mode immédiat** — curseur,
+bascule, choix en colonne, rangée de segments, boutons, bande de teintes — dessinée
+par le même pinceau que la réglette, dans le même tampon. Elle ne connaît aucun
+réglage : `Commandes.swift` les lui décrit à chaque image, en lisant et en écrivant
+directement dans le modèle. Une hiérarchie de vues avec son propre état demanderait
+de les tenir accordés, et c'est le second cerveau que tout ce portage cherche à ne
+pas fabriquer.
+
+**Un seul panneau, et non deux.** Sur le Mac les commandes flottent sur l'image et
+les préférences vivent dans la fenêtre ⌘, ; le partage y a une raison, macOS *ayant*
+une fenêtre de préférences à une place que tout le monde connaît. Windows n'a pas
+cet endroit. Et la frontière n'est pas celle qu'on croit à l'usage : le contraste
+est un réglage « d'affichage » et la clarté minimale d'une raie un réglage
+« d'accords », alors qu'on les tourne l'un après l'autre en regardant la même image
+bouger. Les séparer obligerait à ouvrir deux choses pour un seul geste.
+
+### Les quatre pièges de l'étape 8
+
+**`dwrite.h` ne sait pas replier un paragraphe par `DrawText`.** Le texte de la
+réglette passe par un rectangle haut de quatre fois la taille de police et centré
+verticalement : parfait pour une ligne, inutilisable pour une explication de six
+lignes dont on ignore la hauteur d'avance. Il a fallu ajouter au pont un
+`spectre_surimpression_paragraphe` qui passe par un `IDWriteTextLayout`, rend la
+hauteur occupée, et sait ne faire que mesurer. Les explications sont la moitié du
+panneau macOS et ne sont pas du remplissage : un curseur nommé « netteté d'une
+raie » ne dit rien de ce qu'il change à l'écran, et un réglage qu'on ne comprend pas
+est un réglage qu'on ne touche pas.
+
+**Un format de texte gardé par police ne suffit plus.** Le pont n'en retenait qu'un
+seul pour chacune des deux polices, ce qui allait tant que la surimpression n'était
+faite que de la réglette et de la barre. Le panneau mêle six tailles, et chaque
+changement refaisait une recherche de fonte — des dizaines par image. Douze couples
+(police, taille) sont désormais gardés.
+
+**Une découpe oubliée fait disparaître l'image entière.** Direct2D abandonne le
+dessin au complet si `PushAxisAlignedClip` et `PopAxisAlignedClip` ne s'apparient
+pas — spectrogramme compris, alors que la surimpression ne l'a pas touché. Le pont
+compte donc ce qu'il a empilé et dépile ce qui traîne avant `EndDraw`, plutôt que de
+faire dépendre l'image d'un appel apparié quelque part dans le dessin.
+
+**Une transparence n'est pas du verre.** Le fond du panneau a d'abord été posé à
+95 % d'opacité, ce qui paraissait prudent. À l'image, les noms d'accords se lisaient
+encore *à travers* : cinq pour cent d'un texte clair sur un fond sombre suffisent à
+le laisser paraître. Sur le Mac, le verre est du **flou**, et le flou efface le
+détail sans effacer la couleur ; sans flou, il n'y a pas de demi-mesure. Le panneau
+est opaque.
+
+### Ce que le clic droit remplace
+
+Une application Windows ordinaire porte « Fichier ▸ Ouvrir » en haut de sa fenêtre.
+Cette bande prendrait en permanence de la place à ce qui est l'objet du travail,
+pour trois commandes qu'on emploie une fois par morceau — et Windows 11 admet cela,
+ses propres applications récentes rangeant leurs commandes derrière un bouton ou un
+clic droit.
+
+Le menu porte donc l'ouverture, les morceaux récents, les réglages et la sortie.
+Un détail : **`TPM_RETURNCMD` est inutilisable depuis Swift**, qui importe
+`TrackPopupMenu` comme rendant un booléen — le numéro choisi se perd. Le menu envoie
+donc son `WM_COMMAND` comme n'importe quel menu, et `Gestes` le retient pour
+l'exécuter **après** la fermeture : ouvrir un dialogue de fichiers depuis l'intérieur
+de la boucle modale du menu emboîterait deux boucles modales.
+
+Deux manques de l'étape 7 se ferment au passage. `Ctrl+O` ouvre un fichier — la
+fenêtre ne savait ouvrir que ce que la ligne de commande lui donnait. Et lancée sans
+fichier, l'application **rouvre le dernier morceau consulté**, comme sur le Mac.
+
+### Le titre suivait le morceau précédent
+
+Il était posé juste après `modele.open(url)`. Or l'ouverture part en tâche de fond
+et rend son résultat par la file principale : le nom n'est pas encore connu à cet
+instant, et la fenêtre portait donc le titre d'avant. Cela ne se voyait pas tant que
+le seul chemin d'ouverture était la ligne de commande, où le titre était « Spectre »
+puis le bon au premier changement suivant. Il est maintenant relevé à chaque image
+et posé quand il change — `SetWindowTextW` fait repeindre la barre de titre, ce
+qu'on ne veut pas cent vingt fois par seconde.
+
+### Comment un panneau se vérifie quand on ne peut pas cliquer dedans
+
+`--reglages` ouvre le panneau au lancement, ce qui donne une **troisième
+photographie** dans `essai.ps1` — celle qu'on regarde pour juger l'allure des
+commandes, comme `fenetre.ppm` sert à juger l'image.
+
+Une photographie ne dit pas si un curseur *répond*. Le geste a donc été posté à la
+fenêtre depuis l'extérieur — molette, appui, relâchement — comme le relevé de
+fluidité poste ses crans de molette. Et cela a coûté un piège qui n'est pas dans le
+code : **Windows convertit les coordonnées des messages de souris entre contextes de
+densité**. Un pilote qui n'est pas conscient de la densité poste `(346, 156)` et la
+fenêtre, elle, reçoit `(692, 312)` ; multiplier soi-même par l'échelle envoie donc
+le clic deux fois trop loin, où il tombe sur le spectrogramme et déplace la tête de
+lecture. Une demi-heure perdue à chercher un défaut de routage qui n'existait pas.
+
+Une fois le geste bien posé : le bouton « Lire » fait partir la lecture, le curseur
+« Vitesse » tiré au quart de son rail donne ×0,56 — la valeur qu'on calcule — la
+barre du bas montre alors son étiquette de ralenti, et un réglage d'accords touché
+en bas du panneau se retrouve dans `reglages.json` après la fermeture, puis revient
+au lancement suivant.
+
+### Ce que le panneau coûte
+
+Rien de mesurable. Trois relevés de six secondes, panneau fermé puis ouvert :
+intervalle médian 8,31 ms contre 8,32 ms, zéro image manquée. C'est le même
+instrument qui avait trouvé les quarante images par seconde perdues par la ligne de
+batterie à l'étape 6 — la question méritait d'être posée, la réponse est non.
 
 ## L'épreuve complète, sous Windows
 
@@ -846,7 +1008,7 @@ serait mentir sur ce que la fenêtre montre.
 ```
 
 Il monte l'environnement de construction lui-même — les trois choses de l'étape 0 —
-construit en release, passe les douze harnais, fabrique le morceau témoin, le fait
+construit en release, passe les treize harnais, fabrique le morceau témoin, le fait
 passer par la ligne de commande **et** par la fenêtre, confronte les deux images, et
 relève la fluidité.
 
@@ -907,8 +1069,8 @@ moins une borne inférieure entre deux essais sur du matériel réel.
 | 4. Le son qui entre | **faite** — Media Foundation seule, et identique au bit près sur le WAV |
 | 5. Le son qui sort | **faite** — WASAPI, et un étireur écrit dans le noyau |
 | 6. Les gestes, et la fluidité | **faite** — et les mesures ont trouvé un défaut |
-| 7. L'interface Windows 11 | **la frise est faite** — reste les commandes et les préférences |
-| 8. Sessions et préférences | à faire — mais elles marchent déjà : voir l'étape 6 |
+| 7. L'interface Windows 11 | **faite** — la frise, les accords, la batterie, la barre |
+| 8. Sessions et préférences | **faite** — un panneau qui règle, et un harnais qui a trouvé un défaut |
 | 9. La séparation | à faire — ONNX Runtime en C, et un WAV multicanal |
 | 10. La distribution | à faire — `build.ps1`, et les bibliothèques d'exécution |
 

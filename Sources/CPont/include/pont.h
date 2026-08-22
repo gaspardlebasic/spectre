@@ -197,6 +197,37 @@ void spectre_surimpression_texte(SpectreRendu *rendu, const uint16_t *texte,
 float spectre_surimpression_largeur_texte(SpectreRendu *rendu, const uint16_t *texte,
                                           float taille, int police);
 
+/// Un paragraphe qui se replie dans `largeur`, et rend la hauteur qu'il occupe.
+///
+/// `y` est ici le **haut** du bloc, et non le milieu d'une ligne : un texte dont on
+/// ignore combien de lignes il fera ne peut pas se centrer sur une ordonnée choisie
+/// avant de l'avoir mesuré.
+///
+/// `dessiner` à zéro se contente de mesurer. Le panneau des réglages s'en sert pour
+/// savoir, avant d'écrire quoi que ce soit, de quelle hauteur avancer.
+float spectre_surimpression_paragraphe(SpectreRendu *rendu, const uint16_t *texte,
+                                       float x, float y, float largeur, float taille,
+                                       uint32_t rvba, int police, int dessiner);
+
+/// Un rectangle aux coins arrondis. `epaisseur` à zéro le remplit, sinon le cerne.
+///
+/// Quatre traits suffisaient tant que la surimpression n'était faite que de
+/// réglettes et de cadres. Le panneau des réglages, lui, est une surface posée sur
+/// l'image, et Windows 11 arrondit tout ce qui flotte : des coins carrés s'y
+/// reconnaissent aussitôt comme une pièce rapportée.
+void spectre_surimpression_arrondi(SpectreRendu *rendu, float x, float y,
+                                   float largeur, float hauteur, float rayon,
+                                   uint32_t rvba, float epaisseur);
+
+/// Restreint le dessin à un rectangle, jusqu'à `spectre_surimpression_recoller`.
+///
+/// C'est ce qui permet à un panneau de défiler : son contenu est dessiné à sa place
+/// réelle, et ce qui sort du cadre est coupé — plutôt que d'avoir à être écarté
+/// commande par commande, ce qui reviendrait à écrire deux fois la mise en page.
+void spectre_surimpression_decouper(SpectreRendu *rendu, float x, float y,
+                                    float largeur, float hauteur);
+void spectre_surimpression_recoller(SpectreRendu *rendu);
+
 /// Exécute ce que le travail de fond a déposé sur `DispatchQueue.main`.
 ///
 /// À appeler une fois par tour de boucle. Voir `file.c` : sans cet appel, une

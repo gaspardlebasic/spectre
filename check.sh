@@ -37,6 +37,13 @@ echo "=== Lecture WAV ==="
 "$BIN/WAVCheck"
 
 echo
+echo "=== Sessions et morceaux récents ==="
+# Ce que l'application retrouve en rouvrant un morceau. Le harnais pose lui-même
+# son `SPECTRE_RANGEMENT` sur un dossier à lui — il écrit et efface des sessions,
+# et c'est bien le dernier à qui l'on confierait celles de l'utilisateur.
+"$BIN/SessionCheck"
+
+echo
 echo "=== Relevé de la batterie ==="
 "$BIN/PercussionCheck"
 

@@ -6,17 +6,18 @@ import SpectreWin
 // La barre du bas : où l'on en est, et ce qui se passe.
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// CE QU'ELLE EST, ET CE QU'ELLE N'EST PAS
+// CE QU'ELLE DIT, ET CE QU'ELLE NE RÈGLE PAS
 //
-// Sur le Mac, `Controls.swift` pose des commandes flottantes en verre — curseurs
-// de vitesse et de transposition, sélecteur de pistes, panneau de préférences —
-// soit vingt-huit kilo-octets de SwiftUI. Rien de tout cela n'est ici : ce serait
-// une étape à soi, et l'annoncer faite serait mentir.
+// Elle ne porte aucune commande, et c'est délibéré : les réglages vivent dans le
+// panneau (`Panneau.swift`, `Reglages.swift`), qu'on déplie et qu'on referme. Une
+// barre qui réglerait quelque chose devrait rester assez haute pour qu'on vise
+// dedans, en permanence, au détriment de l'image — alors qu'on touche un curseur
+// une fois par morceau.
 //
-// Ce qui est ici est ce sans quoi l'application ne se pilote pas du tout : où en
-// est la lecture, à quelle vitesse, dans quel ton, et ce que le modèle a à dire.
-// Tout le reste passe par le clavier, dont la barre rappelle les touches — parce
-// qu'une interface qui cache ses raccourcis n'en a pas.
+// Ce qui est ici est ce qu'on veut savoir **pendant** qu'on travaille : où en est
+// la lecture, à quelle vitesse, dans quel ton, à quel tempo, et ce que le modèle a
+// à dire. Faute de message, elle rappelle les touches — parce qu'une interface qui
+// cache ses raccourcis n'en a pas.
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct Barre {
@@ -80,7 +81,7 @@ struct Barre {
             pinceau.texte(message, x: largeur - 420, y: milieu, largeur: 408,
                           taille: 10, Pinceau.blanc(0.6), alignement: .droite)
         } else {
-            pinceau.texte("espace lire · ⇧glisser boucler · Ctrl molette zoomer · L boucle · B mesures",
+            pinceau.texte("R réglages · espace lire · ⇧glisser boucler · Ctrl molette zoomer · clic droit menu",
                           x: largeur - 480, y: milieu, largeur: 468, taille: 10,
                           Pinceau.blanc(0.32), alignement: .droite)
         }

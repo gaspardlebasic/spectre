@@ -94,9 +94,10 @@ if (-not $construit) { Write-Host "`n$echecs vérification(s) en échec."; exit 
 
 if (-not $Rapide) {
     Etape "Les harnais hors écran"
-    $harnais = @("DSPCheck", "WAVCheck", "AnalysisCheck", "PercussionCheck",
-                 "HarmonyCheck", "FilterCheck", "ChainCheck", "GaplessCheck",
-                 "EtirementCheck", "RenduCheck", "DecodeCheck", "SortieCheck")
+    $harnais = @("DSPCheck", "WAVCheck", "SessionCheck", "AnalysisCheck",
+                 "PercussionCheck", "HarmonyCheck", "FilterCheck", "ChainCheck",
+                 "GaplessCheck", "EtirementCheck", "RenduCheck", "DecodeCheck",
+                 "SortieCheck")
     foreach ($h in $harnais) {
         Push-Location $travail
         try { $sortie = & "$bin\$h.exe" 2>&1 } finally { Pop-Location }
@@ -136,9 +137,15 @@ Etape "La fenêtre"
 # trait de grille. Les deux passent par le même chemin de fenêtre.
 $gpu = Join-Path $travail "fenetre.ppm"
 $nu = Join-Path $travail "fenetre-nue.ppm"
+$reglages = Join-Path $travail "reglages.ppm"
 & "$bin\SpectreWindows.exe" $temoin --photo $gpu 2>$null | Out-Null
 & "$bin\SpectreWindows.exe" $temoin --photo $nu --sans-habillage 2>$null | Out-Null
+# Et une troisième, panneau ouvert. Elle ne se mesure pas — un panneau de réglages
+# n'a aucun nombre à rendre — mais c'est le seul moyen d'en juger l'allure sans
+# être devant la machine, et c'est sur l'allure qu'il se juge.
+& "$bin\SpectreWindows.exe" $temoin --photo $reglages --reglages 2>$null | Out-Null
 Verdict "la fenêtre s'ouvre et rend une image" (Test-Path $gpu) $gpu
+Verdict "le panneau des réglages se dessine" (Test-Path $reglages) $reglages
 
 if (Test-Path $nu) {
     $comparaison = & "$bin\ImageCheck.exe" $nu $cpu 2>&1
@@ -185,6 +192,8 @@ if ($Fluidite -gt 0) {
 Write-Host "`nÀ regarder : $gpu"
 Write-Host "  (le spectrogramme du témoin : huit blocs d'accords, les raies"
 Write-Host "   colorées par classe de hauteur, la batterie en traits verticaux)"
+Write-Host "Et : $reglages"
+Write-Host "  (le panneau des réglages, ouvert sur la section « Lecture »)"
 
 Write-Host ""
 if ($echecs -eq 0) {

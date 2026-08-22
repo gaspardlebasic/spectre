@@ -57,9 +57,8 @@ public struct Pinceau {
                                      couleur, Float(epaisseur))
     }
 
-    /// Un cadre. Direct2D sait dessiner un rectangle arrondi, mais quatre traits
-    /// suffisent ici et évitent d'ajouter une géométrie au pont pour un arrondi de
-    /// deux points que personne ne voit.
+    /// Un cadre à angles droits — celui des raies, de la boucle, des accords.
+    /// Quand il faut des coins arrondis, c'est `arrondi` qu'on demande.
     public func cadre(_ x: Double, _ y: Double, _ largeur: Double, _ hauteur: Double,
                       _ couleur: UInt32, epaisseur: Double = 1, pointille: Bool = false) {
         tracer(x, y, x + largeur, y, couleur, epaisseur: epaisseur, pointille: pointille)
@@ -102,6 +101,46 @@ public struct Pinceau {
                                         Float(largeur), Float(taille), couleur,
                                         police.rawValue, alignement.rawValue)
         }
+    }
+
+    /// Un paragraphe qui se replie dans `largeur`, et rend la hauteur qu'il occupe.
+    ///
+    /// `y` est ici le **haut** du bloc, et non le milieu d'une ligne comme pour
+    /// `texte` : un texte dont on ignore le nombre de lignes ne peut pas se centrer
+    /// sur une ordonnée choisie d'avance. `dessiner: false` se contente de mesurer.
+    @discardableResult
+    public func paragraphe(_ contenu: String, x: Double, y: Double, largeur: Double,
+                           taille: Double = 10,
+                           _ couleur: UInt32 = Pinceau.blanc(0.55),
+                           police: Police = .interface,
+                           dessiner: Bool = true) -> Double {
+        contenu.withUTF16Terminé { pointeur in
+            Double(spectre_surimpression_paragraphe(pont, pointeur, Float(x), Float(y),
+                                                    Float(largeur), Float(taille),
+                                                    couleur, police.rawValue,
+                                                    dessiner ? 1 : 0))
+        }
+    }
+
+    /// Un rectangle aux coins arrondis. `epaisseur` à zéro le remplit.
+    public func arrondi(_ x: Double, _ y: Double, _ largeur: Double, _ hauteur: Double,
+                        rayon: Double, _ couleur: UInt32, epaisseur: Double = 0) {
+        spectre_surimpression_arrondi(pont, Float(x), Float(y), Float(largeur),
+                                      Float(hauteur), Float(rayon), couleur,
+                                      Float(epaisseur))
+    }
+
+    /// Restreint le dessin à un rectangle, le temps du bloc.
+    ///
+    /// Apparié par construction : une découpe posée et non reprise fait échouer la
+    /// fin du dessin, et c'est l'image entière — spectrogramme compris — qui
+    /// disparaît alors sans un mot.
+    public func decoupe(_ x: Double, _ y: Double, _ largeur: Double, _ hauteur: Double,
+                        _ corps: () -> Void) {
+        spectre_surimpression_decouper(pont, Float(x), Float(y), Float(largeur),
+                                       Float(hauteur))
+        corps()
+        spectre_surimpression_recoller(pont)
     }
 
     public func largeur(_ contenu: String, taille: Double = 11,

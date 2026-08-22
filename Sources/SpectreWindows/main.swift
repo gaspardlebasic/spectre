@@ -19,6 +19,9 @@ import WinSDK
 // photographie redevient alors comparable au rendu du processeur, que rien
 // n'habille. C'est un instrument, pas un mode d'usage.
 //
+// `--reglages` ouvre le panneau dès le lancement. Même usage : c'est ce qui permet
+// de photographier les commandes, donc d'en juger l'allure sans être devant l'écran.
+//
 // L'application est assemblée ici, et nulle part ailleurs : le comportement vit
 // dans `SpectreModele`, les pièces de Windows dans `SpectreWin`, et ce fichier ne
 // fait que les brancher les unes aux autres, puis tourner.
@@ -50,6 +53,7 @@ var morceau: URL?
 var rendreDans: String?
 var photographierDans: String?
 var sansHabillage = false
+var reglagesOuverts = false
 var mesurerPendant: Double?
 var tailleVoulue = (largeur: 1200, hauteur: 700)
 var arguments = Array(CommandLine.arguments.dropFirst())
@@ -64,6 +68,9 @@ while i < arguments.count {
         i += 2
     } else if argument == "--sans-habillage" {
         sansHabillage = true
+        i += 1
+    } else if argument == "--reglages" {
+        reglagesOuverts = true
         i += 1
     } else if argument == "--photo", i + 1 < arguments.count {
         photographierDans = arguments[i + 1]
@@ -96,6 +103,12 @@ final class Application: EchosDeLaFenetre {
     let rendu: RenduD3D11
     let modele: AppModel
     let gestes: Gestes
+    let panneau = Panneau()
+    let commandes: Commandes
+    /// Le titre déjà posé sur la fenêtre. Comparé plutôt que reposé à chaque image :
+    /// `SetWindowTextW` fait repeindre la barre de titre, cent vingt fois par seconde
+    /// pour rien.
+    private var titrePose = ""
     /// Ne compte que si on l'a demandé : mesurer coûte une horloge par image, ce
     /// qui n'est rien, mais garder cent mille intervalles en mémoire pour personne
     /// n'a pas de sens.
@@ -113,7 +126,9 @@ final class Application: EchosDeLaFenetre {
         self.fenetre = fenetre
         self.rendu = rendu
         self.modele = AppModel(fenetre: fenetre.poignee)
-        self.gestes = Gestes(modele: modele, fenetre: fenetre)
+        self.commandes = Commandes(modele: modele,
+                                   preferences: PreferencesWindows.partagees)
+        self.gestes = Gestes(modele: modele, fenetre: fenetre, panneau: panneau)
         modele.renderer = rendu
         rendu.origineDesTeintes = PreferencesWindows.partagees.hueOrigin
         fenetre.echos = self
@@ -128,7 +143,19 @@ final class Application: EchosDeLaFenetre {
 
     func ouvrir(_ url: URL) {
         modele.open(url)
-        fenetre.titre(modele.title)
+    }
+
+    /// Le titre suit le morceau, quel que soit le chemin par lequel il est arrivé —
+    /// la ligne de commande, le sélecteur de fichiers, un récent du menu.
+    ///
+    /// Relevé à chaque image et non au moment d'ouvrir : `open` part en tâche de
+    /// fond et le nom n'est connu qu'au retour par la file principale. Le poser
+    /// aussitôt après l'appel écrivait donc le titre **précédent**.
+    private func accorderLeTitre() {
+        let voulu = modele.title
+        guard voulu != titrePose else { return }
+        titrePose = voulu
+        fenetre.titre(voulu)
     }
 
     /// Ouvre la fenêtre, la laisse tourner quelques images, et photographie ce
@@ -203,6 +230,7 @@ final class Application: EchosDeLaFenetre {
             uneImage()
         }
         modele.applicationVaSeFermer()
+        PreferencesWindows.partagees.enregistrerMaintenant()
     }
 
     private func appliquerLaTaille() {
@@ -216,6 +244,11 @@ final class Application: EchosDeLaFenetre {
         rendu.presenter()
         mesures?.uneImage()
         if rendu.fenetreCachee { mesures?.uneImageCachee() }
+        accorderLeTitre()
+        // Les réglages d'application s'écrivent quand ils ont cessé de bouger. Le
+        // tour de boucle est le seul endroit qui passe assez souvent pour le savoir
+        // — voir `PreferencesWindows`.
+        PreferencesWindows.partagees.enregistrerSiBesoin()
     }
 
     /// Hauteur de la zone du spectrogramme, en points : la fenêtre moins la ligne de
@@ -270,6 +303,13 @@ final class Application: EchosDeLaFenetre {
                   largeur: points.largeur, hauteur: hauteurImage).dessiner()
             Batterie(modele: modele, pinceau: pinceau, largeur: points.largeur,
                      haut: hauteurImage, hauteur: hauteurDeLaBatterie).dessiner()
+            // Le panneau vient après la frise et avant la barre : il flotte sur
+            // l'image, et la barre d'état reste lisible par-dessus tout — c'est là
+            // que se dit ce qui se passe pendant qu'on tourne un réglage.
+            panneau.dessiner(pinceau: pinceau, largeurFenetre: points.largeur,
+                             hauteurUtile: points.hauteur - hauteurDeLaBarre) {
+                commandes.dessiner(dans: $0)
+            }
             Barre(modele: modele, pinceau: pinceau, largeur: points.largeur,
                   haut: points.hauteur - hauteurDeLaBarre,
                   hauteur: hauteurDeLaBarre).dessiner()
@@ -434,6 +474,10 @@ if let sortie = rendreDans {
 
 guard let application = Application() else { exit(1) }
 application.habille = !sansHabillage
+// Le panneau est fermé au lancement — on ouvre l'application pour regarder une
+// image, pas pour régler quelque chose. `--reglages` sert à le photographier : c'est
+// le seul moyen d'en juger l'allure sans être devant la machine.
+application.panneau.ouvert = reglagesOuverts
 if let morceau { application.ouvrir(morceau) }
 if let photographierDans {
     exit(application.photographier(dans: photographierDans) ? 0 : 1)
@@ -442,4 +486,11 @@ if let mesurerPendant {
     print(application.mesurerLaFluidite(secondes: mesurerPendant))
     exit(0)
 }
+// Lancée sans fichier, l'application rouvre le dernier morceau consulté. C'est le
+// même appel que sur le Mac, et il ne fait rien si le lancement en désignait un.
+//
+// Seulement sur le chemin de la fenêtre : `--photo` et `--fluidite` doivent porter
+// sur le morceau qu'on leur nomme et sur rien d'autre, faute de quoi une épreuve
+// mesurerait ce qu'on écoutait la veille.
+if morceau == nil { application.modele.reopenLastFile() }
 application.tourner()

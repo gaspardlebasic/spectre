@@ -48,6 +48,15 @@ extern "C" {
 /// Combien de polices le pont connaît. Voir `spectre_surimpression_texte`.
 #define SPECTRE_POLICES 2
 
+/// Combien de couples (police, taille) sont gardés sous la main.
+///
+/// Un seul format par police suffisait tant que la surimpression n'était faite que
+/// de la réglette et de la barre. Le panneau des réglages emploie six tailles
+/// mêlées — intitulés, valeurs, explications — et un format par police faisait alors
+/// chercher une fonte à chaque changement de taille, soit des dizaines de fois par
+/// image. Douze couples couvrent tout ce que l'interface demande.
+#define SPECTRE_FORMATS 12
+
 struct SpectreRendu {
     ID3D11Device *appareil;
     ID3D11DeviceContext *contexte;
@@ -77,10 +86,15 @@ struct SpectreRendu {
     ID2D1SolidColorBrush *pinceau;
     ID2D1StrokeStyle *pointille;
     IDWriteFactory *fabriqueTexte;
-    IDWriteTextFormat *formats[SPECTRE_POLICES];
-    float tailleDesFormats[SPECTRE_POLICES];
+    IDWriteTextFormat *formats[SPECTRE_FORMATS];
+    float tailleDesFormats[SPECTRE_FORMATS];
+    int policeDesFormats[SPECTRE_FORMATS];
+    int prochainFormat;
     float echelle;
     int dessinEnCours;
+    /// Combien de découpes sont empilées, pour n'en dépiler que ce qui a été posé :
+    /// Direct2D abandonne le dessin entier si les deux nombres ne s'accordent pas.
+    int decoupes;
 };
 
 /// Défait la surface Direct2D avant que la chaîne se redimensionne, et la refait

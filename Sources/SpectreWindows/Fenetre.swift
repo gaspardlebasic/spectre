@@ -177,7 +177,11 @@ public final class Fenetre {
     fileprivate func repondre(_ message: UINT, _ w: WPARAM, _ l: LPARAM) -> LRESULT? {
         switch Int32(message) {
         case WM_MOUSEWHEEL, WM_MOUSEHWHEEL, WM_LBUTTONDOWN, WM_LBUTTONUP,
-             WM_MOUSEMOVE, WM_MOUSELEAVE, WM_KEYDOWN:
+             WM_MOUSEMOVE, WM_MOUSELEAVE, WM_RBUTTONUP, WM_KEYDOWN,
+             // `WM_COMMAND` n'est pas une entrée à proprement parler, mais il vient
+             // du menu du clic droit, que `Gestes` a ouvert : c'est lui qui sait ce
+             // que chaque numéro veut dire, et la fenêtre n'a pas à l'apprendre.
+             WM_COMMAND:
             guard echos?.fenetreRecoitUneEntree(message, w, l) == true else { return nil }
             // On ne redessine **pas** ici. La boucle tourne à la cadence de l'écran
             // et prendra le geste au tour suivant, c'est-à-dire dans moins d'une

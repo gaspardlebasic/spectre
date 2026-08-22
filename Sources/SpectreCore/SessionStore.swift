@@ -43,6 +43,32 @@ public struct FileSession: Codable, Equatable {
         copy.playhead = 0
         return copy
     }
+
+    /// Décodage **tolérant aux champs manquants**, pour la raison exacte qui vaut
+    /// déjà dans `DisplaySettings` — et qui vaut ici encore davantage.
+    ///
+    /// Le décodage synthétisé par Swift refuse un objet auquel il manque une clé,
+    /// même quand la propriété a une valeur par défaut. Or `load` avale l'échec par
+    /// un `try?` : ajouter un seul réglage à cette structure — le volume, la piste
+    /// écoutée, ce que la prochaine version voudra retenir — rendrait d'un coup
+    /// **toutes les sessions déjà écrites illisibles**, pour tous les morceaux. On
+    /// retrouverait cadrage, contraste, boucle et grille remis à zéro, sans un mot.
+    ///
+    /// Le défaut était réel et non théorique : `DisplaySettings` et `ChordSettings`
+    /// avaient été protégés, la session qui les contient ne l'était pas. C'est
+    /// `SessionCheck` qui l'a trouvé, en relisant une session écrite à la main comme
+    /// une version antérieure l'aurait écrite.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = FileSession()
+        display = try c.decodeIfPresent(DisplaySettings.self, forKey: .display) ?? d.display
+        tempo = try c.decodeIfPresent(TempoGrid.self, forKey: .tempo)
+        loop = try c.decodeIfPresent(ClosedRange<Double>.self, forKey: .loop)
+        playhead = try c.decodeIfPresent(Double.self, forKey: .playhead) ?? d.playhead
+        speed = try c.decodeIfPresent(Double.self, forKey: .speed) ?? d.speed
+        transpose = try c.decodeIfPresent(Double.self, forKey: .transpose) ?? d.transpose
+        viewport = try c.decodeIfPresent(Viewport.self, forKey: .viewport) ?? d.viewport
+    }
 }
 
 /// Rangement des sessions, une par fichier audio.

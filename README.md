@@ -60,10 +60,12 @@ qu'un module ne connaît que ceux d'en dessous.
 
 | module | ce qu'il porte | ce qu'il connaît du système |
 |---|---|---|
-| `SpectreDSP` | opérations vectorielles, transformée réelle | Accelerate, et lui seul |
+| `SpectreDSP` | opérations vectorielles, transformée réelle | Accelerate, ou du Swift pur |
 | `SpectreCore` | l'analyse, le tempo, les palettes, les boucles, les sessions | **rien** |
+| `SpectreModele` | **le comportement de l'application** : ouverture, tourne-page, aimantation, boucle, pistes, survol | **rien** |
 | `SpectreMac` | décodage, lecture, écriture des pistes, rendu Metal, séparation | AVFoundation, Metal, ONNX |
-| `Spectre` | la fenêtre, les menus, la réglette, le modèle d'application | SwiftUI, AppKit |
+| `Spectre` | la fenêtre, les menus, la réglette | SwiftUI, AppKit |
+| `SpectreWin`, `SpectreWindows`, `CPont` | le pendant Windows des deux derniers | Win32, Direct3D 11, Direct2D, Media Foundation, WASAPI |
 
 `SpectreCore` n'importe que Foundation : c'est vérifiable d'un coup d'œil, et
 c'est ce qui donne son sens au découpage. Les deux tiers du code y vivent, et ne
@@ -73,14 +75,15 @@ Les vérifications de `check.sh` sont des exécutables du paquet plutôt que des
 compilations à la main. Celles qui ne tirent que le noyau — couche numérique, WAV,
 analyse, relevé de la batterie, Fourier — tournent partout où Swift compile.
 
-**Il y a eu un portage Windows** (SDL3, OpenGL, Dear ImGui, miniaudio, Media
-Foundation) ; il est abandonné et retiré du dépôt, tenir les deux à la fois coûtant
-plus que ce que la version Windows rendait. Il reste dans l'historique, à
-`577c6a8`. Ce qu'il laisse est ce qu'il avait de meilleur : `SpectreCore` ne
-connaît toujours aucun système, et sa couche numérique garde ses deux
-implémentations — Accelerate et Swift pur — que `DSPCheck` mesure l'une contre
-l'autre. Ce n'est plus une plateforme qu'on vise, c'est ce qui garde le noyau
-vérifiable seul.
+**Un portage Windows est en cours**, et Linux suivra. Il y en avait déjà eu un —
+SDL3, OpenGL, Dear ImGui — abandonné parce qu'il tenait un second modèle
+d'application, plus fruste, qui divergeait un peu plus chaque semaine ; il reste
+dans l'historique, à `577c6a8`. Celui-ci ne refait pas la même erreur :
+`SpectreModele` est né de là, et Windows n'a que ses protocoles à remplir pour
+avoir **la même** application. La fenêtre est en Win32 sans intermédiaire, l'image
+en Direct3D 11, l'habillage en Direct2D, le son en Media Foundation et WASAPI.
+[WINDOWS.md](WINDOWS.md) tient l'état du chantier, étape par étape, et surtout les
+pièges déjà payés.
 
 ## L'analyse
 

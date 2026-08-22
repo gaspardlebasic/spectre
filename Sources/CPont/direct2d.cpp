@@ -63,7 +63,7 @@ extern "C" void spectre_surimpression_detruire(SpectreRendu *r) {
     if (!r) { return; }
     spectre_surimpression_lacher(r);
     if (r->pointille) { r->pointille->Release(); r->pointille = nullptr; }
-    for (int i = 0; i < SPECTRE_POLICES; ++i) {
+    for (int i = 0; i < SPECTRE_FORMATS; ++i) {
         if (r->formats[i]) { r->formats[i]->Release(); r->formats[i] = nullptr; }
     }
     if (r->fabriqueTexte) { r->fabriqueTexte->Release(); r->fabriqueTexte = nullptr; }
@@ -179,10 +179,16 @@ extern "C" void spectre_surimpression_debuter(SpectreRendu *r) {
     // pixels.
     r->contexteD2D->SetTransform(D2D1::Matrix3x2F::Scale(r->echelle, r->echelle));
     r->dessinEnCours = 1;
+    r->decoupes = 0;
 }
 
 extern "C" void spectre_surimpression_finir(SpectreRendu *r) {
     if (!r || !r->contexteD2D || !r->dessinEnCours) { return; }
+    // Une découpe oubliée fait échouer `EndDraw` en silence, et l'image entière
+    // disparaît — y compris le spectrogramme, que la surimpression n'a pourtant pas
+    // touché. On dépile ici ce qui traîne plutôt que de faire dépendre l'image d'un
+    // appel apparié quelque part dans le dessin.
+    while (r->decoupes > 0) { spectre_surimpression_recoller(r); }
     r->contexteD2D->EndDraw();
     r->dessinEnCours = 0;
 }
@@ -241,32 +247,52 @@ extern "C" void spectre_surimpression_aire(SpectreRendu *r, const float *points,
 /// Le format d'une police à une taille donnée, gardé d'un appel à l'autre.
 ///
 /// En fabriquer un par texte coûterait une recherche de fonte à chaque trait de
-/// réglette, soit des centaines par image. Une seule taille est gardée par police,
-/// ce qui suffit : l'interface n'en emploie qu'une par usage.
+/// réglette, soit des centaines par image. Les couples déjà demandés sont donc
+/// retenus — et il en faut **plusieurs par police** : n'en garder qu'un revenait à
+/// refaire la recherche à chaque changement de taille, ce que le panneau des
+/// réglages fait des dizaines de fois par image en mêlant intitulés, valeurs et
+/// explications.
+///
+/// Quand les douze places sont prises, la plus ancienne cède la sienne. Aucun
+/// classement plus fin n'a de sens ici : l'interface emploie moins de tailles que
+/// le pont n'en garde, et le remplacement ne se produit donc jamais en régime
+/// établi.
 static IDWriteTextFormat *format(SpectreRendu *r, int police, float taille) {
     if (police < 0 || police >= SPECTRE_POLICES) { police = 0; }
-    if (r->formats[police] && r->tailleDesFormats[police] == taille) {
-        return r->formats[police];
+    for (int i = 0; i < SPECTRE_FORMATS; ++i) {
+        if (r->formats[i] && r->policeDesFormats[i] == police
+            && r->tailleDesFormats[i] == taille) {
+            return r->formats[i];
+        }
     }
-    if (r->formats[police]) {
-        r->formats[police]->Release();
-        r->formats[police] = nullptr;
+
+    int place = -1;
+    for (int i = 0; i < SPECTRE_FORMATS && place < 0; ++i) {
+        if (!r->formats[i]) { place = i; }
     }
+    if (place < 0) {
+        place = r->prochainFormat % SPECTRE_FORMATS;
+        r->prochainFormat = (r->prochainFormat + 1) % SPECTRE_FORMATS;
+        r->formats[place]->Release();
+        r->formats[place] = nullptr;
+    }
+
     HRESULT hr = r->fabriqueTexte->CreateTextFormat(
         nomDePolice(police, false), nullptr, DWRITE_FONT_WEIGHT_NORMAL,
         DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, taille, L"fr-FR",
-        &r->formats[police]);
+        &r->formats[place]);
     if (FAILED(hr)) {
         // Segoe UI Variable n'existe pas avant Windows 11, et Cascadia Mono n'est
         // pas garanti : on retombe sur les polices que toute installation porte.
         hr = r->fabriqueTexte->CreateTextFormat(
             nomDePolice(police, true), nullptr, DWRITE_FONT_WEIGHT_NORMAL,
             DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, taille, L"fr-FR",
-            &r->formats[police]);
+            &r->formats[place]);
     }
-    if (FAILED(hr)) { return nullptr; }
-    r->tailleDesFormats[police] = taille;
-    return r->formats[police];
+    if (FAILED(hr)) { r->formats[place] = nullptr; return nullptr; }
+    r->tailleDesFormats[place] = taille;
+    r->policeDesFormats[place] = police;
+    return r->formats[place];
 }
 
 extern "C" void spectre_surimpression_texte(SpectreRendu *r, const uint16_t *texte,
@@ -308,4 +334,65 @@ extern "C" float spectre_surimpression_largeur_texte(SpectreRendu *r,
     HRESULT hr = mise->GetMetrics(&mesures);
     mise->Release();
     return SUCCEEDED(hr) ? mesures.widthIncludingTrailingWhitespace : 0;
+}
+
+extern "C" float spectre_surimpression_paragraphe(SpectreRendu *r,
+                                                  const uint16_t *texte, float x,
+                                                  float y, float largeur, float taille,
+                                                  uint32_t rvba, int police,
+                                                  int dessiner) {
+    if (!r || !r->fabriqueTexte || !texte || largeur <= 0) { return 0; }
+    IDWriteTextFormat *f = format(r, police, taille);
+    if (!f) { return 0; }
+
+    const WCHAR *large = reinterpret_cast<const WCHAR *>(texte);
+    IDWriteTextLayout *mise = nullptr;
+    if (FAILED(r->fabriqueTexte->CreateTextLayout(large, (UINT32)wcslen(large), f,
+                                                  largeur, 4096, &mise))) {
+        return 0;
+    }
+    // Sur la mise en page et non sur le format : celui-ci est partagé, et
+    // `spectre_surimpression_texte` y pose un centrage vertical dont un paragraphe
+    // ne veut pas — il commence à son `y`, quelle que soit sa hauteur.
+    mise->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
+    mise->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
+    mise->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);
+
+    DWRITE_TEXT_METRICS mesures;
+    if (FAILED(mise->GetMetrics(&mesures))) { mise->Release(); return 0; }
+    if (dessiner && r->dessinEnCours) {
+        r->contexteD2D->DrawTextLayout(D2D1::Point2F(x, y), mise, pinceau(r, rvba),
+                                       D2D1_DRAW_TEXT_OPTIONS_NONE);
+    }
+    float hauteur = mesures.height;
+    mise->Release();
+    return hauteur;
+}
+
+extern "C" void spectre_surimpression_arrondi(SpectreRendu *r, float x, float y,
+                                              float largeur, float hauteur,
+                                              float rayon, uint32_t rvba,
+                                              float epaisseur) {
+    if (!r || !r->dessinEnCours || largeur <= 0 || hauteur <= 0) { return; }
+    D2D1_ROUNDED_RECT forme = D2D1::RoundedRect(
+        D2D1::RectF(x, y, x + largeur, y + hauteur), rayon, rayon);
+    if (epaisseur > 0) {
+        r->contexteD2D->DrawRoundedRectangle(forme, pinceau(r, rvba), epaisseur, nullptr);
+    } else {
+        r->contexteD2D->FillRoundedRectangle(forme, pinceau(r, rvba));
+    }
+}
+
+extern "C" void spectre_surimpression_decouper(SpectreRendu *r, float x, float y,
+                                               float largeur, float hauteur) {
+    if (!r || !r->dessinEnCours) { return; }
+    r->contexteD2D->PushAxisAlignedClip(
+        D2D1::RectF(x, y, x + largeur, y + hauteur), D2D1_ANTIALIAS_MODE_ALIASED);
+    r->decoupes += 1;
+}
+
+extern "C" void spectre_surimpression_recoller(SpectreRendu *r) {
+    if (!r || !r->dessinEnCours || r->decoupes <= 0) { return; }
+    r->contexteD2D->PopAxisAlignedClip();
+    r->decoupes -= 1;
 }

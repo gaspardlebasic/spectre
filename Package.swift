@@ -93,6 +93,12 @@ var cibles: [Target] = [
                       path: "Tools/DSPCheck"),
     .executableTarget(name: "WAVCheck", dependencies: ["SpectreCore"],
                       path: "Tools/WAVCheck"),
+    // Les sessions, la liste des morceaux récents et le dossier de rangement. Tout
+    // cela vit dans le noyau, donc à l'identique sur les trois plateformes : le
+    // harnais les mesure là où elles n'avaient jamais tourné, plutôt que de les
+    // déclarer portées parce qu'elles compilent.
+    .executableTarget(name: "SessionCheck", dependencies: ["SpectreCore"],
+                      path: "Tools/SessionCheck"),
     // Les trois harnais de la chaîne de lecture portable. Ils n'ont besoin
     // d'aucune carte son : le filtre se mesure sur sa réponse, la chaîne se rend
     // hors ligne, et l'amorçage se lit dans des en-têtes qu'on fabrique. C'est ce
@@ -137,6 +143,7 @@ var produits: [Product] = [
     .library(name: "SpectreDSP", type: .static, targets: ["SpectreDSP"]),
     .executable(name: "DSPCheck", targets: ["DSPCheck"]),
     .executable(name: "WAVCheck", targets: ["WAVCheck"]),
+    .executable(name: "SessionCheck", targets: ["SessionCheck"]),
     .executable(name: "FilterCheck", targets: ["FilterCheck"]),
     .executable(name: "ChainCheck", targets: ["ChainCheck"]),
     .executable(name: "GaplessCheck", targets: ["GaplessCheck"]),
