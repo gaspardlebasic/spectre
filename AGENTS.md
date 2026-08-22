@@ -41,8 +41,9 @@ plateformes ; c'est ce que mesure `verification.yml`. Qui touche à `SpectreDSP`
 | `./build.sh` | Compile et assemble `build/Spectre.app` (signature ad-hoc, enregistrement LaunchServices). |
 | `./check.sh` | Les harnais hors écran : couche numérique, WAV, sessions, batterie, accords, analyse, rendu, séparation, lecture. Aucun fichier audio, aucune fenêtre. |
 | `./essai.sh` | **L'épreuve complète, application comprise** — voir plus bas. |
-| `.\essai.ps1` | La même épreuve, sous Windows : treize harnais, la fenêtre, et un relevé de fluidité. |
+| `.\essai.ps1` | La même épreuve, sous Windows : quatorze harnais, la fenêtre, et un relevé de fluidité. |
 | `./modele.sh` | Refabrique `Resources/htdemucs.onnx` (les poids de Demucs, ~166 Mo, hors dépôt). |
+| `.\onnx.ps1` | Installe ONNX Runtime pour Windows, hors dépôt lui aussi. Sans lui, la séparation est compilée absente. |
 | `./logo.sh` | Refabrique l'icône. |
 | `swift build -c release` | Compile tout, sans assembler le paquet. |
 
@@ -148,7 +149,9 @@ chemin numérique portable.
   fichier*.
 - **Les poids de Demucs ne sont pas dans le dépôt** (licence, et 166 Mo) : ni eux ni
   `build/`, `.build/` ne doivent être commis. Leur absence n'empêche pas de
-  construire ; elle fait seulement sauter la séparation.
+  construire ; elle fait seulement sauter la séparation. **ONNX Runtime pour Windows
+  suit le même régime** : `.\onnx.ps1` l'installe dans `build/onnxruntime`, et sans
+  lui la séparation est compilée absente plutôt que d'échouer à l'édition de liens.
 - **La quarantaine macOS** frappe l'application téléchargée *et* les fichiers audio
   téléchargés ; le message désigne le fichier audio, ce qui est trompeur.
 

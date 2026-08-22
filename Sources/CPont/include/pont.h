@@ -277,6 +277,18 @@ enum {
 /// `chemin` est en UTF-8 ; la conversion en UTF-16 se fait de l'autre côté.
 SpectreDecodage spectre_mf_decoder(const char *chemin);
 
+/// Le même fichier, **entrelacé à la forme demandée** : Media Foundation insère son
+/// rééchantillonneur et sa matrice de mixage.
+///
+/// C'est ce que la séparation exige, et elle seule : le réseau de Demucs n'a appris
+/// qu'à 44,1 kHz en stéréo, et lui donner du 48 kHz reviendrait à lui présenter une
+/// musique transposée d'un demi-ton et jouée trop vite. L'analyse, elle, garde la
+/// fréquence du fichier — rééchantillonner avant d'analyser perdrait de la matière.
+///
+/// `images` compte les images ; le tampon en porte donc `images × canaux`.
+SpectreDecodage spectre_mf_decoder_entrelace(const char *chemin, double frequence,
+                                             int canaux);
+
 void spectre_mf_liberer(float *echantillons);
 
 /// Un message en clair pour un code, en français, sans allocation.
@@ -330,6 +342,40 @@ int spectre_sortie_joue(const SpectreSortie *sortie);
 /// prend l'avance d'un tampon — une trentaine de millisecondes, ce qui se voit dès
 /// qu'on cale une boucle sur un temps.
 int spectre_sortie_en_vol(const SpectreSortie *sortie);
+
+// ─────────────────────────────────────────── La séparation, par ONNX Runtime
+//
+// Le pendant macOS passe par le paquet Swift de Microsoft, qui ne connaît qu'Apple.
+// Ailleurs, ONNX Runtime se distribue en DLL, et c'est **`LoadLibraryW` qui la
+// charge** — pas l'éditeur de liens. Voir la longue note en tête d'`onnx.c` : c'est
+// ce qui permet à l'application de s'ouvrir quand le moteur n'est pas installé, et
+// à l'intégration continue de compiler sans télécharger seize mégaoctets.
+//
+// Le pont ne connaît qu'un réseau, celui de Demucs : deux entrées nommées « mix » et
+// « spec », deux sorties nommées « zout » et « xt ». Un pont générique sur les
+// tenseurs coûterait trois fois ces lignes pour un second modèle qui n'existe pas.
+
+typedef struct SpectreReseau SpectreReseau;
+
+/// Faux quand cette compilation n'a pas vu les en-têtes d'ONNX Runtime.
+int spectre_reseau_disponible(void);
+
+/// Ouvre un réseau. `chemin` et `bibliotheque` sont de l'UTF-16 terminé par un zéro
+/// — le fichier `.onnx`, et l'`onnxruntime.dll` à charger.
+///
+/// Rend `NULL` en cas d'échec, et remplit `erreur` (`SPECTRE_ERREUR_MAX` octets).
+SpectreReseau *spectre_reseau_ouvrir(const uint16_t *chemin,
+                                     const uint16_t *bibliotheque, char *erreur);
+void spectre_reseau_fermer(SpectreReseau *reseau);
+
+/// Applique le réseau à une tranche.
+///
+/// `mix` fait `canaux × segment`, `spec` fait `canaux × raies × trames × 2`.
+/// `zout` et `xt` sont fournis par l'appelant, aux tailles que le réseau rend :
+/// `4 × canaux × raies × trames × 2` et `4 × canaux × segment`.
+int spectre_reseau_appliquer(SpectreReseau *reseau, const float *mix, const float *spec,
+                             int canaux, int segment, int raies, int trames,
+                             float *zout, float *xt, char *erreur);
 
 #ifdef __cplusplus
 }

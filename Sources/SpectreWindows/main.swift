@@ -40,7 +40,7 @@ extension SpectreModele.AppModel where Lecteur == LecteurWindows {
         self.init(lecteur: LecteurWindows(),
                   décodeur: DecodeurWindows(),
                   sinusoide: SinusoideWindows(),
-                  pistes: SeparationAbsente(),
+                  pistes: RangementWindows(),
                   dialogue: DialogueWindows(fenetre: fenetre),
                   récentsDuSystème: RecentsWindows(),
                   préférences: PreferencesWindows.partagees)

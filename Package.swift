@@ -1,4 +1,5 @@
 // swift-tools-version:5.9
+import Foundation
 import PackageDescription
 
 // Cinq étages, du plus portable au moins portable, chacun ne connaissant que
@@ -39,6 +40,24 @@ let surWindows = true
 #else
 let surWindows = false
 #endif
+
+// ONNX Runtime, s'il a été installé — c'est-à-dire si `.\onnx.ps1` a tourné.
+//
+// Seize mégaoctets de moteur d'inférence n'ont pas leur place dans un dépôt, et
+// l'intégration continue n'a aucune raison de les télécharger pour compiler le
+// noyau. **Son absence n'empêche donc pas de construire** : c'est exactement le
+// régime des poids de Demucs, absents eux aussi, qui font seulement sauter la
+// séparation.
+//
+// Seuls les en-têtes comptent ici. La bibliothèque, elle, est chargée à l'exécution
+// par `LoadLibraryW` — voir la note en tête de `Sources/CPont/onnx.c` : rien n'est
+// lié, si bien qu'une application compilée avec la séparation s'ouvre quand même là
+// où la DLL n'est pas.
+let racineDuPaquet = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+let onnxInclude = racineDuPaquet
+    .appendingPathComponent("build/onnxruntime/include", isDirectory: true)
+let avecOnnx = surWindows && FileManager.default.fileExists(
+    atPath: onnxInclude.appendingPathComponent("onnxruntime_c_api.h").path)
 
 // Le noyau ne connaît que la couche numérique. `Crypto` n'est tiré que là où
 // CryptoKit n'existe pas ; il porte le seul usage qu'on en fait, l'empreinte
@@ -224,6 +243,13 @@ if surWindows {
         .target(
             name: "CPont",
             path: "Sources/CPont",
+            cSettings: avecOnnx
+                ? [.define("SPECTRE_ONNX"),
+                   // `unsafeFlags` plutôt que `headerSearchPath` : les en-têtes sont
+                   // hors de l'arborescence de la cible — ils vivent dans `build/`,
+                   // que le dépôt ignore — et `headerSearchPath` refuse d'en sortir.
+                   .unsafeFlags(["-I", onnxInclude.path])]
+                : [],
             linkerSettings: [
                 .linkedLibrary("d3d11"),
                 .linkedLibrary("dxgi"),
@@ -303,6 +329,14 @@ if surWindows {
             dependencies: ["SpectreCore", "SpectreModele", "SpectreWin"],
             path: "Tools/SortieCheck"
         ),
+        // Le rangement des pistes séparées : où elles vont, comment elles s'écrivent
+        // et se relisent, ce que le plafond du cache jette. Le pendant de
+        // `SeparationCheck`, qui fait le même travail sur le Mac.
+        .executableTarget(
+            name: "PistesCheck",
+            dependencies: ["SpectreCore", "SpectreModele", "SpectreWin"],
+            path: "Tools/PistesCheck"
+        ),
     ]
     produits += [
         .library(name: "SpectreWin", type: .static, targets: ["SpectreWin"]),
@@ -310,6 +344,7 @@ if surWindows {
         .executable(name: "RenduCheck", targets: ["RenduCheck"]),
         .executable(name: "DecodeCheck", targets: ["DecodeCheck"]),
         .executable(name: "SortieCheck", targets: ["SortieCheck"]),
+        .executable(name: "PistesCheck", targets: ["PistesCheck"]),
     ]
 }
 

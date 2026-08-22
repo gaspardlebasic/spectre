@@ -97,7 +97,7 @@ if (-not $Rapide) {
     $harnais = @("DSPCheck", "WAVCheck", "SessionCheck", "AnalysisCheck",
                  "PercussionCheck", "HarmonyCheck", "FilterCheck", "ChainCheck",
                  "GaplessCheck", "EtirementCheck", "RenduCheck", "DecodeCheck",
-                 "SortieCheck")
+                 "SortieCheck", "PistesCheck")
     foreach ($h in $harnais) {
         Push-Location $travail
         try { $sortie = & "$bin\$h.exe" 2>&1 } finally { Pop-Location }

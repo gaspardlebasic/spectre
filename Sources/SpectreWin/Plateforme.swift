@@ -136,6 +136,31 @@ public final class PreferencesWindows: PreferencesGlobales {
     public var chords = ChordSettings() { didSet { marquer(chords != oldValue) } }
     public var hueOrigin = 0 { didSet { marquer(hueOrigin != oldValue) } }
 
+    /// Plafond du dossier des pistes séparées, en octets.
+    ///
+    /// Hors du protocole, contrairement aux trois autres : le modèle ne demande
+    /// jamais la taille d'un cache, c'est le rangement qui la lit. Le réglage vit ici
+    /// parce que c'est ici qu'on le retrouve d'une séance à l'autre, et il est reposé
+    /// sur le rangement à chaque écriture — le baisser sans faire le ménage ne
+    /// servirait à rien avant la prochaine séparation, c'est-à-dire au moment où l'on
+    /// aurait justement voulu de la place.
+    public var cacheLimit = 1_000_000_000 {
+        didSet {
+            guard cacheLimit != oldValue else { return }
+            marquer(true)
+            RangementDesPistes.plafond = cacheLimit
+            DispatchQueue.global(qos: .utility).async {
+                RangementDesPistes.ranger(enGardant: nil)
+            }
+        }
+    }
+
+    /// Les paliers proposés. Un morceau de sept minutes coûte environ 300 Mo de
+    /// pistes en vingt-quatre bits, d'où des paliers qui se comptent en morceaux
+    /// plutôt qu'en puissances de deux.
+    public static let paliersDeCache = [500_000_000, 1_000_000_000, 2_000_000_000,
+                                        5_000_000_000, 10_000_000_000]
+
     /// Depuis quand un réglage a changé sans avoir été écrit. `nil` : rien à écrire.
     private var enAttenteDepuis: Double?
 
@@ -146,6 +171,12 @@ public final class PreferencesWindows: PreferencesGlobales {
         reassignment = lues.reassignment
         chords = lues.chords
         hueOrigin = lues.hueOrigin
+        cacheLimit = lues.cacheLimit
+        // Posé à la main : les observateurs de propriété ne sont pas appelés pour une
+        // affectation faite dans l'initialiseur de la classe qui les déclare. Sans
+        // cette ligne, le plafond relu du fichier ne serait appliqué qu'à la première
+        // fois où l'on y toucherait — c'est-à-dire jamais chez qui l'a réglé une fois.
+        RangementDesPistes.plafond = cacheLimit
         // Relire n'est pas modifier : sans cela, le premier tour de boucle
         // réécrirait le fichier avec ce qu'il vient d'en sortir.
         enAttenteDepuis = nil
@@ -169,7 +200,7 @@ public final class PreferencesWindows: PreferencesGlobales {
         guard enAttenteDepuis != nil else { return }
         enAttenteDepuis = nil
         let contenu = Enregistrement(reassignment: reassignment, chords: chords,
-                                     hueOrigin: hueOrigin)
+                                     hueOrigin: hueOrigin, cacheLimit: cacheLimit)
         let encodeur = JSONEncoder()
         // Lisible : ce fichier est le seul endroit où l'on peut aller voir pourquoi
         // un réglage ne revient pas, et une ligne unique de mille caractères ne s'y
@@ -188,11 +219,13 @@ public final class PreferencesWindows: PreferencesGlobales {
         var reassignment: Bool
         var chords: ChordSettings
         var hueOrigin: Int
+        var cacheLimit: Int
 
-        init(reassignment: Bool, chords: ChordSettings, hueOrigin: Int) {
+        init(reassignment: Bool, chords: ChordSettings, hueOrigin: Int, cacheLimit: Int) {
             self.reassignment = reassignment
             self.chords = chords
             self.hueOrigin = hueOrigin
+            self.cacheLimit = cacheLimit
         }
 
         init(from decoder: Decoder) throws {
@@ -201,6 +234,8 @@ public final class PreferencesWindows: PreferencesGlobales {
             chords = try c.decodeIfPresent(ChordSettings.self, forKey: .chords)
                 ?? ChordSettings()
             hueOrigin = try c.decodeIfPresent(Int.self, forKey: .hueOrigin) ?? 0
+            cacheLimit = try c.decodeIfPresent(Int.self, forKey: .cacheLimit)
+                ?? 1_000_000_000
         }
     }
 

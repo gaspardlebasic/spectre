@@ -64,7 +64,21 @@ void spectre_mf_liberer(float *echantillons) {
     free(echantillons);
 }
 
-SpectreDecodage spectre_mf_decoder(const char *chemin) {
+/// Le décodage, en un seul corps pour ses deux usages.
+///
+/// `canauxVoulus` à zéro : la fréquence du fichier, et les canaux mêlés par moyenne
+/// — ce que l'analyse demande, et ce qui doit rendre exactement le même signal que
+/// `AVAudioFile` sur le Mac. Non nul : Media Foundation insère elle-même son
+/// rééchantillonneur et sa matrice de mixage, et le signal sort entrelacé à la
+/// fréquence demandée — ce que le réseau de Demucs exige, lui qui n'a appris qu'à
+/// 44,1 kHz en stéréo.
+///
+/// Un seul corps parce que les deux ne diffèrent que par deux attributs posés sur le
+/// type demandé et par la boucle de recopie. Deux fonctions jumelles auraient
+/// divergé sur l'un des pièges documentés ici — l'amorçage, le changement de format
+/// en route, la panne en fin de course.
+static SpectreDecodage decoder(const char *chemin, UINT32 frequenceVoulue,
+                               UINT32 canauxVoulus) {
     // Le chemin arrive en UTF-8 parce que c'est ce que Swift a naturellement
     // sous la main ; Windows le veut en UTF-16.
     int taille = MultiByteToWideChar(CP_UTF8, 0, chemin, -1, NULL, 0);
@@ -122,6 +136,28 @@ SpectreDecodage spectre_mf_decoder(const char *chemin) {
     if (SUCCEEDED(hr)) {
         hr = IMFMediaType_SetGUID(voulu, &MF_MT_SUBTYPE, &MFAudioFormat_Float);
     }
+    // La forme imposée, quand on en veut une. Les cinq attributs vont ensemble :
+    // Media Foundation refuse un type partiel où l'alignement de bloc ne s'accorde
+    // pas au nombre de canaux, et le refus arrive sous un `HRESULT` qui ne désigne
+    // rien de particulier.
+    if (SUCCEEDED(hr) && canauxVoulus > 0) {
+        hr = IMFMediaType_SetUINT32(voulu, &MF_MT_AUDIO_NUM_CHANNELS, canauxVoulus);
+        if (SUCCEEDED(hr)) {
+            hr = IMFMediaType_SetUINT32(voulu, &MF_MT_AUDIO_SAMPLES_PER_SECOND,
+                                        frequenceVoulue);
+        }
+        if (SUCCEEDED(hr)) {
+            hr = IMFMediaType_SetUINT32(voulu, &MF_MT_AUDIO_BITS_PER_SAMPLE, 32);
+        }
+        if (SUCCEEDED(hr)) {
+            hr = IMFMediaType_SetUINT32(voulu, &MF_MT_AUDIO_BLOCK_ALIGNMENT,
+                                        4 * canauxVoulus);
+        }
+        if (SUCCEEDED(hr)) {
+            hr = IMFMediaType_SetUINT32(voulu, &MF_MT_AUDIO_AVG_BYTES_PER_SECOND,
+                                        4 * canauxVoulus * frequenceVoulue);
+        }
+    }
     if (SUCCEEDED(hr)) {
         hr = IMFSourceReader_SetCurrentMediaType(lecteur,
                 (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL, voulu);
@@ -145,11 +181,19 @@ SpectreDecodage spectre_mf_decoder(const char *chemin) {
         sortie = echec(SPECTRE_MF_FORMAT, hr);
         goto fin;
     }
+    // Ce qu'on a demandé n'est pas toujours ce qu'on obtient — un décodeur peut
+    // refuser une conversion sans le dire par un `HRESULT`. Le vérifier ici évite de
+    // séparer un morceau à la mauvaise fréquence, ce qui donnerait des pistes
+    // transposées sans que rien ne signale pourquoi.
+    if (canauxVoulus > 0 && (canaux != canauxVoulus || frequence != frequenceVoulue)) {
+        sortie = echec(SPECTRE_MF_FORMAT, hr);
+        goto fin;
+    }
 
     // Une minute de son fait dix mégaoctets : on part sur trente secondes et on
     // double, plutôt que de se fier à la durée annoncée, qui n'est qu'une
     // estimation sur un fichier compressé.
-    capacite = (long long)frequence * 30;
+    capacite = (long long)frequence * 30 * (canauxVoulus > 0 ? (long long)canaux : 1);
     tampon = (float *)malloc((size_t)capacite * sizeof(float));
     if (!tampon) { sortie = echec(SPECTRE_MF_MEMOIRE, 0); goto fin; }
 
@@ -185,10 +229,11 @@ SpectreDecodage spectre_mf_decoder(const char *chemin) {
             if (SUCCEEDED(hr)) {
                 const float *entrelace = (const float *)octets;
                 long long images = (long long)longueur / (long long)(sizeof(float) * canaux);
+                long long valeurs = canauxVoulus > 0 ? images * (long long)canaux : images;
 
-                if (remplis + images > capacite) {
+                if (remplis + valeurs > capacite) {
                     long long neuve = capacite;
-                    while (neuve < remplis + images) { neuve *= 2; }
+                    while (neuve < remplis + valeurs) { neuve *= 2; }
                     float *agrandi = (float *)realloc(tampon, (size_t)neuve * sizeof(float));
                     if (!agrandi) {
                         IMFMediaBuffer_Unlock(bloc);
@@ -201,18 +246,23 @@ SpectreDecodage spectre_mf_decoder(const char *chemin) {
                     capacite = neuve;
                 }
 
-                // La moyenne des canaux, comme du côté macOS. Le faire ici plutôt
-                // qu'après évite de garder le signal entrelacé en mémoire, qui
-                // est ce qu'il y a de plus gros dans toute l'application.
-                const float gain = 1.0f / (float)canaux;
-                for (long long i = 0; i < images; ++i) {
-                    float somme = 0;
-                    for (UINT32 c = 0; c < canaux; ++c) {
-                        somme += entrelace[i * canaux + c];
+                if (canauxVoulus > 0) {
+                    memcpy(tampon + remplis, entrelace,
+                           (size_t)valeurs * sizeof(float));
+                } else {
+                    // La moyenne des canaux, comme du côté macOS. Le faire ici plutôt
+                    // qu'après évite de garder le signal entrelacé en mémoire, qui
+                    // est ce qu'il y a de plus gros dans toute l'application.
+                    const float gain = 1.0f / (float)canaux;
+                    for (long long i = 0; i < images; ++i) {
+                        float somme = 0;
+                        for (UINT32 c = 0; c < canaux; ++c) {
+                            somme += entrelace[i * canaux + c];
+                        }
+                        tampon[remplis + i] = somme * gain;
                     }
-                    tampon[remplis + i] = somme * gain;
                 }
-                remplis += images;
+                remplis += valeurs;
                 IMFMediaBuffer_Unlock(bloc);
             }
             IMFMediaBuffer_Release(bloc);
@@ -223,7 +273,7 @@ SpectreDecodage spectre_mf_decoder(const char *chemin) {
     if (remplis == 0) { sortie = echec(SPECTRE_MF_VIDE, 0); goto fin; }
 
     sortie.echantillons = tampon;
-    sortie.images = remplis;
+    sortie.images = canauxVoulus > 0 ? remplis / (long long)canaux : remplis;
     sortie.frequence = (double)frequence;
     sortie.canaux = (int)canaux;
     sortie.code = SPECTRE_MF_OK;
@@ -238,4 +288,14 @@ fin:
     MFShutdown();
     if (fermerCom) { CoUninitialize(); }
     return sortie;
+}
+
+SpectreDecodage spectre_mf_decoder(const char *chemin) {
+    return decoder(chemin, 0, 0);
+}
+
+SpectreDecodage spectre_mf_decoder_entrelace(const char *chemin, double frequence,
+                                             int canaux) {
+    if (frequence <= 0 || canaux <= 0) { return echec(SPECTRE_MF_FORMAT, 0); }
+    return decoder(chemin, (UINT32)frequence, (UINT32)canaux);
 }

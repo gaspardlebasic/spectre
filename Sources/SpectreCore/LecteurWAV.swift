@@ -54,8 +54,84 @@ public enum WAVFile {
         return try decode(data)
     }
 
+    /// Le même fichier, **canal par canal** plutôt que mêlé.
+    ///
+    /// L'analyse ne veut que le mono, et c'est pourquoi `read` s'arrête là. Les
+    /// pistes séparées, elles, sont stéréo et doivent le rester : il serait dommage
+    /// d'écouter en mono une basse qu'on vient d'isoler.
+    public static func readChannels(at url: URL)
+        throws -> (channels: [[Float]], sampleRate: Double) {
+        guard let data = try? Data(contentsOf: url) else { throw Failure.unreadable(url) }
+        let octets = [UInt8](data)
+        let e = try entete(octets)
+        var canaux = [[Float]](repeating: [Float](repeating: 0, count: e.images),
+                               count: e.canaux)
+        octets.withUnsafeBufferPointer { source in
+            let base = source.baseAddress! + e.debut
+            for c in 0..<e.canaux {
+                canaux[c].withUnsafeMutableBufferPointer { sortie in
+                    for image in 0..<e.images {
+                        let p = base + (image * e.canaux + c) * e.octetsParEchantillon
+                        sortie[image] = échantillon(p, bits: e.bits, flottant: e.flottant)
+                    }
+                }
+            }
+        }
+        return (canaux, e.echantillonnage)
+    }
+
+    /// La fréquence et le nombre de canaux, **sans lire tout le fichier**.
+    ///
+    /// Une piste séparée pèse cent cinquante mégaoctets ; savoir à quelle fréquence
+    /// elle a été écrite ne vaut pas de les relire. Seize kilo-octets suffisent : les
+    /// en-têtes RIFF viennent en tête de fichier, et ceux qu'on écrit soi-même
+    /// d'autant plus sûrement.
+    public static func forme(at url: URL) -> (sampleRate: Double, channels: Int)? {
+        guard let poignee = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? poignee.close() }
+        guard let debut = try? poignee.read(upToCount: 16 * 1024),
+              let e = try? entete([UInt8](debut)) else { return nil }
+        return (e.echantillonnage, e.canaux)
+    }
+
     public static func decode(_ data: Data) throws -> Contents {
         let octets = [UInt8](data)
+        let e = try entete(octets)
+
+        var mono = [Float](repeating: 0, count: e.images)
+        let gain = Float(1) / Float(e.canaux)
+
+        octets.withUnsafeBufferPointer { source in
+            let base = source.baseAddress! + e.debut
+            for image in 0..<e.images {
+                var somme: Float = 0
+                for canal in 0..<e.canaux {
+                    let p = base + (image * e.canaux + canal) * e.octetsParEchantillon
+                    somme += échantillon(p, bits: e.bits, flottant: e.flottant)
+                }
+                mono[image] = somme * gain
+            }
+        }
+
+        return Contents(sampleRate: e.echantillonnage, channels: e.canaux, mono: mono)
+    }
+
+    /// Ce que l'en-tête a dit, et où le son commence.
+    ///
+    /// Séparé de la lecture parce qu'il y a désormais deux lectures — mêlée et canal
+    /// par canal — et qu'un format RIFF analysé deux fois est un format analysé de
+    /// deux façons.
+    private struct Entete {
+        var canaux: Int
+        var bits: Int
+        var flottant: Bool
+        var echantillonnage: Double
+        var debut: Int
+        var images: Int
+        var octetsParEchantillon: Int { bits / 8 }
+    }
+
+    private static func entete(_ octets: [UInt8]) throws -> Entete {
         guard octets.count >= 12 else { throw Failure.notRIFF }
 
         func u16(_ i: Int) -> Int { Int(octets[i]) | Int(octets[i + 1]) << 8 }
@@ -117,22 +193,8 @@ public enum WAVFile {
         let images = longueur / (octetsParÉchantillon * canaux)
         guard images > 0 else { throw Failure.empty }
 
-        var mono = [Float](repeating: 0, count: images)
-        let gain = Float(1) / Float(canaux)
-
-        octets.withUnsafeBufferPointer { source in
-            let base = source.baseAddress! + début
-            for image in 0..<images {
-                var somme: Float = 0
-                for canal in 0..<canaux {
-                    let p = base + (image * canaux + canal) * octetsParÉchantillon
-                    somme += échantillon(p, bits: bits, flottant: format == 3)
-                }
-                mono[image] = somme * gain
-            }
-        }
-
-        return Contents(sampleRate: échantillonnage, channels: canaux, mono: mono)
+        return Entete(canaux: canaux, bits: bits, flottant: format == 3,
+                      echantillonnage: échantillonnage, debut: début, images: images)
     }
 
     /// Un échantillon ramené dans −1…1.

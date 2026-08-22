@@ -188,6 +188,83 @@ do {
     verifie(false, "lecture depuis le disque", "\(error)")
 }
 
+titre("Écriture, canal par canal")
+
+// L'écrivain n'existe que depuis que Windows doit ranger les pistes séparées, et
+// c'est là qu'il sera lu : il n'y a pas de FLAC qu'on puisse supposer présent hors
+// d'Apple. Il est portable, donc mesuré ici, sur les trois plateformes — un format
+// de rangement dont on ne vérifierait l'aller-retour que sur celle qui l'écrit
+// serait un format qu'on ne peut pas relire ailleurs.
+
+let dossierDEssai = FileManager.default.temporaryDirectory
+    .appendingPathComponent("spectre-wav-\(ProcessInfo.processInfo.processIdentifier)",
+                            isDirectory: true)
+try? FileManager.default.createDirectory(at: dossierDEssai, withIntermediateDirectories: true)
+defer { try? FileManager.default.removeItem(at: dossierDEssai) }
+
+/// Deux canaux nettement différents : un aller-retour qui les intervertirait, ou
+/// qui rendrait deux fois le premier, ne se verrait pas sur de la stéréo identique.
+let gauche = sinus
+let droite = (0..<n).map { Float(sin(2 * Double.pi * 1000 * Double($0) / fs)) * 0.3 }
+
+do {
+    let cible = dossierDEssai.appendingPathComponent("piste.wav")
+    let ecrit = try WAVFile.ecrire([gauche, droite], echantillonnage: fs, vers: cible)
+    verifie(ecrit == cible, "une piste qui tient dans la réserve reste en entier",
+            ecrit.lastPathComponent)
+
+    let (canaux, frequence) = try WAVFile.readChannels(at: ecrit)
+    let gain = WAVFile.gain(pour: ecrit)
+    verifie(frequence == fs, "la fréquence revient", "\(frequence) Hz")
+    verifie(canaux.count == 2 && canaux[0].count == n, "les deux canaux reviennent entiers",
+            "\(canaux.count) × \(canaux.first?.count ?? 0)")
+
+    var ecartG: Float = 0, ecartD: Float = 0
+    for i in 0..<min(n, canaux[0].count) {
+        ecartG = max(ecartG, abs(canaux[0][i] * gain - gauche[i]))
+        ecartD = max(ecartD, abs(canaux[1][i] * gain - droite[i]))
+    }
+    // Vingt-quatre bits moins six décibels de réserve : vingt-deux bits utiles, soit
+    // un pas de 4,8 × 10⁻⁷. On exige mieux que deux pas.
+    verifie(Double(max(ecartG, ecartD)) < 1e-6,
+            "l'aller-retour rend le signal, réserve rattrapée",
+            String(format: "écart %.1e", max(ecartG, ecartD)))
+    verifie(ecartD > 0 || droite.allSatisfy { $0 == 0 } || ecartG != ecartD
+            || canaux[0] != canaux[1],
+            "les deux canaux ne sont pas le même")
+} catch {
+    verifie(false, "écriture d'une piste", "\(error)")
+}
+
+do {
+    // Ce qui dépasse la réserve n'est pas écrêté en silence : cette piste-là part en
+    // flottant, exact, sous une autre extension. Mieux vaut un fichier gros qu'un
+    // fichier faux — c'est le genre de faute qui ne se verrait qu'au moment de
+    // relire un spectrogramme.
+    let enorme = sinus.map { $0 * 5 }        // crête 2,5, au-dessus de la réserve
+    let cible = dossierDEssai.appendingPathComponent("forte.wav")
+    let ecrit = try WAVFile.ecrire([enorme], echantillonnage: fs, vers: cible)
+    verifie(ecrit.pathExtension == "wavf", "une piste trop forte passe en flottant",
+            ecrit.lastPathComponent)
+    verifie(WAVFile.gain(pour: ecrit) == 1, "et n'est pas remontée à la relecture")
+
+    let (canaux, _) = try WAVFile.readChannels(at: ecrit)
+    var ecart: Float = 0
+    for i in 0..<min(n, canaux[0].count) { ecart = max(ecart, abs(canaux[0][i] - enorme[i])) }
+    verifie(ecart == 0, "l'aller-retour est alors exact au bit près",
+            String(format: "écart %.1e", ecart))
+} catch {
+    verifie(false, "écriture d'une piste trop forte", "\(error)")
+}
+
+do {
+    let cible = dossierDEssai.appendingPathComponent("piste.wav")
+    let forme = WAVFile.forme(at: cible)
+    verifie(forme?.sampleRate == fs && forme?.channels == 2,
+            "la forme se lit sans relire tout le fichier",
+            forme.map { "\($0.sampleRate) Hz, \($0.channels) canaux" } ?? "rien")
+}
+
 print("")
 if echecs == 0 {
     print("Tout est bon.")

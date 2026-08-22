@@ -388,7 +388,7 @@ if !StemStore.hasModel {
               "les deux rendent les quatre pistes")
         // La fréquence rendue est celle du réseau, pas celle du fichier : c'est
         // l'invariant dont la violation faisait jouer les pistes 8,8 % trop vite.
-        check(rapide.sampleRate == DemucsSeparator.sampleRate,
+        check(rapide.sampleRate == Demucs.sampleRate,
               "le moteur annonce la fréquence à laquelle il a travaillé",
               String(format: "%.0f Hz", rapide.sampleRate))
         var pire = 0.0, echelle = 0.0

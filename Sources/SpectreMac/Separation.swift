@@ -3,72 +3,13 @@ import Foundation
 import SpectreCore
 import SpectreModele
 
-/// Ce qui peut échouer entre le clic sur une piste et son apparition à l'écran.
-public enum SeparationFailure: LocalizedError {
-    case modelMissing
-    case modelUnreadable(String)
-    case noSourceFile
-    case cannotWrite(URL)
-    case cancelled
-    case engine(String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .modelMissing:
-            "Le modèle de séparation n'est pas installé."
-        case .modelUnreadable(let why):
-            "Modèle illisible : \(why)"
-        case .noSourceFile:
-            "Aucun morceau ouvert."
-        case .cannotWrite(let url):
-            "Impossible d'écrire « \(url.lastPathComponent) »."
-        case .cancelled:
-            "Séparation interrompue."
-        case .engine(let why):
-            "La séparation a échoué : \(why)"
-        }
-    }
-}
-
-// MARK: - Le moteur
-
-/// Les pistes rendues, **et la fréquence à laquelle elles ont été rendues**.
-///
-/// Les deux voyagent ensemble, et c'est tout l'objet de ce type. Elles ne le
-/// faisaient pas : les pistes seules revenaient du moteur, et celui qui les écrivait
-/// devait retrouver leur fréquence de son côté. Il la lisait sur le fichier d'origine
-/// — ce qui est faux, puisque Demucs a appris à 44,1 kHz et y ramène tout ce qu'on
-/// lui donne. Un morceau à 48 kHz produisait donc des pistes à 44,1 kHz étiquetées
-/// 48 kHz : jouées 8,8 % trop vite, un demi-ton et demi trop haut, et une durée
-/// annoncée de 299 s pour 325 s de musique.
-///
-/// Le défaut ne se voyait que sur les fichiers qui ne sont pas à 44,1 kHz, et
-/// seulement une fois une piste décochée — tant que tout est coché, c'est le fichier
-/// d'origine qui est joué. D'où six mois de silence.
-public struct SeparatedStems {
-    /// Celle des `channels`, pas celle du fichier d'entrée.
-    public var sampleRate: Double
-    public var channels: [Stem: [[Float]]]
-
-    public init(sampleRate: Double, channels: [Stem: [[Float]]]) {
-        self.sampleRate = sampleRate
-        self.channels = channels
-    }
-}
-
-/// Ce qu'un moteur de séparation doit savoir faire.
-///
-/// L'entrée est le **fichier**, pas le signal mono déjà chargé : Demucs est entraîné
-/// sur de la stéréo et s'appuie sur les différences entre canaux pour décider ce qui
-/// appartient à quoi. Lui donner la somme des canaux reviendrait à lui retirer une
-/// partie de ce sur quoi il travaille.
-public protocol StemSeparator {
-    /// - Parameter progress: appelé depuis le fil de calcul.
-    /// - Returns: les pistes et leur fréquence d'échantillonnage.
-    func separate(fileAt url: URL,
-                  progress: @escaping (SeparationProgress) -> Void,
-                  isCancelled: @escaping () -> Bool) throws -> SeparatedStems
-}
+// Le travail de fond de la séparation, côté Apple.
+//
+// Ce qu'un moteur *est* — une erreur, un jeu de pistes, un avancement, le protocole
+// qu'il remplit — est descendu dans `SpectreCore/Separation.swift` : rien de tout
+// cela ne connaissait Apple, et le laisser ici aurait obligé Windows à en récrire
+// une copie. Ce qui reste est ce qui ne se partage pas : le rangement des pistes
+// dans Application Support, et la file sur laquelle on calcule.
 
 public extension StemSeparator {
     /// Charge un fichier canal par canal. Même lecture que pour les pistes rangées :

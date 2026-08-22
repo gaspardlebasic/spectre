@@ -997,6 +997,144 @@ intervalle médian 8,31 ms contre 8,32 ms, zéro image manquée. C'est le même
 instrument qui avait trouvé les quarante images par seconde perdues par la ligne de
 batterie à l'étape 6 — la question méritait d'être posée, la réponse est non.
 
+## Étape 9 — la séparation
+
+**L'ossature est faite et mesurée ; la vraie séparation n'a pas encore tourné sur
+cette machine.** Les poids de Demucs pèsent 166 Mo, ne sont dans aucun dépôt, et se
+fabriquent par `modele.sh` — qui demande PyTorch. Ce qui suit dit exactement ce qui
+est éprouvé et ce qui ne l'est pas.
+
+### Ce qui est descendu dans le noyau, et pourquoi
+
+Séparer un morceau, ce n'est pas seulement appeler un réseau. C'est le découper en
+tranches de taille fixe, recentrer et réduire le signal comme `separate.py` le fait,
+mettre chaque tranche en forme — la forme d'onde **et** son spectre —, recoller les
+tranches en fondu enchaîné par une fenêtre triangulaire, et rendre le tout à son
+échelle d'origine.
+
+Rien de tout cela ne dépend d'un système. Ce qui en dépend tient en deux phrases :
+*ouvrir un fichier stéréo à 44,1 kHz* et *exécuter un graphe ONNX*. C'est la
+frontière que `MoteurDemucs` trace, et `SpectreCore/Demucs.swift` porte tout le
+reste.
+
+Les deux cents lignes de la boucle étaient faciles à recopier côté Windows, et une
+convention à côté aurait suffi pour que les deux plateformes séparent la même
+musique différemment sans que personne ne s'en aperçoive avant des mois. C'est la
+même erreur que le premier portage avait faite avec le modèle d'application, à une
+échelle plus petite. `SpectreMac/DemucsEngine.swift` a donc maigri d'un tiers, et
+`SpectreWin/Demucs.swift` fait deux cents lignes au lieu de six cents.
+
+Sont descendus avec : `SeparationFailure`, `SeparationProgress`, `SeparatedStems` et
+`StemSeparator`, qui vivaient dans `SpectreMac` où ils étaient nés, et qui n'ont
+jamais rien connu d'Apple.
+
+**Le rangement des pistes, lui, reste jumeau** — `SpectreWin/Pistes.swift` en face de
+`SpectreMac/Stems.swift`. Ce n'est pas un renoncement : ce n'est pas un algorithme,
+c'est de la plomberie de fichiers, et elle diffère franchement d'un système à
+l'autre. C'est le même partage que le décodeur, le lecteur et le rendu suivent déjà.
+
+### ONNX Runtime n'arrive pas par SwiftPM, et n'entre pas dans le dépôt
+
+Microsoft publie `onnxruntime-swift-package-manager`, qui porte la tranche macOS
+précompilée. **Ce paquet ne connaît qu'Apple.** Ailleurs, le moteur se distribue en
+NuGet et en archives GitHub, que SwiftPM ne sait pas aller chercher.
+
+On ne le commet pas non plus : seize mégaoctets par architecture, une version
+nouvelle toutes les six semaines, et un binaire versionné que personne ne relit.
+`onnx.ps1` va le chercher et n'en garde que ce qui sert, dans `build/onnxruntime`.
+C'est le régime des poids de Demucs — hors dépôt, fabriqués par un script, absents
+sans que rien ne casse.
+
+**La DLL est chargée par `LoadLibraryW`, pas par l'éditeur de liens.** Se lier à
+`onnxruntime.lib` ferait refuser le démarrage de l'exécutable quand la DLL n'est pas
+là : pas « la séparation est absente », mais `SpectreWindows.exe` qui ne s'ouvre pas,
+code `0xC0000135`, sans un mot — exactement ce qui arrive à `swift.exe` quand les
+bibliothèques d'exécution manquent au chemin, et qui a déjà coûté une demi-heure à
+l'étape 0. Un `LoadLibraryW` et un seul `GetProcAddress` règlent cela : rien à
+l'édition de liens, l'application s'ouvre toujours, et l'intégration continue compile
+sans télécharger quoi que ce soit.
+
+Les en-têtes, eux, sont nécessaires à la compilation : `OrtApi` est une structure
+d'une centaine de pointeurs de fonction dont l'ordre fait tout, et la redéclarer à la
+main serait se lier à une version d'ONNX Runtime sans le dire. Sans en-têtes,
+`onnx.c` se réduit à des souches, et l'application annonce la séparation absente.
+
+### Media Foundation sait rééchantillonner, à condition qu'on le lui demande entier
+
+Le décodeur de l'analyse rend le mono à la fréquence du fichier — c'est ce qu'il
+faut, et rééchantillonner avant d'analyser perdrait de la matière. Demucs, lui,
+n'accepte que du stéréo à 44,1 kHz : lui donner du 48 kHz revient à lui présenter une
+musique transposée d'un demi-ton et jouée trop vite.
+
+Media Foundation insère elle-même son rééchantillonneur et sa matrice de mixage,
+mais **les cinq attributs vont ensemble** : type majeur, sous-type, nombre de canaux,
+fréquence, bits par échantillon, alignement de bloc et débit moyen. Un type partiel
+où l'alignement ne s'accorde pas au nombre de canaux est refusé, sous un `HRESULT`
+qui ne désigne rien de particulier. Et ce qu'on obtient se vérifie après coup : un
+décodeur peut refuser la conversion sans le dire, ce qui donnerait des pistes
+transposées sans que rien ne signale pourquoi.
+
+Le décodeur a donc un second point d'entrée, `spectre_mf_decoder_entrelace`, et **un
+seul corps** pour les deux : ils ne diffèrent que par ces attributs et par la boucle
+de recopie, et deux fonctions jumelles auraient divergé sur l'un des pièges déjà
+documentés là-bas — l'amorçage, le changement de format en route, la panne en fin de
+course.
+
+### Vingt-quatre bits et une réserve, faute de FLAC
+
+Sur le Mac, AVFoundation écrit du FLAC en trois lignes : 660 Mo de pistes pour un
+morceau de sept minutes en deviennent 250. Ailleurs, il n'y a pas de compression sans
+perte qu'on puisse supposer présente, et en embarquer une pour ranger un cache serait
+payer cher une place qu'on peut acheter autrement.
+
+Le WAV vingt-quatre bits coûte 300 Mo pour le même morceau — deux fois et demie moins
+que le flottant — avec un plancher de bruit à −132 dB, soit trente-sept décibels sous
+le plus bas que l'affichage sache montrer. Le seul écueil du format entier est ce qui
+dépasse ±1,0, et une piste séparée dépasse : 1,19 mesuré sur la batterie du morceau
+témoin. On écrit donc six décibels plus bas et l'on remonte à la lecture — la
+**même réserve** que le FLAC côté Mac, et pour la même raison.
+
+Ce qui ne tient pas dans la réserve n'est pas écrêté en silence : cette piste-là
+s'écrit en flottant, exact, sous l'extension `.wavf`. Mieux vaut un fichier gros
+qu'un fichier faux.
+
+La réserve n'est rattrapée que sur **nos** fichiers, et la condition est la même à
+l'écriture et à la lecture. Le pendant macOS s'est fait prendre exactement là :
+`write` décidait sur l'extension, `gain` sur l'extension *et* l'emplacement, si bien
+qu'un FLAC exporté ailleurs revenait six décibels trop bas. Ici, c'est le rangement
+qui pose la question de l'emplacement, et `WAVFile` ne connaît que l'extension.
+
+### Ce qui est éprouvé sans les poids
+
+`WAVCheck` — portable, donc sur les trois plateformes — mesure l'aller-retour de
+l'écrivain : deux canaux différents, la réserve rattrapée à 1,5 × 10⁻⁷ près, le
+basculement en flottant au-dessus de la réserve, et l'aller-retour alors exact au bit
+près.
+
+`PistesCheck` est le pendant Windows de `SeparationCheck` : où les pistes sont
+rangées, ce qu'une somme de deux pistes vaut, ce que le plafond du cache jette, et le
+fait qu'un jeu de pistes écrit à la mauvaise fréquence ne compte pas pour un travail
+fait. Il éprouve aussi **le pont C entier sauf l'inférence** : un fichier qui n'est
+pas un réseau doit être refusé *en le disant*, ce qui ne peut arriver que si la DLL
+s'est chargée et si son `OrtApi` a répondu.
+
+Un piège s'y est logé, et il vaut d'être dit : `dossier(pour:)` crée à la demande.
+Vérifier qu'un morceau effacé ne laisse rien **après** avoir appelé `estSepare`
+recréait donc la coquille qu'on venait d'effacer, et le contrôle passait en disant le
+contraire de ce qu'il vérifiait.
+
+### Ce qui n'est pas éprouvé, et qu'il ne faut pas croire fait
+
+**Aucune vraie séparation n'a tourné ici.** Que les pistes sortent justes se juge en
+écoutant, et demande les 166 Mo de poids. Un harnais vert ne vaut pas une séparation
+vérifiée, et c'est pourquoi ce qui précède dit ce qu'il mesure.
+
+**L'accélération matérielle n'y est pas.** ONNX Runtime sait passer par DirectML,
+mais cela demande un second paquet — `Microsoft.ML.OnnxRuntime.DirectML`, qui
+remplace la DLL au lieu de s'y ajouter — et le fournisseur ne se choisit pas à
+l'exécution. Sur le Mac, le GPU ramène une tranche de 1,07 s à 0,27 s ; ici, tout
+passe par les cœurs. Ce sera une étape à soi.
+
 ## L'épreuve complète, sous Windows
 
 `essai.ps1` est le pendant d'`essai.sh`, et il fait tout en une commande :
@@ -1008,7 +1146,7 @@ batterie à l'étape 6 — la question méritait d'être posée, la réponse est
 ```
 
 Il monte l'environnement de construction lui-même — les trois choses de l'étape 0 —
-construit en release, passe les treize harnais, fabrique le morceau témoin, le fait
+construit en release, passe les quatorze harnais, fabrique le morceau témoin, le fait
 passer par la ligne de commande **et** par la fenêtre, confronte les deux images, et
 relève la fluidité.
 
@@ -1071,7 +1209,7 @@ moins une borne inférieure entre deux essais sur du matériel réel.
 | 6. Les gestes, et la fluidité | **faite** — et les mesures ont trouvé un défaut |
 | 7. L'interface Windows 11 | **faite** — la frise, les accords, la batterie, la barre |
 | 8. Sessions et préférences | **faite** — un panneau qui règle, et un harnais qui a trouvé un défaut |
-| 9. La séparation | à faire — ONNX Runtime en C, et un WAV multicanal |
+| 9. La séparation | **l'ossature est faite** — reste à la faire tourner sur les vrais poids |
 | 10. La distribution | à faire — `build.ps1`, et les bibliothèques d'exécution |
 
 L'étape 2 est la seule qui puisse casser l'application Mac. Elle est placée tôt,

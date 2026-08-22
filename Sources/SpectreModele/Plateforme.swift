@@ -145,25 +145,9 @@ public protocol DocumentsRecents {
 
 // MARK: - La séparation
 
-/// Où en est un calcul qui dure des minutes.
-///
-/// La fraction ne suffit pas. Avant la première tranche il se passe une dizaine de
-/// secondes — le décodage, puis surtout l'ouverture du réseau, des centaines de
-/// mégaoctets relus du disque — pendant lesquelles il n'y a rien à mesurer : c'est
-/// un seul appel opaque au moteur d'inférence, qui rend la main quand il a fini.
-/// Une barre immobile à zéro fait alors croire que rien ne se passe, ou que quelque
-/// chose est bloqué. Le nom de l'étape, lui, se dit toujours.
-public struct SeparationProgress {
-    /// De 0 à 1. Reste à zéro tant qu'aucune tranche n'est finie.
-    public var fraction: Double
-    /// Ce qui se passe en ce moment, à montrer tel quel.
-    public var stage: String
-
-    public init(fraction: Double, stage: String) {
-        self.fraction = fraction
-        self.stage = stage
-    }
-}
+// `SeparationProgress` est dans `SpectreCore` : ce n'est pas une notion du modèle
+// d'application mais du calcul lui-même, et le noyau qui découpe les tranches est
+// le premier à devoir en rendre compte.
 
 /// De quoi arrêter un calcul devenu inutile.
 ///

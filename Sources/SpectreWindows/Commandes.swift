@@ -24,13 +24,29 @@ import SpectreWin
 // chaque morceau ; ce qui vient à la fin est ce qu'on règle une fois pour toutes.
 // ─────────────────────────────────────────────────────────────────────────────
 
-struct Commandes {
+/// Une classe et non une structure : le panneau est décrit à chaque image, et deux
+/// ou trois choses ne peuvent pas se relever aussi souvent — la taille du cache des
+/// pistes demande de parcourir un dossier de plusieurs gigaoctets.
+final class Commandes {
     let modele: AppModel
     let preferences: PreferencesWindows
+
+    /// Ce que le dossier des pistes occupe, relevé de loin en loin.
+    ///
+    /// Le parcourir à chaque image reviendrait à lister quelques milliers de fichiers
+    /// cent vingt fois par seconde, pour un chiffre qui bouge une fois par morceau.
+    private var tailleDuCache = 0
+    private var relevéLe = -1.0
+
+    init(modele: AppModel, preferences: PreferencesWindows) {
+        self.modele = modele
+        self.preferences = preferences
+    }
 
     /// Décrit le panneau, commande par commande. Appelée à chaque image : ce qui est
     /// lu vient du modèle, ce qui est écrit y retourne aussitôt.
     func dessiner(dans panneau: Panneau) {
+        pistes(panneau)
         lecture(panneau)
         boucle(panneau)
         tempo(panneau)
@@ -38,6 +54,101 @@ struct Commandes {
         couleurs(panneau)
         analyse(panneau)
         accords(panneau)
+    }
+
+    // MARK: - Les pistes
+
+    /// Le sélecteur de pistes, en tête du panneau.
+    ///
+    /// Sur le Mac il flotte en permanence sur l'image, en verre clair, parce que
+    /// c'est ce qu'on touche à chaque instant. Ici il est en tête du panneau, ce qui
+    /// est un compromis assumé : sans verre, une colonne posée sur le spectrogramme
+    /// le trouerait — voir la note sur l'opacité dans `Panneau.swift`.
+    ///
+    /// Choisir une piste ne change pas seulement ce qu'on entend, mais **ce qu'on
+    /// voit** : le spectrogramme d'une piste isolée a bien moins de partielles qui se
+    /// croisent, si bien que l'aimantation du curseur tombe enfin sur la bonne raie.
+    /// C'est là le vrai gain pour une transcription, l'écoute n'en étant que la
+    /// moitié.
+    private func pistes(_ p: Panneau) {
+        p.titre("Pistes")
+
+        guard modele.hasModel else {
+            p.explication(Reseau.fichier == nil
+                          ? "Les poids de Demucs ne sont pas installés — voir "
+                            + "`modele.sh`. Sans eux, le morceau se lit tel qu'il est."
+                          : "ONNX Runtime n'est pas installé : lancer .\\onnx.ps1, "
+                            + "puis relancer l'application.")
+            return
+        }
+
+        if let avancement = modele.separating {
+            p.note(modele.status ?? "Séparation des pistes…",
+                   valeur: String(format: "%.0f %%", avancement * 100))
+        } else if let erreur = modele.separationError {
+            p.explication(erreur)
+        }
+
+        // Du haut vers le bas : voix, accompagnement, basse, batterie. C'est l'ordre
+        // des hauteurs, celui qu'on a déjà sous les yeux dans l'image — et non
+        // l'ordre où le réseau rend ses sorties, qui n'a de sens que pour lui.
+        let ordre: [Stem] = [.vocals, .other, .bass, .drums]
+        let vide = modele.spectrogram.columnCount == 0
+        for piste in ordre {
+            // La dernière piste cochée ne se décoche pas : il faut bien entendre
+            // quelque chose, et `silence` n'est pas une sélection utile.
+            let seule = modele.selection == [piste]
+            if let voulu = p.bascule(piste.label, modele.selection.contains(piste),
+                                     actif: !vide && !seule),
+               voulu != modele.selection.contains(piste) {
+                modele.toggle(piste)
+            }
+        }
+        if let remarque = modele.drumLaneNotice { p.explication(remarque) }
+
+        var inactifs = Set<Int>()
+        if modele.isWholeMix { inactifs.insert(0) }
+        if !modele.isSeparated || modele.separating != nil { inactifs.insert(1) }
+        switch p.boutons(["Tout garder", "Refaire"], inactifs: inactifs) {
+        case 0: modele.restoreWholeMix()
+        // Oublier les pistes les fait recalculer à la prochaine écoute d'une piste
+        // seule : c'est le recours quand la séparation a mal tourné sur un morceau.
+        case 1: modele.forgetStems()
+        default: break
+        }
+
+        p.air()
+        p.note("Cache des pistes", valeur: Self.enOctets(occupe()))
+        let paliers = PreferencesWindows.paliersDeCache
+        if let choisi = p.segments("Plafond", paliers.map(Self.enOctets),
+                                   paliers.firstIndex(of: preferences.cacheLimit) ?? 1) {
+            preferences.cacheLimit = paliers[choisi]
+            relevéLe = -1
+        }
+        if p.boutons(["Vider le cache"], inactifs: occupe() == 0 ? [0] : []) == 0 {
+            RangementDesPistes.vider()
+            relevéLe = -1
+        }
+        p.explication("Un morceau de sept minutes coûte environ 300 Mo. Au-delà du "
+                      + "plafond, les morceaux les moins récemment ouverts s'en vont "
+                      + "entiers — jamais celui qu'on écoute — et se recalculent.")
+    }
+
+    /// La taille du cache, relevée au plus une fois toutes les deux secondes.
+    private func occupe() -> Int {
+        let maintenant = Horloge.maintenant()
+        if relevéLe < 0 || maintenant - relevéLe > 2 {
+            tailleDuCache = RangementDesPistes.taille()
+            relevéLe = maintenant
+        }
+        return tailleDuCache
+    }
+
+    /// Des octets en gigaoctets ou en mégaoctets, comme le système les compte.
+    private static func enOctets(_ octets: Int) -> String {
+        octets >= 1_000_000_000
+            ? String(format: "%.1f Go", Double(octets) / 1_000_000_000)
+            : String(format: "%.0f Mo", Double(octets) / 1_000_000)
     }
 
     // MARK: - Lecture
