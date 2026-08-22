@@ -3,10 +3,39 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
-CONFIG="${1:-release}"
 
-swift build -c "$CONFIG"
-BIN="$(swift build -c "$CONFIG" --show-bin-path)/Spectre"
+# `./build.sh` construit pour la machine qui compile ; `./build.sh universel`
+# construit les deux tranches, arm64 et x86_64, dans un seul exécutable.
+#
+# La seconde forme sert à distribuer : un Mac Intel ne sait rien faire d'un binaire
+# arm64, et Rosetta ne traduit que dans l'autre sens. Elle coûte le double de
+# compilation, d'où le fait qu'elle ne soit pas le défaut — on ne la demande qu'au
+# moment de livrer.
+#
+# Deux détails la distinguent d'une compilation ordinaire, et aucun n'est un choix :
+#
+#   * `--arch` bascule SwiftPM sur le moteur de construction d'Xcode, qui n'est pas
+#     dans les seuls outils en ligne de commande. D'où `DEVELOPER_DIR`, posé ici
+#     plutôt que par un `xcode-select` qui demanderait un mot de passe et changerait
+#     la machine entière.
+#   * `--product Spectre` limite la construction à l'application. Ce moteur-là
+#     refuse de copier le même onnxruntime.framework pour cinq exécutables à la
+#     fois — ce que fait la construction complète, avec ses harnais de contrôle.
+#     Ceux-ci se compilent de toute façon pour la machine locale, par `./check.sh`.
+CONFIG="release"
+ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    universel|universal)
+      export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
+      ARGS=(--arch arm64 --arch x86_64 --product Spectre)
+      ;;
+    *) CONFIG="$arg" ;;
+  esac
+done
+
+swift build -c "$CONFIG" ${ARGS[@]+"${ARGS[@]}"}
+BIN="$(swift build -c "$CONFIG" ${ARGS[@]+"${ARGS[@]}"} --show-bin-path)/Spectre"
 
 APP="build/Spectre.app"
 rm -rf "$APP"

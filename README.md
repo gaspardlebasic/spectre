@@ -16,6 +16,12 @@ n'importe quel instant du morceau.
 **macOS 26 ou plus récent** — l'interface est bâtie sur Liquid Glass, qui n'existe
 pas avant ; voir « Les commandes, posées sur l'image ».
 
+**Apple Silicon et Intel.** L'application publiée porte les deux tranches dans un
+seul binaire. Côté Intel, la contrainte n'est pas elle mais macOS 26, que seuls
+quatre modèles atteignent — MacBook Pro 16" 2019, MacBook Pro 13" 2020 à quatre
+ports, iMac 2020, Mac Pro 2019. Plus ancien que cela, la machine reste sous macOS
+15 et rien de ce dépôt ne s'y ouvrira.
+
 Une application prête à l'emploi est publiée dans les
 [releases](../../releases). Elle n'est **pas signée par un identifiant Apple**,
 donc macOS la met en quarantaine au téléchargement et refuse de l'ouvrir. Deux
@@ -52,6 +58,19 @@ Xcode n'est pas nécessaire : le script compile avec SwiftPM, assemble le bundle
 `.app`, le signe en ad-hoc et l'enregistre auprès de LaunchServices — sans quoi un
 double-clic sur un fichier audio lancerait l'application *sans lui transmettre le
 fichier*.
+
+Pour les deux architectures à la fois — ce qu'on publie :
+
+```bash
+./livraison.sh
+```
+
+Celui-là **demande Xcode**, et pas par confort : compiler deux tranches d'un coup
+bascule SwiftPM sur le moteur de construction d'Xcode, qui ne vient pas avec les
+seuls outils en ligne de commande. Il produit `build/Spectre.zip`, puis rouvre
+l'archive ailleurs et lance les deux tranches sur le morceau témoin — la seule
+manière de savoir que ce qui est livré démarre. `./build.sh universel` s'arrête au
+paquet, sans l'archive ni les essais.
 
 ## Les quatre étages du code
 
