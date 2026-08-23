@@ -168,9 +168,10 @@ footer a:hover{color:var(--fg)}
 
 <section class="block"><div class="wrap">
   <h2 data-t="installH">Install</h2>
-  <p data-t="installP">The app is not signed with an Apple developer ID, so macOS quarantines it on download. Once it is in Applications:</p>
-  <div class="cmd"><code id="c1">xattr -dr com.apple.quarantine /Applications/Spectre.app</code><button data-copy="c1" data-t="copy">copy</button></div>
-  <p data-t="buildP">Or build it yourself — Xcode is not required:</p>
+  <p id="poseMac" data-t="installP">The app is not signed with an Apple developer ID, so macOS quarantines it on download. Once it is in Applications:</p>
+  <div class="cmd" id="cmdMac"><code id="c1">xattr -dr com.apple.quarantine /Applications/Spectre.app</code><button data-copy="c1" data-t="copy">copy</button></div>
+  <p id="poseWin" data-t="installWin" hidden>The installer is not signed by anyone, so SmartScreen shows a blue screen on first launch.</p>
+  <p id="buildP" data-t="buildP">Or build it yourself — Xcode is not required:</p>
   <div class="cmd"><code id="c2">git clone https://github.com/gaspardlebasic/spectre.git
 cd spectre &amp;&amp; ./build.sh</code><button data-copy="c2" data-t="copy">copy</button></div>
 </div></section>
@@ -192,105 +193,151 @@ cd spectre &amp;&amp; ./build.sh</code><button data-copy="c2" data-t="copy">copy
 <script>
 const DL = "https://github.com/gaspardlebasic/spectre/releases/latest/download/Spectre.zip";
 const REPO = "https://github.com/gaspardlebasic/spectre";
-const WIN = REPO + "/blob/main/WINDOWS.md";
+
+// `latest/download/<nom>` désigne toujours la dernière livraison, à condition que le
+// nom ne bouge pas d'une version à l'autre. C'est pour cela que les fichiers livrés
+// ne portent pas leur numéro — voir `Spectre.iss`.
+const DL_WIN_X64 = REPO + "/releases/latest/download/Spectre-x64-installeur.exe";
+const DL_WIN_ARM = REPO + "/releases/latest/download/Spectre-arm64-installeur.exe";
+
+const CLONE = "git clone https://github.com/gaspardlebasic/spectre.git\n";
+const CLONE_MAC = CLONE + "cd spectre && ./build.sh";
+const CLONE_WIN = CLONE + "cd spectre; .\\build.ps1";
+
+// Quelle tranche proposer d'abord sur un PC. Le navigateur ne le dit pas dans son
+// agent — Windows sur ARM s'y annonce en x64, précisément pour que les sites ne le
+// traitent pas à part — et il faut le demander. Seuls les navigateurs Chromium
+// répondent ; ailleurs on reste sur x64, qui est le cas de l'immense majorité, et
+// l'autre tranche est à un lien de là.
+let winArm = false;
 
 const T = {
 en:{title:"Spectre — a tool for listening to music closely",
- desc:"A spectrogram for transcribing music by ear: a colour per note, automatic chord detection, stem separation. For macOS.",
+ desc:"A spectrogram for transcribing music by ear: a colour per note, automatic chord detection, stem separation. For macOS and Windows.",
  tagline:"A tool for listening to music closely.",
  s1:"The whole track in one image", s2:"One colour per note",
  s3:"Automatic chord detection", s4:"Vocals, chords, drums",
  s5:"Stem separation: bass, drums, vocals, other", s6:"Loop and slow down a section",
- dlMac:"Download for macOS", dlWin:"Build for Windows", dlLin:"View the source code",
+ dlMac:"Download for macOS", dlWin:"Download for Windows", dlLin:"View the source code",
  mMac:"Free and open source · macOS 26 or later · 104 MB",
- mWin:"The port is finished, but there is no published build yet.", mLin:"Linux is planned after Windows.",
+ mWin:"Free and open source · Windows 10 or later · Intel and AMD · 23 MB",
+ mWinArm:"Free and open source · Windows 10 or later · ARM · 23 MB",
+ mLin:"Linux is planned after Windows.",
  mMob:"Spectre is a desktop app. Free and open source · macOS 26 or later · 104 MB",
  altMac:"Download for macOS anyway (104 MB)",
+ altWinArm:"ARM PC — Snapdragon X, Surface Pro: get the ARM64 build",
+ altWinX64:"Intel or AMD PC: get the x64 build",
  installH:"Install",
  installP:"The app is not signed with an Apple developer ID, so macOS quarantines it on download. Once it is in Applications:",
+ installWin:"The installer is signed by nobody, so SmartScreen shows a blue screen on first launch: go through “More info”, then “Run anyway”. It installs without asking for administrator rights, and offers — unticked — to open audio files with Spectre. Uninstalling leaves nothing behind.",
  buildP:"Or build it yourself — Xcode is not required:",
+ buildWinP:"Or build it yourself — Swift 6.3 and the Visual Studio 2022 build tools:",
  otherH:"Other platforms",
- otherWin:"<strong>Windows</strong> — the port is finished: eleven steps out of eleven. There is no published build yet; <code>build.ps1</code> makes the app.",
+ otherWin:"<strong>Windows</strong> — shipped, for x64 and ARM64. Stem separation is the one thing missing: the Demucs weights cannot be built by a machine that has no GPU and no PyTorch.",
  otherLin:"<strong>Linux</strong> — planned after Windows.",
  copy:"copy", copied:"copied",
  footFree:"Free software", footSrc:"Source on GitHub", footLic:"Licence", footDemucs:"Separation by Demucs v4"},
 
 fr:{title:"Spectre — une aide à l'écoute active de la musique",
- desc:"Un spectrogramme pour transcrire la musique à l'oreille : une couleur par note, détection automatique des accords, séparation des pistes. Pour macOS.",
+ desc:"Un spectrogramme pour transcrire la musique à l'oreille : une couleur par note, détection automatique des accords, séparation des pistes. Pour macOS et Windows.",
  tagline:"Une aide à l'écoute active de la musique.",
  s1:"Tout le morceau dans une image", s2:"Une couleur par note",
  s3:"Détection automatique des accords", s4:"Voix, accords, batterie",
  s5:"Séparation des pistes : basse, batterie, voix, autres", s6:"Boucler et ralentir une section",
- dlMac:"Télécharger pour macOS", dlWin:"Construire pour Windows", dlLin:"Voir le code source",
+ dlMac:"Télécharger pour macOS", dlWin:"Télécharger pour Windows", dlLin:"Voir le code source",
  mMac:"Libre et gratuit · macOS 26 ou plus récent · 104 Mo",
- mWin:"Le portage est terminé, mais il n'y a pas encore de version publiée.", mLin:"Linux est prévu après Windows.",
+ mWin:"Libre et gratuit · Windows 10 ou plus récent · Intel et AMD · 23 Mo",
+ mWinArm:"Libre et gratuit · Windows 10 ou plus récent · ARM · 23 Mo",
+ mLin:"Linux est prévu après Windows.",
  mMob:"Spectre est une application de bureau. Libre et gratuit · macOS 26 ou plus récent · 104 Mo",
  altMac:"Télécharger quand même pour macOS (104 Mo)",
+ altWinArm:"PC ARM — Snapdragon X, Surface Pro : prendre la version ARM64",
+ altWinX64:"PC Intel ou AMD : prendre la version x64",
  installH:"Installer",
  installP:"L'application n'est pas signée par un identifiant Apple : macOS la met en quarantaine au téléchargement. Une fois glissée dans Applications :",
+ installWin:"L'installeur n'est signé par personne : SmartScreen affiche un écran bleu au premier lancement, et il faut passer par « Informations complémentaires » puis « Exécuter quand même ». Il s'installe sans demander de droits d'administrateur, et propose — case décochée — d'ouvrir les fichiers audio avec Spectre. La désinstallation ne laisse rien.",
  buildP:"Ou construire soi-même — Xcode n'est pas nécessaire :",
+ buildWinP:"Ou construire soi-même — Swift 6.3 et les outils de compilation de Visual Studio 2022 :",
  otherH:"Autres plateformes",
- otherWin:"<strong>Windows</strong> — le portage est terminé : onze étapes sur onze. Il n'y a pas encore de version publiée ; <code>build.ps1</code> fabrique l'application.",
+ otherWin:"<strong>Windows</strong> — livré, en x64 et en ARM64. Il n'y manque que la séparation des pistes : les poids de Demucs ne se fabriquent pas sur une machine sans carte graphique ni PyTorch.",
  otherLin:"<strong>Linux</strong> — prévu après Windows.",
  copy:"copier", copied:"copié",
  footFree:"Logiciel libre", footSrc:"Code source sur GitHub", footLic:"Licence", footDemucs:"Séparation par Demucs v4"},
 
 es:{title:"Spectre — una ayuda para la escucha activa",
- desc:"Un espectrograma para sacar música de oído: un color por nota, detección automática de acordes, separación de pistas. Para macOS.",
+ desc:"Un espectrograma para sacar música de oído: un color por nota, detección automática de acordes, separación de pistas. Para macOS y Windows.",
  tagline:"Una ayuda para la escucha activa.",
  s1:"Todo el tema en una imagen", s2:"Un color por nota",
  s3:"Detección automática de acordes", s4:"Voz, acordes, batería",
  s5:"Separación de pistas: bajo, batería, voz, resto", s6:"Hacer un bucle y ralentizar",
- dlMac:"Descargar para macOS", dlWin:"Compilar para Windows", dlLin:"Ver el código fuente",
+ dlMac:"Descargar para macOS", dlWin:"Descargar para Windows", dlLin:"Ver el código fuente",
  mMac:"Libre y gratuito · macOS 26 o posterior · 104 MB",
- mWin:"El port está terminado, pero aún no hay una versión publicada.", mLin:"Linux está previsto después de Windows.",
+ mWin:"Libre y gratuito · Windows 10 o posterior · Intel y AMD · 23 MB",
+ mWinArm:"Libre y gratuito · Windows 10 o posterior · ARM · 23 MB",
+ mLin:"Linux está previsto después de Windows.",
  mMob:"Spectre es una aplicación de escritorio. Libre y gratuito · macOS 26 o posterior · 104 MB",
  altMac:"Descargar igualmente para macOS (104 MB)",
+ altWinArm:"PC ARM — Snapdragon X, Surface Pro: descargar la versión ARM64",
+ altWinX64:"PC Intel o AMD: descargar la versión x64",
  installH:"Instalar",
  installP:"La aplicación no está firmada con un identificador de desarrollador de Apple, así que macOS la pone en cuarentena al descargarla. Una vez en Aplicaciones:",
+ installWin:"El instalador no está firmado por nadie: SmartScreen muestra una pantalla azul en el primer inicio, y hay que pasar por «Más información» y luego «Ejecutar de todas formas». Se instala sin pedir permisos de administrador y ofrece —sin marcar— abrir los archivos de audio con Spectre. Al desinstalar no queda nada.",
  buildP:"O compilarla uno mismo — no hace falta Xcode:",
+ buildWinP:"O compilarla uno mismo — Swift 6.3 y las herramientas de compilación de Visual Studio 2022:",
  otherH:"Otras plataformas",
- otherWin:"<strong>Windows</strong> — el port está terminado: once etapas de once. Aún no hay versión publicada; <code>build.ps1</code> genera la aplicación.",
+ otherWin:"<strong>Windows</strong> — publicado, en x64 y ARM64. Solo falta la separación de pistas: los pesos de Demucs no se generan en una máquina sin tarjeta gráfica ni PyTorch.",
  otherLin:"<strong>Linux</strong> — previsto después de Windows.",
  copy:"copiar", copied:"copiado",
  footFree:"Software libre", footSrc:"Código en GitHub", footLic:"Licencia", footDemucs:"Separación con Demucs v4"},
 
 de:{title:"Spectre — eine Hilfe zum aufmerksamen Hören",
- desc:"Ein Spektrogramm zum Heraushören von Musik: eine Farbe pro Ton, automatische Akkorderkennung, Spurtrennung. Für macOS.",
+ desc:"Ein Spektrogramm zum Heraushören von Musik: eine Farbe pro Ton, automatische Akkorderkennung, Spurtrennung. Für macOS und Windows.",
  tagline:"Eine Hilfe zum aufmerksamen Hören.",
  s1:"Das ganze Stück in einem Bild", s2:"Eine Farbe pro Ton",
  s3:"Automatische Akkorderkennung", s4:"Gesang, Akkorde, Schlagzeug",
  s5:"Spurtrennung: Bass, Schlagzeug, Gesang, Rest", s6:"Abschnitt loopen und verlangsamen",
- dlMac:"Für macOS herunterladen", dlWin:"Für Windows selbst bauen", dlLin:"Quellcode ansehen",
+ dlMac:"Für macOS herunterladen", dlWin:"Für Windows herunterladen", dlLin:"Quellcode ansehen",
  mMac:"Frei und quelloffen · macOS 26 oder neuer · 104 MB",
- mWin:"Die Portierung ist fertig, es gibt aber noch keine veröffentlichte Version.", mLin:"Linux ist nach Windows geplant.",
+ mWin:"Frei und quelloffen · Windows 10 oder neuer · Intel und AMD · 23 MB",
+ mWinArm:"Frei und quelloffen · Windows 10 oder neuer · ARM · 23 MB",
+ mLin:"Linux ist nach Windows geplant.",
  mMob:"Spectre ist eine Desktop-App. Frei und quelloffen · macOS 26 oder neuer · 104 MB",
  altMac:"Trotzdem für macOS herunterladen (104 MB)",
+ altWinArm:"ARM-PC — Snapdragon X, Surface Pro: die ARM64-Fassung laden",
+ altWinX64:"Intel- oder AMD-PC: die x64-Fassung laden",
  installH:"Installieren",
  installP:"Die App ist nicht mit einer Apple-Entwickler-ID signiert, deshalb stellt macOS sie beim Herunterladen unter Quarantäne. Sobald sie in „Programme“ liegt:",
+ installWin:"Das Installationsprogramm ist von niemandem signiert: SmartScreen zeigt beim ersten Start einen blauen Bildschirm — über „Weitere Informationen“ und dann „Trotzdem ausführen“ gehen. Es installiert ohne Administratorrechte und bietet an — nicht angehakt —, Audiodateien mit Spectre zu öffnen. Beim Deinstallieren bleibt nichts zurück.",
  buildP:"Oder selbst bauen — Xcode wird nicht gebraucht:",
+ buildWinP:"Oder selbst bauen — Swift 6.3 und die Build-Tools von Visual Studio 2022:",
  otherH:"Andere Plattformen",
- otherWin:"<strong>Windows</strong> — die Portierung ist fertig: elf von elf Schritten. Es gibt noch keine veröffentlichte Version; <code>build.ps1</code> baut die Anwendung.",
+ otherWin:"<strong>Windows</strong> — veröffentlicht, für x64 und ARM64. Es fehlt allein die Spurtrennung: die Demucs-Gewichte lassen sich auf einer Maschine ohne Grafikkarte und ohne PyTorch nicht erzeugen.",
  otherLin:"<strong>Linux</strong> — nach Windows geplant.",
  copy:"kopieren", copied:"kopiert",
  footFree:"Freie Software", footSrc:"Quellcode auf GitHub", footLic:"Lizenz", footDemucs:"Trennung mit Demucs v4"},
 
 pl:{title:"Spectre — pomoc w uważnym słuchaniu muzyki",
- desc:"Spektrogram do wyciągania muzyki ze słuchu: jeden kolor na dźwięk, automatyczne rozpoznawanie akordów, rozdzielanie ścieżek. Na macOS.",
+ desc:"Spektrogram do wyciągania muzyki ze słuchu: jeden kolor na dźwięk, automatyczne rozpoznawanie akordów, rozdzielanie ścieżek. Na macOS i Windows.",
  tagline:"Pomoc w uważnym słuchaniu muzyki.",
  s1:"Cały utwór na jednym obrazie", s2:"Jeden kolor na dźwięk",
  s3:"Automatyczne rozpoznawanie akordów", s4:"Wokal, akordy, perkusja",
  s5:"Rozdzielanie ścieżek: bas, perkusja, wokal, reszta", s6:"Zapętlenie i spowolnienie fragmentu",
- dlMac:"Pobierz na macOS", dlWin:"Zbuduj na Windows", dlLin:"Zobacz kod źródłowy",
+ dlMac:"Pobierz na macOS", dlWin:"Pobierz na Windows", dlLin:"Zobacz kod źródłowy",
  mMac:"Wolne i otwarte · macOS 26 lub nowszy · 104 MB",
- mWin:"Port jest gotowy, ale nie ma jeszcze opublikowanej wersji.", mLin:"Linux planowany po Windows.",
+ mWin:"Wolne i otwarte · Windows 10 lub nowszy · Intel i AMD · 23 MB",
+ mWinArm:"Wolne i otwarte · Windows 10 lub nowszy · ARM · 23 MB",
+ mLin:"Linux planowany po Windows.",
  mMob:"Spectre to aplikacja na komputer. Wolne i otwarte · macOS 26 lub nowszy · 104 MB",
  altMac:"Pobierz mimo to na macOS (104 MB)",
+ altWinArm:"Komputer ARM — Snapdragon X, Surface Pro: pobierz wersję ARM64",
+ altWinX64:"Komputer Intel lub AMD: pobierz wersję x64",
  installH:"Instalacja",
  installP:"Aplikacja nie jest podpisana identyfikatorem dewelopera Apple, więc macOS poddaje ją kwarantannie po pobraniu. Gdy znajdzie się w Aplikacjach:",
+ installWin:"Instalator nie jest przez nikogo podpisany: SmartScreen pokaże niebieski ekran przy pierwszym uruchomieniu — trzeba wybrać „Więcej informacji”, a potem „Uruchom mimo to”. Instaluje się bez uprawnień administratora i proponuje — domyślnie odznaczone — otwieranie plików dźwiękowych w programie Spectre. Po odinstalowaniu nie zostaje nic.",
  buildP:"Albo zbudować samodzielnie — Xcode nie jest potrzebny:",
+ buildWinP:"Albo zbudować samodzielnie — Swift 6.3 i narzędzia kompilacji Visual Studio 2022:",
  otherH:"Inne platformy",
- otherWin:"<strong>Windows</strong> — port jest gotowy: jedenaście kroków z jedenastu. Nie ma jeszcze opublikowanej wersji; <code>build.ps1</code> buduje aplikację.",
+ otherWin:"<strong>Windows</strong> — opublikowany, w wersjach x64 i ARM64. Brakuje tylko rozdzielania ścieżek: wag Demucs nie da się zbudować na maszynie bez karty graficznej i bez PyTorcha.",
  otherLin:"<strong>Linux</strong> — planowany po Windows.",
  copy:"kopiuj", copied:"skopiowano",
  footFree:"Wolne oprogramowanie", footSrc:"Kod na GitHubie", footLic:"Licencja", footDemucs:"Rozdzielanie: Demucs v4"}
@@ -344,14 +391,29 @@ function apply(lang){
   const meta = document.getElementById("btnmeta");
   const alt = document.getElementById("btnalt");
   const alta = document.getElementById("btnalta");
+  // La section « Installer » ne parle pas de la même chose selon la machine : la
+  // quarantaine d'Apple n'a aucun sens sur un PC, et SmartScreen aucun sur un Mac.
+  const surWindows = (os === "win");
+  document.getElementById("poseMac").hidden = surWindows;
+  document.getElementById("cmdMac").hidden = surWindows;
+  document.getElementById("poseWin").hidden = !surWindows;
+  document.getElementById("buildP").textContent = surWindows ? t.buildWinP : t.buildP;
+  document.getElementById("c2").textContent = surWindows ? CLONE_WIN : CLONE_MAC;
+
   if (os === "win"){
-    btn.textContent = t.dlWin; btn.href = WIN; btn.removeAttribute("download");
-    btn.classList.add("quiet"); meta.textContent = t.mWin;
-    alta.textContent = t.altMac; alt.hidden = false;
+    // La tranche la plus probable sous le bouton, l'autre juste en dessous : on ne
+    // peut pas savoir à coup sûr, et cacher celle qu'il faut derrière une page de
+    // releases est le meilleur moyen qu'elle ne soit jamais trouvée.
+    btn.textContent = t.dlWin; btn.classList.remove("quiet");
+    btn.href = winArm ? DL_WIN_ARM : DL_WIN_X64;
+    meta.textContent = winArm ? t.mWinArm : t.mWin;
+    alta.textContent = winArm ? t.altWinX64 : t.altWinArm;
+    alta.href = winArm ? DL_WIN_X64 : DL_WIN_ARM;
+    alt.hidden = false;
   } else if (os === "linux"){
     btn.textContent = t.dlLin; btn.href = REPO; btn.classList.add("quiet");
     meta.textContent = t.mLin;
-    alta.textContent = t.altMac; alt.hidden = false;
+    alta.textContent = t.altMac; alta.href = DL; alt.hidden = false;
   } else {
     btn.textContent = t.dlMac; btn.href = DL; btn.classList.remove("quiet");
     meta.textContent = (os === "mobile") ? t.mMob : t.mMac;
@@ -386,6 +448,15 @@ document.querySelectorAll("[data-copy]").forEach(b => {
 });
 
 apply(detectLang());
+
+// Et si le navigateur veut bien dire l'architecture, on repose la page dessus. Après
+// coup, parce que la réponse est une promesse : la page s'affiche tout de suite avec
+// le choix le plus probable, et se corrige si elle apprend mieux.
+if (os === "win" && navigator.userAgentData && navigator.userAgentData.getHighEntropyValues){
+  navigator.userAgentData.getHighEntropyValues(["architecture"]).then(v => {
+    if (v && v.architecture === "arm"){ winArm = true; apply(document.documentElement.lang); }
+  }).catch(() => {});
+}
 </script>
 </body>
 </html>

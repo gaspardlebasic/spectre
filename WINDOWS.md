@@ -1370,6 +1370,28 @@ Deux détails qui ont chacun coûté un essai :
 son et Spectre l'ouvre volontiers, mais c'est d'abord un conteneur vidéo : une case
 qui dit « fichiers audio » n'a pas à emporter la vidéothèque de qui la coche.
 
+### Le coureur n'a pas de bureau, et DXGI y meurt
+
+L'épreuve du dossier propre plantait sur `0xC0000005` — une violation d'accès — sans
+un mot. Le travail d'un coureur tourne en **session 0**, sans bureau : `CreateWindow`
+y passe, et `CreateSwapChainForHwnd` meurt sur une fenêtre qui n'est sur aucun écran.
+
+Ce n'est pas une panne de Spectre, et c'est `RenduCheck` qui l'a dit : sur la même
+machine, il fait passer toute la chaîne Direct3D **hors écran** — appareil, nuanceur,
+téléversement, relecture — sans broncher, sur un « Microsoft Basic Render Driver ».
+Le rendu va bien ; c'est la fenêtre qui n'existe pas.
+
+D'où `-SansFenetre`, qui fait passer l'épreuve par `--rendu`. Ce qu'elle est là pour
+dire — *l'application trouve-t-elle ses bibliothèques hors de l'atelier ?* — se lit
+tout aussi bien : même exécutable, mêmes DLL. Ce qu'on y perd est la fenêtre, que la
+machine de développement éprouve à chaque `.\essai.ps1`. C'est la concession
+qu'`./essai.sh --sans-fenetre` fait déjà sur le Mac, et pour la même raison.
+
+Trois exécutions ont été perdues à ce silence-là, et c'est ce qui a valu à
+`Application.init?` de dire enfin pourquoi elle échoue : une fenêtre refusée et une
+carte absente rendaient toutes deux un `exit(1)` muet, que rien ne distinguait d'une
+bibliothèque oubliée.
+
 ### Ce qui a été éprouvé
 
 Poser, regarder, lancer, retirer, regarder encore — sur la machine, pas sur le
@@ -1385,6 +1407,11 @@ papier :
   posé ;
 - la désinstallation ne laisse ni fichier, ni raccourci, ni clé, et `.wav` et `.mp3`
   retournent au lecteur du système.
+
+Et une fois le flux en place, la même chose **sur ce qui est publié** : les deux
+installeurs téléchargés depuis la release, l'exécutable qui annonce bien `0.3.0.0`,
+l'installeur x64 qui **refuse** cette machine ARM, celui d'ARM64 qui pose, ouvre le
+morceau témoin, rend son image, et s'en va sans laisser de trace.
 
 ### La livraison ne se fait plus à la main
 
@@ -1417,6 +1444,19 @@ Quatre pièges, dont trois se paient en silence :
   range ses exécutions ailleurs, et une liste de DLL bâtie sur un dossier vide
   produit un paquet qui s'assemble, qui s'archive, et qui refuse de s'ouvrir sur
   `0xC0000135` chez le premier qui le télécharge.
+
+Et deux fois le même piège, par deux portes différentes, parce que **le coureur clôt
+chaque étape par `exit $LASTEXITCODE`** :
+
+- une commande qui échoue *normalement* laisse son code derrière elle. `gh release
+  download` dit « release not found » quand la release est encore à créer — le cas
+  d'une première livraison — et l'étape échouait juste après avoir annoncé qu'elle
+  se passerait des poids. Il faut clore par `exit 0` ce qui n'est qu'un
+  renseignement ;
+- **et PowerShell tient pour une erreur fatale tout ce qu'un exécutable écrit sur sa
+  sortie d'erreur**, même redirigée, dès que `$ErrorActionPreference` vaut « Stop » —
+  ce que GitHub pose. C'est le piège qui est écrit en tête d'`essai.ps1` depuis
+  toujours, revenu par une autre porte.
 
 ### Le numéro de version n'arrivait pas jusqu'à l'exécutable
 
