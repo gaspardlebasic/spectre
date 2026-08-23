@@ -141,6 +141,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # « Continue », et c'est indispensable : GitHub pose « Stop », et PowerShell
+          # tient alors pour une erreur fatale tout ce qu'un exécutable ecrit sur sa
+          # sortie d'erreur — meme redirigee. `gh release download` dit « release not
+          # found » quand la release n'existe pas encore, ce qui est le cas normal
+          # d'une premiere livraison, et l'etape entiere s'arretait dessus. Le meme
+          # piege est decrit en tete d'`essai.ps1`.
+          $ErrorActionPreference = "Continue"
           $cible = "Resources\htdemucs.onnx"
           $trouve = $false
           if ("${{ github.ref_type }}" -eq "tag") {
