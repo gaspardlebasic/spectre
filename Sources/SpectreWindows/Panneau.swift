@@ -33,6 +33,11 @@ import SpectreWin
 ///
 /// Il ne connaît aucun réglage en particulier. Ce qu'il montre est décrit à chaque
 /// image par `Commandes.swift`, qui l'appelle commande par commande.
+///
+/// Chaque commande porte son `aide` : la phrase qui était écrite sous elle, et qui
+/// paraît maintenant en infobulle quand on la survole — voir `Infobulle.swift`.
+/// Elle n'est pas facultative. Une commande dont personne ne sait dire ce qu'elle
+/// change n'a rien à faire dans un panneau.
 final class Panneau {
     /// Largeur du panneau, en points. Assez pour qu'un intitulé et sa valeur
     /// tiennent sur une ligne, assez peu pour laisser voir l'image dessous.
@@ -63,6 +68,7 @@ final class Panneau {
     // MARK: La géométrie de l'image en cours
 
     private var pinceau: Pinceau?
+    private var infobulle: Infobulle?
     private var gauche = 0.0
     private var haut = 0.0
     private var bas = 0.0
@@ -111,11 +117,13 @@ final class Panneau {
     // MARK: - Le tour de dessin
 
     /// Dessine le cadre, puis le contenu que `corps` décrit commande par commande.
-    func dessiner(pinceau p: Pinceau, largeurFenetre: Double, hauteurUtile: Double,
+    func dessiner(pinceau p: Pinceau, infobulle bulle: Infobulle,
+                  largeurFenetre: Double, hauteurUtile: Double,
                   _ corps: (Panneau) -> Void) {
         guard ouvert else { appuiEnAttente = nil; molette = 0; return }
         let r = cadre(largeurFenetre: largeurFenetre, hauteurUtile: hauteurUtile)
         pinceau = p
+        infobulle = bulle
         gauche = r.x
         haut = r.y
         bas = r.y + r.hauteur
@@ -163,12 +171,14 @@ final class Panneau {
 
         appuiEnAttente = nil
         pinceau = nil
+        infobulle = nil
     }
 
     // MARK: - Les commandes
 
-    /// Le titre d'une section, et le filet qui la sépare de la précédente.
-    func titre(_ texte: String) {
+    /// Le titre d'une section, le filet qui la sépare de la précédente, et ce à quoi
+    /// la section sert — qui se lit en la survolant.
+    func titre(_ texte: String, aide: String) {
         guard let p = pinceau else { return }
         if sections > 0 {
             y += Self.ecart
@@ -179,19 +189,21 @@ final class Panneau {
             y += Self.ecart
         }
         sections += 1
-        if visible(y, 16) {
-            p.texte(texte, x: contenuGauche, y: y + 8, largeur: contenuLargeur,
-                    taille: 12, Pinceau.blanc(0.92))
-        }
+        let yLigne = y
         y += 22
+        guard visible(yLigne, 22) else { return }
+        p.texte(texte, x: contenuGauche, y: yLigne + 8, largeur: contenuLargeur,
+                taille: 12, Pinceau.blanc(0.92))
+        survol(CGRect(x: contenuGauche, y: yLigne, width: contenuLargeur, height: 20),
+               aide)
     }
 
-    /// Un paragraphe d'explication.
+    /// Une phrase que le panneau doit dire en clair : ce qui n'est pas installé, ce
+    /// qui vient d'échouer, ce qui est en train de se calculer.
     ///
-    /// Ce sont eux qui font la moitié du panneau macOS, et ils ne sont pas du
-    /// remplissage : un curseur nommé « netteté d'une raie » ne dit rien de ce qu'il
-    /// change à l'écran, et un réglage qu'on ne comprend pas est un réglage qu'on ne
-    /// touche pas.
+    /// Ce n'est pas une explication de réglage — celles-là sont toutes passées en
+    /// infobulle. C'est ce qu'on doit lire **sans avoir à chercher où survoler**,
+    /// parce qu'aucune commande n'en rend compte.
     func explication(_ texte: String) {
         guard let p = pinceau else { return }
         let hauteur = p.paragraphe(texte, x: contenuGauche, y: y, largeur: contenuLargeur,
@@ -207,7 +219,8 @@ final class Panneau {
     /// produire sans qu'on l'ait écrit exprès.
     @discardableResult
     func curseur(_ nom: String, _ valeur: Double, _ plage: ClosedRange<Double>,
-                 texte affichage: String, actif utilisable: Bool = true) -> Double? {
+                 texte affichage: String, aide: String,
+                 actif utilisable: Bool = true) -> Double? {
         guard let p = pinceau else { return nil }
         let hauteurLigne = 31.0
         let yLigne = y
@@ -253,9 +266,14 @@ final class Panneau {
                           Self.accent(opacite))
             }
             let xPouce = rail.x + rail.largeur * part
-            disque(p, xPouce, yRail, 7, Pinceau.gris(0.10, opacite))
-            disque(p, xPouce, yRail, 6, Pinceau.blanc(0.88 * opacite))
-            disque(p, xPouce, yRail, 3.2, Self.accent(opacite))
+            p.disque(xPouce, yRail, 7, Pinceau.gris(0.10, opacite))
+            p.disque(xPouce, yRail, 6, Pinceau.blanc(0.88 * opacite))
+            p.disque(xPouce, yRail, 3.2, Self.accent(opacite))
+            // La bulle est proposée sur la ligne entière, intitulé compris : c'est
+            // le nom du réglage qu'on survole quand on se demande ce qu'il fait, pas
+            // son rail.
+            survol(CGRect(x: contenuGauche, y: yLigne, width: contenuLargeur,
+                          height: hauteurLigne), aide)
         }
         return change
     }
@@ -263,7 +281,8 @@ final class Panneau {
     /// Une bascule, à la manière de Windows 11 : une capsule et son pouce. Rend la
     /// nouvelle valeur au moment où l'on clique.
     @discardableResult
-    func bascule(_ nom: String, _ valeur: Bool, actif utilisable: Bool = true) -> Bool? {
+    func bascule(_ nom: String, _ valeur: Bool, aide: String,
+                 actif utilisable: Bool = true) -> Bool? {
         guard let p = pinceau else { return nil }
         let hauteurLigne = 28.0
         let yLigne = y
@@ -297,50 +316,20 @@ final class Panneau {
                           epaisseur: 1)
             }
             let xPouce = montre ? xCapsule + largeurCapsule - 10 : xCapsule + 10
-            disque(p, xPouce, yCapsule + hauteurCapsule / 2, 6,
-                   montre ? Pinceau.blanc(0.95) : Pinceau.blanc(0.7 * opacite))
+            p.disque(xPouce, yCapsule + hauteurCapsule / 2, 6,
+                     montre ? Pinceau.blanc(0.95) : Pinceau.blanc(0.7 * opacite))
+            survol(zone, aide)
         }
         return change
-    }
-
-    /// Un choix parmi plusieurs, en colonne. Rend l'indice retenu au clic.
-    ///
-    /// En colonne et non en segments : les intitulés du vocabulaire d'accords font
-    /// jusqu'à trente-cinq caractères, et une rangée de segments les couperait tous.
-    /// `segments` est là pour les choix courts.
-    @discardableResult
-    func choix(_ options: [String], _ index: Int) -> Int? {
-        guard let p = pinceau else { return nil }
-        var retenu: Int?
-        for (i, option) in options.enumerated() {
-            let hauteurLigne = 24.0
-            let yLigne = y
-            y += hauteurLigne
-            let zone = CGRect(x: contenuGauche, y: yLigne, width: contenuLargeur,
-                              height: hauteurLigne)
-            if let appui = appuiEnAttente, zone.contains(appui) {
-                appuiEnAttente = nil
-                retenu = i
-            }
-            guard visible(yLigne, hauteurLigne) else { continue }
-            let coche = i == (retenu ?? index)
-            let milieu = yLigne + hauteurLigne / 2
-            if coche { disque(p, contenuGauche + 7, milieu, 6.5, Self.accent(1)) }
-            p.cercle(contenuGauche + 7, milieu, rayon: 6.5,
-                     coche ? Self.accent(1) : Pinceau.blanc(0.35), epaisseur: 1.5)
-            if coche { disque(p, contenuGauche + 7, milieu, 2.5, Pinceau.blanc(0.98)) }
-            p.texte(option, x: contenuGauche + 22, y: milieu,
-                    largeur: contenuLargeur - 22, taille: 11,
-                    Pinceau.blanc(coche ? 0.88 : 0.6))
-        }
-        return retenu
     }
 
     /// Un choix court, en une rangée de segments : les temps par mesure, les bémols
     /// contre les dièses.
     @discardableResult
-    func segments(_ nom: String?, _ options: [String], _ index: Int) -> Int? {
+    func segments(_ nom: String?, _ options: [String], _ index: Int,
+                  aide: String) -> Int? {
         guard let p = pinceau else { return nil }
+        let yIntitule = y
         if let nom, visible(y, 18) {
             p.texte(nom, x: contenuGauche, y: y + 8, largeur: contenuLargeur,
                     taille: 11, Pinceau.blanc(0.78))
@@ -355,6 +344,8 @@ final class Panneau {
         if visible(yLigne, hauteurLigne) {
             p.arrondi(contenuGauche, yLigne, contenuLargeur, hauteurLigne, rayon: 5,
                       Pinceau.blanc(0.07))
+            survol(CGRect(x: contenuGauche, y: yIntitule, width: contenuLargeur,
+                          height: yLigne + hauteurLigne - yIntitule), aide)
         }
         for (i, option) in options.enumerated() {
             let x = contenuGauche + largeurSegment * Double(i)
@@ -376,13 +367,14 @@ final class Panneau {
         return retenu
     }
 
-    /// Une rangée de boutons. Rend l'indice de celui qu'on vient de presser.
+    /// Une rangée de boutons de largeur égale. Rend l'indice de celui qu'on vient de
+    /// presser.
     ///
-    /// `inactifs` grise ceux qui n'ont rien à faire — « Mesures » sans tempo relevé,
-    /// « Effacer » sans boucle. Les cacher ferait sauter la rangée d'une image à
-    /// l'autre, et l'on ne saurait plus que la commande existe.
+    /// `inactifs` grise ceux qui n'ont rien à faire — « Aux mesures » sans tempo
+    /// relevé, « Effacer » sans boucle. Les cacher ferait sauter la rangée d'une
+    /// image à l'autre, et l'on ne saurait plus que la commande existe.
     @discardableResult
-    func boutons(_ noms: [String], inactifs: Set<Int> = []) -> Int? {
+    func boutons(_ noms: [String], aides: [String], inactifs: Set<Int> = []) -> Int? {
         guard let p = pinceau, !noms.isEmpty else { return nil }
         let hauteurLigne = 28.0
         let yLigne = y
@@ -395,19 +387,105 @@ final class Panneau {
             let x = contenuGauche + (largeurBouton + ecart) * Double(i)
             let utilisable = !inactifs.contains(i)
             let zone = CGRect(x: x, y: yLigne, width: largeurBouton, height: hauteurLigne)
-            let survole = zone.contains(souris)
             if utilisable, let appui = appuiEnAttente, zone.contains(appui) {
                 appuiEnAttente = nil
                 presse = i
             }
             guard visible(yLigne, hauteurLigne) else { continue }
-            let opacite = utilisable ? 1.0 : 0.35
-            p.arrondi(x, yLigne, largeurBouton, hauteurLigne, rayon: 5,
-                      Pinceau.blanc((survole && utilisable ? 0.16 : 0.09) * opacite))
-            p.arrondi(x, yLigne, largeurBouton, hauteurLigne, rayon: 5,
-                      Pinceau.blanc(0.14 * opacite), epaisseur: 1)
-            p.texte(nom, x: x, y: yLigne + hauteurLigne / 2, largeur: largeurBouton,
-                    taille: 10.5, Pinceau.blanc(0.85 * opacite), alignement: .centre)
+            bouton(p, zone, nom, utilisable: utilisable)
+            if i < aides.count { survol(zone, aides[i]) }
+        }
+        return presse
+    }
+
+    /// Un élément d'une rangée — voir `rangee`.
+    enum Piece {
+        /// Rien, et pas même la place de rien.
+        ///
+        /// Une pièce qui ne paraît que dans certains cas — le signe qui prévient
+        /// d'une estimation peu franche — laisse sa place plutôt que de disparaître
+        /// du tableau : les indices que `rangee` rend ne bougent alors pas selon ce
+        /// que le morceau se trouve être.
+        case rien
+        /// Un mot posé là : un intitulé, une unité.
+        case mot(String)
+        /// Une valeur, en chiffres à chasse fixe.
+        case valeur(String)
+        /// Un signe qui attire l'œil, et dont l'infobulle dit ce qu'il annonce.
+        case alerte(String, aide: String)
+        /// Un bouton, avec ce que son infobulle dit et s'il y a lieu de le presser.
+        case bouton(String, aide: String, actif: Bool = true)
+    }
+
+    /// Une rangée : tout ce qui répond à une même question, sur une seule ligne.
+    /// Rend l'indice de la pièce qu'on vient de presser.
+    ///
+    /// Les pièces sont posées de gauche à droite, chacune à sa largeur — au
+    /// contraire de `boutons`, qui partage la largeur du panneau en parts égales.
+    /// C'est ce qui permet de tenir le tempo entier sur une ligne : le chiffre, les
+    /// deux flèches, la signature, le premier temps et de quoi relancer
+    /// l'estimation. Sur une ligne parce que c'est **une** question — sur quelle
+    /// grille ce morceau est-il écrit — et qu'on y répond d'un coup.
+    @discardableResult
+    func rangee(_ pieces: [Piece]) -> Int? {
+        guard let p = pinceau else { return nil }
+        let hauteurLigne = 30.0
+        let hauteurBouton = 24.0
+        let yLigne = y
+        y += hauteurLigne
+        let dessine = visible(yLigne, hauteurLigne)
+        let milieu = yLigne + hauteurLigne / 2
+
+        var x = contenuGauche
+        var presse: Int?
+        for (i, piece) in pieces.enumerated() {
+            switch piece {
+            case .rien:
+                break
+
+            case .mot(let texte):
+                let l = p.largeur(texte, taille: 10.5)
+                if dessine {
+                    p.texte(texte, x: x, y: milieu, largeur: l + 2, taille: 10.5,
+                            Pinceau.blanc(0.55))
+                }
+                x += l + 7
+
+            case .valeur(let texte):
+                let l = p.largeur(texte, taille: 11.5, police: .chiffres)
+                if dessine {
+                    p.texte(texte, x: x, y: milieu, largeur: l + 2, taille: 11.5,
+                            Pinceau.blanc(0.92), police: .chiffres)
+                }
+                x += l + 7
+
+            case .alerte(let signe, let aide):
+                let l = p.largeur(signe, taille: 12)
+                if dessine {
+                    p.texte(signe, x: x, y: milieu, largeur: l + 2, taille: 12,
+                            Pinceau.rvb(1, 0.68, 0.2, 1))
+                    survol(CGRect(x: x - 3, y: yLigne, width: l + 8,
+                                  height: hauteurLigne), aide)
+                }
+                x += l + 7
+
+            case .bouton(let nom, let aide, let utilisable):
+                // Quatorze points d'air autour de l'intitulé, contre dix-huit dans
+                // une rangée de largeurs égales : le tempo tient sur une ligne à ce
+                // prix-là, et une ligne est ce qui fait qu'on y répond d'un coup.
+                let largeur = max(p.largeur(nom, taille: 10.5) + 14, hauteurBouton)
+                let zone = CGRect(x: x, y: milieu - hauteurBouton / 2,
+                                  width: largeur, height: hauteurBouton)
+                if utilisable, let appui = appuiEnAttente, zone.contains(appui) {
+                    appuiEnAttente = nil
+                    presse = i
+                }
+                if dessine {
+                    bouton(p, zone, nom, utilisable: utilisable)
+                    survol(zone, aide)
+                }
+                x += largeur + 5
+            }
         }
         return presse
     }
@@ -428,43 +506,6 @@ final class Panneau {
         }
     }
 
-    /// Les douze teintes de la palette des notes, côte à côte. Rend la classe de
-    /// hauteur sur laquelle on vient de cliquer.
-    ///
-    /// C'est la seule commande qui montre ce qu'elle règle plutôt que de le nommer :
-    /// « première teinte : Ré » ne dit rien, la bande de couleurs dit tout.
-    @discardableResult
-    func teintes(_ noms: [String], origine: Int, saturation: Double) -> Int? {
-        guard let p = pinceau else { return nil }
-        let hauteurLigne = 26.0
-        let yLigne = y
-        y += hauteurLigne + 8
-        let largeurCase = contenuLargeur / 12
-        var choisie: Int?
-        for classe in 0..<12 {
-            let x = contenuGauche + largeurCase * Double(classe)
-            let zone = CGRect(x: x, y: yLigne, width: largeurCase, height: hauteurLigne)
-            if let appui = appuiEnAttente, zone.contains(appui) {
-                appuiEnAttente = nil
-                choisie = classe
-            }
-            guard visible(yLigne, hauteurLigne) else { continue }
-            let rvb = NotePalette.color(pitchClass: classe, intensity: 0.85,
-                                        saturation: saturation,
-                                        origin: choisie ?? origine)
-            p.arrondi(x + 1, yLigne, largeurCase - 2, hauteurLigne, rayon: 3,
-                      Pinceau.rvb(rvb.r, rvb.g, rvb.b))
-            p.texte(noms[classe], x: x, y: yLigne + hauteurLigne / 2,
-                    largeur: largeurCase, taille: 8, Pinceau.noir(0.75),
-                    alignement: .centre)
-            if classe == (choisie ?? origine) {
-                p.arrondi(x + 1, yLigne, largeurCase - 2, hauteurLigne, rayon: 3,
-                          Pinceau.blanc(0.95), epaisseur: 1.5)
-            }
-        }
-        return choisie
-    }
-
     /// Un peu d'air entre deux groupes qui n'ont pas mérité un titre chacun.
     func air(_ points: Double = 6) { y += points }
 
@@ -476,12 +517,29 @@ final class Panneau {
         Pinceau.rvb(0.35, 0.65, 1.0, opacite)
     }
 
-    /// Un disque plein. `Pinceau.cercle` cerne — c'est ce que la réglette lui
-    /// demande — et un carré dont l'arrondi vaut la moitié du côté *est* un disque :
-    /// cela évite d'ajouter une primitive au pont pour les pouces de trois curseurs.
-    private func disque(_ p: Pinceau, _ cx: Double, _ cy: Double, _ rayon: Double,
-                        _ couleur: UInt32) {
-        p.arrondi(cx - rayon, cy - rayon, rayon * 2, rayon * 2, rayon: rayon, couleur)
+    /// Le fond, le liseré et l'intitulé d'un bouton — les mêmes qu'il soit dans une
+    /// rangée de largeurs égales ou dans une rangée libre.
+    private func bouton(_ p: Pinceau, _ zone: CGRect, _ nom: String,
+                        utilisable: Bool) {
+        let survole = utilisable && zone.contains(souris)
+        let opacite = utilisable ? 1.0 : 0.35
+        p.arrondi(zone.minX, zone.minY, zone.width, zone.height, rayon: 5,
+                  Pinceau.blanc((survole ? 0.16 : 0.09) * opacite))
+        p.arrondi(zone.minX, zone.minY, zone.width, zone.height, rayon: 5,
+                  Pinceau.blanc(0.14 * opacite), epaisseur: 1)
+        p.texte(nom, x: zone.minX, y: zone.midY, largeur: zone.width, taille: 10.5,
+                Pinceau.blanc(0.85 * opacite), alignement: .centre)
+    }
+
+    /// Propose l'infobulle de cette commande, si la souris est dessus.
+    ///
+    /// Le rectangle est celui de la commande, et non celui du curseur : c'est ce que
+    /// la bulle doit éviter de recouvrir — on survole un réglage pour lire ce qu'il
+    /// fait, pas pour le perdre de vue.
+    private func survol(_ zone: CGRect, _ aide: String) {
+        guard !aide.isEmpty, zone.contains(souris), souris.y >= haut, souris.y <= bas
+        else { return }
+        infobulle?.proposer(aide, zone)
     }
 
     /// Une commande hors du cadre est décrite mais pas dessinée : la découpe la

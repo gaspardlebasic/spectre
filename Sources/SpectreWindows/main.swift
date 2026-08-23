@@ -106,6 +106,9 @@ final class Application: EchosDeLaFenetre {
     let panneau = Panneau()
     /// Ce qui ne se replie jamais : les quatre pistes et la porte des réglages.
     let flottant = Flottant()
+    /// Ce que dit la commande qu'on survole. Partagée par le panneau et la colonne :
+    /// il n'y a qu'une souris, donc qu'une bulle à l'écran.
+    let infobulle = Infobulle()
     let commandes: Commandes
     /// Le titre déjà posé sur la fenêtre. Comparé plutôt que reposé à chaque image :
     /// `SetWindowTextW` fait repeindre la barre de titre, cent vingt fois par seconde
@@ -309,19 +312,27 @@ final class Application: EchosDeLaFenetre {
             // Le panneau vient après la frise et avant la barre : il flotte sur
             // l'image, et la barre d'état reste lisible par-dessus tout — c'est là
             // que se dit ce qui se passe pendant qu'on tourne un réglage.
-            panneau.dessiner(pinceau: pinceau, largeurFenetre: points.largeur,
+            panneau.dessiner(pinceau: pinceau, infobulle: infobulle,
+                             largeurFenetre: points.largeur,
                              hauteurUtile: points.hauteur - hauteurDeLaBarre) {
                 commandes.dessiner(dans: $0)
             }
             // La colonne par-dessus le panneau, et non l'inverse : elle est ce qui
             // ne se replie jamais, et le panneau vient se ranger à sa gauche.
-            flottant.dessiner(pinceau: pinceau, largeurFenetre: points.largeur,
+            flottant.dessiner(pinceau: pinceau, infobulle: infobulle,
+                              largeurFenetre: points.largeur,
                               modele: modele, panneauOuvert: panneau.ouvert) {
                 gestes.basculerLePanneau()
             }
             Barre(modele: modele, pinceau: pinceau, largeur: points.largeur,
                   haut: points.hauteur - hauteurDeLaBarre,
                   hauteur: hauteurDeLaBarre).dessiner()
+            // L'infobulle en dernier, et hors de toute découpe : elle se pose à
+            // gauche de la commande survolée, donc en dehors du panneau qui la
+            // couperait net, et par-dessus la colonne et la barre qui viennent
+            // d'être dessinées.
+            infobulle.dessiner(pinceau, largeurFenetre: points.largeur,
+                               hauteurFenetre: points.hauteur)
         }
     }
 

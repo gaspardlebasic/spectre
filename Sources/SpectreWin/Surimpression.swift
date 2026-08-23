@@ -130,6 +130,73 @@ public struct Pinceau {
                                       Float(epaisseur))
     }
 
+    /// Un rectangle dont chaque coin a son propre rayon.
+    ///
+    /// Direct2D sait faire un rectangle arrondi, mais d'un seul rayon pour les
+    /// quatre coins. La colonne des pistes en demande deux : le haut du premier
+    /// bouton épouse la capsule qui l'entoure, son bas reste franc contre le bouton
+    /// suivant — c'est la règle des coins concentriques, et sans elle les deux
+    /// boutons extrêmes deviennent des ovales posés dans une capsule.
+    ///
+    /// Le contour est donc échantillonné et rempli d'un seul chemin. Superposer
+    /// deux formes arrondies donnerait le même dessin et une couture partout où
+    /// leurs bords se croisent : sur un fond translucide, la double couche se voit.
+    public func arrondiInegal(_ x: Double, _ y: Double, _ largeur: Double,
+                              _ hauteur: Double,
+                              hautGauche: Double, hautDroite: Double,
+                              basDroite: Double, basGauche: Double,
+                              _ couleur: UInt32) {
+        let limite = min(largeur, hauteur) / 2
+        func borne(_ r: Double) -> Double { min(max(r, 0), limite) }
+        let hg = borne(hautGauche), hd = borne(hautDroite)
+        let bd = borne(basDroite), bg = borne(basGauche)
+        var points: [Double] = []
+        // Six segments par quart de tour : à trente points de rayon, le plus grand
+        // que la colonne demande, la corde s'écarte de l'arc de moins d'un dixième
+        // de point — en dessous de ce qu'un écran sait montrer.
+        func coin(_ cx: Double, _ cy: Double, _ rayon: Double, de: Double, a: Double) {
+            for i in 0...6 {
+                let angle = de + (a - de) * Double(i) / 6
+                points += [cx + cos(angle) * rayon, cy + sin(angle) * rayon]
+            }
+        }
+        coin(x + hg, y + hg, hg, de: .pi, a: 1.5 * .pi)
+        coin(x + largeur - hd, y + hd, hd, de: 1.5 * .pi, a: 2 * .pi)
+        coin(x + largeur - bd, y + hauteur - bd, bd, de: 0, a: 0.5 * .pi)
+        coin(x + bg, y + hauteur - bg, bg, de: 0.5 * .pi, a: .pi)
+        aire(points, couleur)
+    }
+
+    /// Une portion d'anneau. Les angles sont en radians, comptés depuis la droite
+    /// et croissant vers le bas — le sens de l'axe des ordonnées de la fenêtre.
+    ///
+    /// `cercle` cerne un tour entier ; il n'y a pas de primitive pour un morceau de
+    /// tour, et le berceau du microphone en est un.
+    public func arc(_ cx: Double, _ cy: Double, rayon: Double, epaisseur: Double,
+                    de: Double, a: Double, _ couleur: UInt32) {
+        let pas = max(Int(abs(a - de) * 6), 4)
+        let externe = rayon + epaisseur / 2, interne = rayon - epaisseur / 2
+        var points: [Double] = []
+        for i in 0...pas {
+            let angle = de + (a - de) * Double(i) / Double(pas)
+            points += [cx + cos(angle) * externe, cy + sin(angle) * externe]
+        }
+        for i in stride(from: pas, through: 0, by: -1) {
+            let angle = de + (a - de) * Double(i) / Double(pas)
+            points += [cx + cos(angle) * interne, cy + sin(angle) * interne]
+        }
+        aire(points, couleur)
+    }
+
+    /// Un disque plein.
+    ///
+    /// `cercle` cerne — c'est ce que la réglette lui demande — et un carré dont
+    /// l'arrondi vaut la moitié du côté *est* un disque : cela évite d'ajouter une
+    /// primitive au pont pour les pouces des curseurs et les points des icônes.
+    public func disque(_ cx: Double, _ cy: Double, _ rayon: Double, _ couleur: UInt32) {
+        arrondi(cx - rayon, cy - rayon, rayon * 2, rayon * 2, rayon: rayon, couleur)
+    }
+
     /// Restreint le dessin à un rectangle, le temps du bloc.
     ///
     /// Apparié par construction : une découpe posée et non reprise fait échouer la

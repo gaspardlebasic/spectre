@@ -22,7 +22,7 @@ import SpectreWin
 // connaître « R », ou trouver le menu du clic droit.
 //
 // D'où cette colonne. Pas de verre, donc pas de mensonge : un fond sombre franc,
-// posé au bord droit, qui prend soixante-huit points de large et laisse tout le
+// posé au bord droit, qui prend soixante-deux points de large et laisse tout le
 // reste à l'image. Ce qu'on perd, c'est une bande de spectrogramme ; ce qu'on
 // gagne, c'est de ne plus ouvrir un panneau pour changer de piste.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -33,11 +33,18 @@ import SpectreWin
 /// elle lit et écrit directement dans le modèle, sans état propre à tenir
 /// accordé. Le sien se réduit à ce que la souris a fait depuis l'image d'avant.
 final class Flottant {
-    /// Largeur de la colonne, en points. « Batterie » et « Réglages » y tiennent
-    /// à dix points de corps, ce qui fixe la valeur : plus étroit, il faudrait
-    /// abréger l'un des deux, et une piste abrégée ne se reconnaît plus d'un coup
-    /// d'œil.
-    static let largeur = 68.0
+    /// Les mesures sont celles de `StemColumn` sur le Mac, point pour point.
+    ///
+    /// Elles ne sont pas un goût. La capsule qui entoure les quatre boutons a des
+    /// extrémités en demi-cercle, de rayon `largeur / 2`. Pour que le premier et le
+    /// dernier bouton **épousent** cette courbe au lieu de la croiser, leur arrondi
+    /// extérieur vaut ce rayon moins la marge — c'est la règle des coins
+    /// concentriques, et c'est ce qui fait qu'un bouton inscrit dans une capsule n'a
+    /// pas l'air d'y avoir été posé de travers.
+    ///
+    /// Les coins intérieurs, eux, restent francs : deux demi-lunes en vis-à-vis
+    /// creuseraient un losange de fond entre deux boutons voisins.
+    static let largeur = 62.0
     /// Marge au bord droit de la fenêtre. La même que celle du panneau, qui vient
     /// se ranger à sa gauche.
     static let marge = 12.0
@@ -47,8 +54,10 @@ final class Flottant {
     static let ecartAuPanneau = 10.0
 
     private static let interieur = 4.0
-    private static let hauteurBouton = 34.0
+    private static let hauteurBouton = 40.0
     private static let ecart = 3.0
+    private static let rayonDome = largeur / 2 - interieur
+    private static let rayonInterne = 9.0
     /// Sous la réglette du haut : un clic dans les vingt premiers points trace une
     /// boucle, et la colonne n'a pas à disputer cette bande-là.
     private static let haut = hauteurDeLaReglette + 8
@@ -76,10 +85,11 @@ final class Flottant {
 
     /// Hauteur totale : le bouton des réglages, un blanc, puis la capsule des
     /// quatre pistes.
-    private var hauteur: Double {
-        let pistes = Double(Self.ordre.count) * Self.hauteurBouton
+    private var hauteur: Double { Self.hauteurBouton + 10 + hauteurDesPistes }
+
+    private var hauteurDesPistes: Double {
+        Double(Self.ordre.count) * Self.hauteurBouton
             + Double(Self.ordre.count - 1) * Self.ecart + 2 * Self.interieur
-        return Self.hauteurBouton + 10 + pistes
     }
 
     /// Vrai si ce point tombe sur la colonne. La fenêtre s'en sert pour ne pas
@@ -97,8 +107,9 @@ final class Flottant {
     /// `basculerLesReglages` plutôt qu'un drapeau à poser : ouvrir le panneau
     /// remet aussi `pointerOverControls` d'aplomb, et cette logique-là vit dans
     /// `Gestes`. Une seule façon d'ouvrir le panneau, quel que soit le geste.
-    func dessiner(pinceau p: Pinceau, largeurFenetre: Double, modele: AppModel,
-                  panneauOuvert: Bool, basculerLesReglages: () -> Void) {
+    func dessiner(pinceau p: Pinceau, infobulle: Infobulle, largeurFenetre: Double,
+                  modele: AppModel, panneauOuvert: Bool,
+                  basculerLesReglages: () -> Void) {
         defer { appuiEnAttente = nil }
         let gauche = x(largeurFenetre: largeurFenetre)
 
@@ -115,16 +126,18 @@ final class Flottant {
             appuiEnAttente = nil
             basculerLesReglages()
         }
-        bouton(p, zoneReglages, texte: "Réglages", allume: panneauOuvert,
-               utilisable: true, rayon: Self.hauteurBouton / 2)
+        let capsule = Self.hauteurBouton / 2
+        bouton(p, zoneReglages, icone: .reglages, texte: "Réglages",
+               allume: panneauOuvert, utilisable: true,
+               hautGauche: capsule, hautDroite: capsule,
+               basDroite: capsule, basGauche: capsule, fondEteint: true)
+        survol(infobulle, zoneReglages, "Lecture, boucle, tempo, affichage — R.")
 
         // ── La capsule des quatre pistes ──────────────────────────────────────
         let yPistes = yReglages + Self.hauteurBouton + 10
-        let hauteurPistes = Double(Self.ordre.count) * Self.hauteurBouton
-            + Double(Self.ordre.count - 1) * Self.ecart + 2 * Self.interieur
-        p.arrondi(gauche, yPistes, Self.largeur, hauteurPistes,
+        p.arrondi(gauche, yPistes, Self.largeur, hauteurDesPistes,
                   rayon: Self.largeur / 2, Pinceau.gris(0.10, 0.62))
-        p.arrondi(gauche, yPistes, Self.largeur, hauteurPistes,
+        p.arrondi(gauche, yPistes, Self.largeur, hauteurDesPistes,
                   rayon: Self.largeur / 2, Pinceau.blanc(0.16), epaisseur: 1)
 
         let vide = modele.spectrogram.columnCount == 0
@@ -141,39 +154,59 @@ final class Flottant {
                 appuiEnAttente = nil
                 modele.toggle(piste)
             }
-            // Les coins extérieurs épousent la capsule, les intérieurs sont
-            // francs : c'est la règle des coins concentriques, la même que sur le
-            // Mac, et c'est ce qui fait qu'un bouton inscrit dans une capsule n'a
-            // pas l'air d'y avoir été posé de travers.
-            let extreme = rang == 0 || rang == Self.ordre.count - 1
-            bouton(p, zone, texte: piste.label,
+            let premier = rang == 0
+            let dernier = rang == Self.ordre.count - 1
+            bouton(p, zone, icone: Icone.pour(piste), texte: piste.label,
                    allume: modele.selection.contains(piste), utilisable: utilisable,
-                   rayon: extreme ? Self.largeur / 2 - Self.interieur : 9,
+                   hautGauche: premier ? Self.rayonDome : Self.rayonInterne,
+                   hautDroite: premier ? Self.rayonDome : Self.rayonInterne,
+                   basDroite: dernier ? Self.rayonDome : Self.rayonInterne,
+                   basGauche: dernier ? Self.rayonDome : Self.rayonInterne,
                    fondEteint: false)
+            survol(infobulle, zone, piste.help
+                   + "\nDécocher retire cette piste ; ce qui reste est joué ensemble.")
         }
     }
 
     // MARK: - Le détail
 
-    /// Un bouton de la colonne : sa pastille, son état, son intitulé centré.
-    private func bouton(_ p: Pinceau, _ zone: CGRect, texte: String, allume: Bool,
-                        utilisable: Bool, rayon: Double, fondEteint: Bool = true) {
+    /// Un bouton de la colonne : sa pastille, son icône, son intitulé.
+    ///
+    /// L'icône n'est pas un ornement. À soixante-deux points de large, l'intitulé
+    /// tient en neuf points de corps et se lit de près ; la forme, elle, se reconnaît
+    /// du coin de l'œil, et c'est ce qu'on demande à un sélecteur qu'on touche vingt
+    /// fois par minute sans quitter l'image des yeux.
+    private func bouton(_ p: Pinceau, _ zone: CGRect, icone: Icone, texte: String,
+                        allume: Bool, utilisable: Bool,
+                        hautGauche: Double, hautDroite: Double,
+                        basDroite: Double, basGauche: Double, fondEteint: Bool) {
         let survole = utilisable && zone.contains(souris)
         let opacite = utilisable || allume ? 1.0 : 0.45
 
+        func fond(_ couleur: UInt32) {
+            p.arrondiInegal(zone.minX, zone.minY, zone.width, zone.height,
+                            hautGauche: hautGauche, hautDroite: hautDroite,
+                            basDroite: basDroite, basGauche: basGauche, couleur)
+        }
         if allume {
-            p.arrondi(zone.minX, zone.minY, zone.width, zone.height, rayon: rayon,
-                      Pinceau.blanc(0.20))
+            fond(Pinceau.blanc(0.20))
         } else if fondEteint || survole {
-            p.arrondi(zone.minX, zone.minY, zone.width, zone.height, rayon: rayon,
-                      Pinceau.gris(0.10, survole ? 0.80 : 0.62))
+            fond(Pinceau.gris(0.10, survole ? 0.80 : 0.62))
         }
         if fondEteint, !allume {
-            p.arrondi(zone.minX, zone.minY, zone.width, zone.height, rayon: rayon,
-                      Pinceau.blanc(0.16), epaisseur: 1)
+            p.arrondi(zone.minX, zone.minY, zone.width, zone.height,
+                      rayon: hautGauche, Pinceau.blanc(0.16), epaisseur: 1)
         }
-        p.texte(texte, x: zone.minX, y: zone.midY, largeur: zone.width, taille: 10,
-                Pinceau.blanc((allume ? 0.96 : 0.66) * opacite),
-                alignement: .centre)
+
+        let encre = Pinceau.blanc((allume ? 0.96 : 0.62) * opacite)
+        icone.dessiner(p, cx: zone.midX, cy: zone.midY - 6, encre)
+        p.texte(texte, x: zone.minX, y: zone.midY + 12, largeur: zone.width, taille: 9,
+                encre, alignement: .centre)
+    }
+
+    /// Propose l'infobulle de ce bouton, si la souris est dessus.
+    private func survol(_ infobulle: Infobulle, _ zone: CGRect, _ aide: String) {
+        guard zone.contains(souris) else { return }
+        infobulle.proposer(aide, zone)
     }
 }

@@ -894,7 +894,7 @@ seul tampon que l'application présente — ce qui ferait disparaître les régl
 la photographie d'`essai.ps1`, précisément l'instrument qui sert à les regarder.
 
 `Panneau.swift` est donc une petite boîte à outils en **mode immédiat** — curseur,
-bascule, choix en colonne, rangée de segments, boutons, bande de teintes — dessinée
+bascule, rangée de segments, rangée libre, boutons, titre de section — dessinée
 par le même pinceau que la réglette, dans le même tampon. Elle ne connaît aucun
 réglage : `Commandes.swift` les lui décrit à chaque image, en lisant et en écrivant
 directement dans le modèle. Une hiérarchie de vues avec son propre état demanderait
@@ -904,10 +904,10 @@ pas fabriquer.
 **Un seul panneau, et non deux.** Sur le Mac les commandes flottent sur l'image et
 les préférences vivent dans la fenêtre ⌘, ; le partage y a une raison, macOS *ayant*
 une fenêtre de préférences à une place que tout le monde connaît. Windows n'a pas
-cet endroit. Et la frontière n'est pas celle qu'on croit à l'usage : le contraste
-est un réglage « d'affichage » et la clarté minimale d'une raie un réglage
-« d'accords », alors qu'on les tourne l'un après l'autre en regardant la même image
-bouger. Les séparer obligerait à ouvrir deux choses pour un seul geste.
+cet endroit — chaque application y invente le sien. Le plafond du cache des pistes
+vit donc au bas du même panneau que le contraste, à la suite de ce qui commande les
+pistes elles-mêmes, plutôt que derrière une seconde fenêtre qu'il faudrait aller
+chercher.
 
 ### Les quatre pièges de l'étape 8
 
@@ -916,10 +916,12 @@ réglette passe par un rectangle haut de quatre fois la taille de police et cent
 verticalement : parfait pour une ligne, inutilisable pour une explication de six
 lignes dont on ignore la hauteur d'avance. Il a fallu ajouter au pont un
 `spectre_surimpression_paragraphe` qui passe par un `IDWriteTextLayout`, rend la
-hauteur occupée, et sait ne faire que mesurer. Les explications sont la moitié du
-panneau macOS et ne sont pas du remplissage : un curseur nommé « netteté d'une
-raie » ne dit rien de ce qu'il change à l'écran, et un réglage qu'on ne comprend pas
-est un réglage qu'on ne touche pas.
+hauteur occupée, et sait ne faire que mesurer. Les explications faisaient alors la
+moitié du panneau, et n'étaient pas du remplissage : un curseur nommé « netteté
+d'une raie » ne dit rien de ce qu'il change à l'écran, et un réglage qu'on ne
+comprend pas est un réglage qu'on ne touche pas. Elles ont depuis rejoint les
+infobulles — voir « Le panneau rejoint celui du Mac » — et c'est le même appel qui
+les replie, la bulle ayant exactement le même besoin.
 
 **Un format de texte gardé par police ne suffit plus.** Le pont n'en retenait qu'un
 seul pour chacune des deux polices, ce qui allait tant que la surimpression n'était
@@ -1239,6 +1241,69 @@ chemin des exécutions — et elles sont désormais dans `atelier.ps1`, que les 
 appellent. Deux copies d'un environnement finissent par ne plus poser tout à fait la
 même chose, et c'est le genre d'écart qui se paie sur un message d'erreur qui désigne
 autre chose.
+
+## Le panneau rejoint celui du Mac
+
+Le panneau macOS a changé de forme après l'étape 10, et celui-ci l'a suivi. Ce sont
+les mêmes réglages, dans le même ordre, sous les mêmes noms — c'est la discipline
+qui vaut déjà pour `Frise.swift` contre `TimelineOverlay`, et pour la même raison :
+le jour où l'un des deux changera, on verra lequel.
+
+### Ce qui a été écrit
+
+| fichier | ce qu'il porte |
+|---|---|
+| `Sources/SpectreWindows/Infobulle.swift` | ce que dit la commande qu'on survole, et le retard avant qu'elle le dise |
+| `Sources/SpectreWindows/Icones.swift` | les cinq icônes de la colonne, tracées |
+| `Sources/SpectreWin/Surimpression.swift` | `arrondiInegal`, `arc`, `disque` — de quoi les tracer |
+
+**Les explications sont passées en infobulle.** Elles faisaient la moitié du
+panneau, et c'était juste une fois : à la première ouverture. Ensuite on connaît ses
+réglages, et la phrase qui les décrit n'est plus qu'une hauteur à faire défiler
+entre le tempo et le contraste. Aucune n'est perdue — survoler une commande dit
+encore ce qu'elle change et par quelle touche on la double — mais ce qui reste à
+l'écran est ce qui *se règle*.
+
+La bulle est dessinée **en dernier**, après la barre d'état, et hors de toute
+découpe : elle se pose à gauche de la commande, donc en dehors du panneau, qui la
+couperait net. Les commandes se contentent de proposer — « la souris est sur moi,
+voici ce que j'ai à dire » ; une seule bulle paraît, puisqu'il n'y a qu'une souris.
+Une demi-seconde de retard, sans quoi traverser le panneau pour atteindre un curseur
+en ferait clignoter six en chemin.
+
+**Trois sections sont parties, et ne reviendront pas.** Le relevé des accords, la
+réattribution spectrale et la bande des douze teintes. Ce sont des poids de fonction
+de coût et un réglage d'analyse qu'on n'accorde pas en une séance, mais en écoutant
+ce qu'ils changent sur plusieurs morceaux ; les valeurs d'origine sont celles qui ont
+gagné cet accord, et les exposer ne servait qu'à les défaire. `reassignment` et
+`chords` sont donc des constantes de `PreferencesWindows`, et ont quitté
+`reglages.json` — que le décodage tolérant laisse relire tel quel, clés inconnues
+comprises.
+
+**Le tempo tient sur une ligne**, parce que c'est une question — sur quelle grille ce
+morceau est-il écrit — et qu'on y répond d'un coup. D'où `Panneau.rangee`, qui pose
+des pièces de largeurs inégales côte à côte, là où `boutons` partage la largeur en
+parts égales. La signature défile au clic plutôt que d'ouvrir un menu : le mode
+immédiat n'a pas de fenêtre à déplier, et six signatures se parcourent plus vite
+qu'on ne vise dans une liste.
+
+**La colonne des pistes a repris les mesures du Mac**, point pour point : soixante-deux
+points de large, quarante de haut par bouton, et surtout les **coins concentriques**.
+Le premier et le dernier bouton doivent épouser la capsule qui les entoure, ce qui
+demande deux rayons différents sur un même rectangle — un arrondi unique en fait des
+ovales inscrits dans une capsule, et cela se voit tout de suite. Direct2D ne connaît
+que le rayon unique ; `arrondiInegal` échantillonne donc le contour et le remplit
+d'un seul chemin, plutôt que de superposer deux formes qui laisseraient une couture
+partout où leurs bords se croisent.
+
+**Les icônes sont tracées, et non tirées d'une police.** `Stem.symbol` nomme des SF
+Symbols et prévoit qu'une autre plateforme « les traduise dans sa propre police
+d'icônes ». Windows en a une, et la traduction s'y arrête à mi-chemin : Segoe Fluent
+Icons a bien un microphone et un haut-parleur, elle n'a ni clavier de piano ni
+batterie. Un nom de glyphe absent ne lève aucune erreur — il laisse un carré vide.
+Deux boutons sur quatre seraient donc muets, et ce sont ceux qu'on reconnaît le moins
+par leur seul intitulé. Cinq formes de quinze points, faites des mêmes primitives que
+les curseurs et les bascules, et rien à installer sur la machine de personne.
 
 ## L'épreuve complète, sous Windows
 

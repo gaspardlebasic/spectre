@@ -132,8 +132,29 @@ public struct RecentsWindows: DocumentsRecents {
 public final class PreferencesWindows: PreferencesGlobales {
     public static let partagees = PreferencesWindows()
 
-    public var reassignment = true { didSet { marquer(reassignment != oldValue) } }
-    public var chords = ChordSettings() { didSet { marquer(chords != oldValue) } }
+    /// La réattribution spectrale — voir `AnalysisSettings.reassignment`.
+    ///
+    /// Une constante, et non plus un réglage : elle est ce qui fait qu'un partiel
+    /// tient sur une ligne au lieu de trois, et rien de ce qu'on gagne à
+    /// l'éteindre — un peu de temps d'analyse, un fond moins granuleux — ne vaut
+    /// l'image qu'elle rend. Un interrupteur qu'on ne touche jamais est un
+    /// interrupteur qui coûte à lire. Le pendant macOS a fait le même chemin.
+    public let reassignment = true
+
+    /// Les réglages du relevé d'accords, à leurs valeurs d'origine.
+    ///
+    /// Ils ont eu leur section dans le panneau — douze curseurs et leurs
+    /// explications. Ce sont des poids de fonction de coût : on ne les règle pas, on
+    /// les accorde, et les accorder demande d'entendre ce qu'ils changent sur
+    /// plusieurs morceaux. Les valeurs d'origine sont celles qui ont gagné cet
+    /// accord ; les exposer ne servait qu'à les défaire.
+    public let chords = ChordSettings()
+
+    /// Classe de hauteur qui reçoit la première teinte du cycle des quintes.
+    ///
+    /// Relue d'une séance à l'autre, mais plus réglable ici : la bande des douze
+    /// teintes est partie avec les explications, et le Mac la garde dans sa fenêtre
+    /// ⌘, — un endroit que Windows n'a pas.
     public var hueOrigin = 0 { didSet { marquer(hueOrigin != oldValue) } }
 
     /// Plafond du dossier des pistes séparées, en octets.
@@ -168,8 +189,6 @@ public final class PreferencesWindows: PreferencesGlobales {
         guard let donnees = try? Data(contentsOf: Self.fichier),
               let lues = try? JSONDecoder().decode(Enregistrement.self, from: donnees)
         else { return }
-        reassignment = lues.reassignment
-        chords = lues.chords
         hueOrigin = lues.hueOrigin
         cacheLimit = lues.cacheLimit
         // Posé à la main : les observateurs de propriété ne sont pas appelés pour une
@@ -199,8 +218,7 @@ public final class PreferencesWindows: PreferencesGlobales {
     public func enregistrerMaintenant() {
         guard enAttenteDepuis != nil else { return }
         enAttenteDepuis = nil
-        let contenu = Enregistrement(reassignment: reassignment, chords: chords,
-                                     hueOrigin: hueOrigin, cacheLimit: cacheLimit)
+        let contenu = Enregistrement(hueOrigin: hueOrigin, cacheLimit: cacheLimit)
         let encodeur = JSONEncoder()
         // Lisible : ce fichier est le seul endroit où l'on peut aller voir pourquoi
         // un réglage ne revient pas, et une ligne unique de mille caractères ne s'y
@@ -215,24 +233,22 @@ public final class PreferencesWindows: PreferencesGlobales {
     /// Décodage tolérant aux champs manquants, pour la raison qui vaut déjà dans
     /// `DisplaySettings` : un réglage ajouté ne doit pas effacer en silence tous
     /// ceux qui étaient déjà écrits.
+    ///
+    /// La tolérance vaut aussi dans l'autre sens : les fichiers déjà écrits portent
+    /// `reassignment` et `chords`, qui ne sont plus des réglages. Les clés inconnues
+    /// sont simplement ignorées, et le fichier se rangera tout seul à la première
+    /// écriture.
     private struct Enregistrement: Codable {
-        var reassignment: Bool
-        var chords: ChordSettings
         var hueOrigin: Int
         var cacheLimit: Int
 
-        init(reassignment: Bool, chords: ChordSettings, hueOrigin: Int, cacheLimit: Int) {
-            self.reassignment = reassignment
-            self.chords = chords
+        init(hueOrigin: Int, cacheLimit: Int) {
             self.hueOrigin = hueOrigin
             self.cacheLimit = cacheLimit
         }
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
-            reassignment = try c.decodeIfPresent(Bool.self, forKey: .reassignment) ?? true
-            chords = try c.decodeIfPresent(ChordSettings.self, forKey: .chords)
-                ?? ChordSettings()
             hueOrigin = try c.decodeIfPresent(Int.self, forKey: .hueOrigin) ?? 0
             cacheLimit = try c.decodeIfPresent(Int.self, forKey: .cacheLimit)
                 ?? 1_000_000_000

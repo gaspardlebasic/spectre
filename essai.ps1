@@ -177,7 +177,7 @@ Write-Host "`nÀ regarder : $gpu"
 Write-Host "  (le spectrogramme du témoin : huit blocs d'accords, les raies"
 Write-Host "   colorées par classe de hauteur, la batterie en traits verticaux)"
 Write-Host "Et : $reglages"
-Write-Host "  (le panneau des réglages, ouvert sur la section « Lecture »)"
+Write-Host "  (le panneau des réglages, ouvert sur « Détection du tempo »)"
 
 Write-Host ""
 if ($echecs -eq 0) {
