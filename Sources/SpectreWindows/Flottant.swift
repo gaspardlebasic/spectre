@@ -134,7 +134,6 @@ final class Flottant {
             let zone = CGRect(x: gauche + Self.interieur, y: y,
                               width: Self.largeur - 2 * Self.interieur,
                               height: Self.hauteurBouton)
-            let cochee = modele.selection.contains(piste)
             // La sélection dit ce qu'on **garde**. La dernière piste cochée ne se
             // décoche pas : il ne resterait rien à écouter.
             let utilisable = !vide && modele.selection != [piste]
