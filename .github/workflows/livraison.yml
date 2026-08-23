@@ -23,14 +23,23 @@
 # ce qu'il vient de produire. `windows-11-arm` est gratuit pour les dépôts publics.
 #
 # ─────────────────────────────────────────────────────────────────────────────
-# WINDOWS POWERSHELL, ET NON PWSH
+# WINDOWS POWERSHELL, ET DES ÉTAPES SANS UN SEUL ACCENT
 #
 # `shell: powershell` désigne Windows PowerShell 5.1 ; `pwsh`, qui est le défaut de
-# GitHub, désigne PowerShell 7. Les scripts du dépôt sont écrits pour le premier, et
-# la différence n'est pas cosmétique — `Set-Content -Encoding utf8` pose une marque
-# d'ordre sous l'un et pas sous l'autre, ce dont dépendent les fichiers que lit le
-# compilateur d'installeurs. Le choix est explicite à chaque étape, faute de quoi il
-# se perdrait au premier copier-coller.
+# GitHub, désigne PowerShell 7. Les scripts du dépôt sont écrits et éprouvés contre
+# le premier — `Add-Type -AssemblyName System.Drawing`, dont `logo.ps1` a besoin, ne
+# se charge pas de la même manière dans le second.
+#
+# **Et le corps des étapes ci-dessous ne porte donc aucun caractère accentué.** Le
+# coureur écrit chaque `run:` dans un `.ps1` temporaire **sans marque d'ordre**, et
+# Windows PowerShell lit alors le fichier dans la page de codes du système : un
+# « — » de trois octets en devient trois caractères, et la chaîne qui le contenait ne
+# se referme plus. L'erreur ne parle pas d'encodage, elle parle d'une parenthèse
+# manquante, et elle est passée par là une fois.
+#
+# Les explications vivent donc dans les commentaires YAML, que GitHub lit en UTF-8 et
+# qui n'atteignent jamais PowerShell. Ce qui a du texte à écrire est un script du
+# dépôt, qui porte sa marque d'ordre et peut parler français.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # LES POIDS DE DEMUCS N'Y SONT PAS, ET C'EST DIT
@@ -98,40 +107,40 @@ jobs:
         shell: powershell
         run: swift --version
 
+      # L'étiquette est la source : « v0.3 » donne « 0.3 ». Sans étiquette — un essai
+      # lancé à la main — on prend ce que la main a dit.
+      #
+      # La variable est écrite **sans marque d'ordre**, et à la main. `Out-File
+      # -Encoding utf8` en pose une sous Windows PowerShell ; ajoutée au milieu du
+      # fichier des variables, elle se colle au nom qui suit, la variable s'appelle
+      # alors « ﻿VERSION », et elle reste introuvable sans un mot d'erreur.
       - name: Le numéro de version
         shell: powershell
         run: |
-          # L'étiquette est la source : « v0.3 » donne « 0.3 ». Sans étiquette — un
-          # essai lancé à la main — on prend ce que la main a dit.
           $etiquette = "${{ github.ref_name }}"
           if ("${{ github.ref_type }}" -eq "tag") { $version = $etiquette -replace '^v', '' }
           else { $version = "${{ inputs.version }}" }
           if (-not $version) { $version = "0.0.0" }
           Write-Host "version : $version"
-          # Écrit sans marque d'ordre, et à la main. `Out-File -Encoding utf8` en
-          # pose une sous Windows PowerShell : ajoutée au milieu du fichier des
-          # variables, elle se colle au nom qui suit, et la variable s'appelle alors
-          # « ﻿VERSION » — introuvable, sans un mot d'erreur.
           [IO.File]::AppendAllText($env:GITHUB_ENV, "VERSION=$version`n",
                                    (New-Object Text.UTF8Encoding($false)))
 
+      # Sans lui, la séparation est **compilée absente** plutôt que d'échouer à
+      # l'édition de liens — c'est ce que dit `Package.swift`, et c'est ce qui permet
+      # à `verification.yml` de compiler sans télécharger seize mégaoctets. Ici on la
+      # veut, donc on l'installe.
       - name: ONNX Runtime
         shell: powershell
-        # Sans lui, la séparation est **compilée absente** plutôt que d'échouer à
-        # l'édition de liens — c'est ce que dit `Package.swift`, et c'est ce qui
-        # permet à `verification.yml` de compiler sans télécharger seize mégaoctets.
-        # Ici on la veut, donc on l'installe.
         run: .\onnx.ps1 -Arch ${{ matrix.arch }}
 
+      # Cherchés, pas exigés. Voir la note en tête de ce fichier : un coureur ne peut
+      # pas fabriquer 166 Mo de réseau entraîné, et l'application sait se passer de
+      # lui — elle le dit dans sa barre d'état au lieu de refuser de s'ouvrir.
       - name: Les poids de Demucs, s'ils sont attachés à la release
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Cherché, pas exigé. Voir la note en tête de ce fichier : un coureur ne
-          # peut pas fabriquer 166 Mo de réseau entraîné, et l'application sait se
-          # passer de lui — elle le dit dans sa barre d'état au lieu de refuser de
-          # s'ouvrir.
           $cible = "Resources\htdemucs.onnx"
           $trouve = $false
           if ("${{ github.ref_type }}" -eq "tag") {
@@ -140,43 +149,45 @@ jobs:
             $trouve = $LASTEXITCODE -eq 0 -and (Test-Path $cible)
           }
           if ($trouve) {
-            Write-Host ("  htdemucs.onnx — {0:N0} Mo" -f ((Get-Item $cible).Length / 1MB))
+            Write-Host ("  htdemucs.onnx - {0:N0} Mo" -f ((Get-Item $cible).Length / 1MB))
           } else {
-            Write-Host "  (pas de poids attachés à la release — la séparation sera absente)"
+            Write-Host "  (aucun poids attache a la release : la separation sera absente)"
           }
 
+      # Les harnais qui ne demandent ni écran ni carte son. Le rendu, le décodage et
+      # la sortie audio sont éprouvés sur la machine de développement et par l'épreuve
+      # du dossier propre, plus bas ; un coureur sans carte ni périphérique n'en
+      # dirait rien de vrai.
+      #
+      # `SPECTRE_RANGEMENT` : le cache des pistes séparées a un plafond, et un harnais
+      # qui ne range pas chez lui efface les pistes des vrais morceaux. Sans objet sur
+      # un coureur neuf, mais c'est en relâchant la discipline « juste ici » qu'on la
+      # perd.
       - name: Les harnais hors écran
         shell: powershell
         env:
-          # Le cache des pistes séparées a un plafond : un harnais qui ne range pas
-          # chez lui efface les pistes des vrais morceaux. Sans objet sur un coureur
-          # neuf, mais c'est en relâchant la discipline « juste ici » qu'on la perd.
           SPECTRE_RANGEMENT: ${{ runner.temp }}\spectre
         run: |
           . .\atelier.ps1
           swift build -c release
-          if ($LASTEXITCODE -ne 0) { throw "La construction a échoué." }
+          if ($LASTEXITCODE -ne 0) { throw "La construction a echoue." }
           $bin = (swift build -c release --show-bin-path | Select-Object -Last 1).Trim()
-          # Les harnais qui ne demandent ni écran ni carte son. Le rendu, le décodage
-          # et la sortie audio sont éprouvés sur la machine de développement et par
-          # l'épreuve du dossier propre ci-dessous ; un coureur sans carte ni
-          # périphérique n'en dirait rien de vrai.
           foreach ($harnais in @("DSPCheck", "WAVCheck", "SessionCheck", "FilterCheck",
                                  "ChainCheck", "GaplessCheck", "AnalysisCheck",
                                  "PercussionCheck", "HarmonyCheck", "EtirementCheck",
                                  "LangueCheck")) {
-            Write-Host "── $harnais"
+            Write-Host "-- $harnais"
             & "$bin\$harnais.exe"
-            if ($LASTEXITCODE -ne 0) { throw "$harnais a échoué ($LASTEXITCODE)" }
+            if ($LASTEXITCODE -ne 0) { throw "$harnais a echoue ($LASTEXITCODE)" }
           }
 
+      # `paquet.ps1` refait l'icône avec ce numéro de version, assemble, éprouve le
+      # tout dans un dossier propre, puis compile l'installeur et l'archive.
       - name: L'installeur et l'archive
         shell: powershell
         env:
           SPECTRE_RANGEMENT: ${{ runner.temp }}\spectre
-        run: |
-          .\paquet.ps1 -Version $env:VERSION
-          if ($LASTEXITCODE -ne 0) { throw "Le paquet a échoué." }
+        run: .\paquet.ps1 -Version $env:VERSION
 
       - name: Ce qui a été produit
         shell: powershell
