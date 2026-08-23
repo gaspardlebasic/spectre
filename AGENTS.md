@@ -53,6 +53,7 @@ reste, et les pièges déjà payés.
 | `.\essai.ps1` | La même épreuve, sous Windows : quatorze harnais, la fenêtre, et un relevé de fluidité. |
 | `./modele.sh` | Refabrique `Resources/htdemucs.onnx` (les poids de Demucs, ~166 Mo, hors dépôt). |
 | `.\build.ps1` | Assemble `build\Spectre` sous Windows — l'exécutable et ce qu'il lui faut — et l'éprouve dans un dossier propre. |
+| `.\paquet.ps1` | Fabrique l'installeur Windows à partir de `build\Spectre` — menu Démarrer, désinstallation, associations de fichiers. |
 | `.\onnx.ps1` | Installe ONNX Runtime pour Windows, hors dépôt lui aussi. Sans lui, la séparation est compilée absente. |
 | `.\logo.ps1` | Refabrique `Resources\Spectre.ico` à partir du `.icns`, et la ressource que l'exécutable porte. |
 | `./logo.sh` | Refabrique l'icône. |
@@ -169,6 +170,11 @@ chemin numérique portable.
   lui la séparation est compilée absente plutôt que d'échouer à l'édition de liens.
 - **La quarantaine macOS** frappe l'application téléchargée *et* les fichiers audio
   téléchargés ; le message désigne le fichier audio, ce qui est trompeur.
+- **Un shell n'attend pas `Spectre.exe`.** L'application Windows est liée en
+  sous-système « fenêtre » — c'est ce qui lui évite une console noire au
+  double-clic — et PowerShell rend alors la main en dix millisecondes, sans rien
+  capturer et avec un `$LASTEXITCODE` qui ne veut rien dire. Tout script qui la
+  lance passe par `Lancer` (dans `atelier.ps1`), jamais par `&`.
 
 ## Ce qui reste ouvert
 

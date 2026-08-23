@@ -122,12 +122,16 @@ Etape "La fenêtre"
 $gpu = Join-Path $travail "fenetre.ppm"
 $nu = Join-Path $travail "fenetre-nue.ppm"
 $reglages = Join-Path $travail "reglages.ppm"
-& "$bin\SpectreWindows.exe" $temoin --photo $gpu 2>$null | Out-Null
-& "$bin\SpectreWindows.exe" $temoin --photo $nu --sans-habillage 2>$null | Out-Null
+#
+# `Lancer` et non `&` : l'application est du sous-système « fenêtre », qu'un shell
+# n'attend pas — la ligne suivante relirait une photographie pas encore écrite.
+# Voir `atelier.ps1`.
+Lancer "$bin\SpectreWindows.exe" @($temoin, "--photo", $gpu) | Out-Null
+Lancer "$bin\SpectreWindows.exe" @($temoin, "--photo", $nu, "--sans-habillage") | Out-Null
 # Et une troisième, panneau ouvert. Elle ne se mesure pas — un panneau de réglages
 # n'a aucun nombre à rendre — mais c'est le seul moyen d'en juger l'allure sans
 # être devant la machine, et c'est sur l'allure qu'il se juge.
-& "$bin\SpectreWindows.exe" $temoin --photo $reglages --reglages 2>$null | Out-Null
+Lancer "$bin\SpectreWindows.exe" @($temoin, "--photo", $reglages, "--reglages") | Out-Null
 Verdict "la fenêtre s'ouvre et rend une image" (Test-Path $gpu) $gpu
 Verdict "le panneau des réglages se dessine" (Test-Path $reglages) $reglages
 
@@ -149,7 +153,7 @@ if (Test-Path $nu) {
 
 if ($Fluidite -gt 0) {
     Etape "La fluidité"
-    $releve = & "$bin\SpectreWindows.exe" $temoin --fluidite $Fluidite 2>&1
+    $releve = (Lancer "$bin\SpectreWindows.exe" @($temoin, "--fluidite", "$Fluidite")).Sortie
     $releve | Where-Object { $_ -notmatch '^Spectre :' } | ForEach-Object { Write-Host "    $_" }
     # ── Ce qu'on exige ici, et ce qu'on refuse d'exiger ──────────────────────
     #

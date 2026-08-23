@@ -155,12 +155,20 @@ if (-not $SansEpreuve) {
              -and $_ -notmatch 'Windows Kits'
     }) -join ';'
 
+    # `Start-Process -Wait` et non `&` : l'application est du sous-système
+    # « fenêtre » — c'est ce qui lui évite une console noire au double-clic — et un
+    # shell ne l'attend pas. `&` rendrait la main en dix millisecondes, et
+    # l'épreuve conclurait à l'échec sur une image pas encore écrite. `atelier.ps1`
+    # a la fonction qui fait cela, mais elle n'est pas ici : ce processus est neuf
+    # et ne doit rien connaître de l'atelier.
     $sortie = Join-Path $travail "image.ppm"
     $script = @"
 `$env:PATH = '$propre'
 `$env:SPECTRE_RANGEMENT = '$travail\rangement'
-& '$travail\Spectre\Spectre.exe' '$travail\temoin.wav' --photo '$sortie'
-exit `$LASTEXITCODE
+`$p = Start-Process -FilePath '$travail\Spectre\Spectre.exe' ``
+                   -ArgumentList '"$travail\temoin.wav" --photo "$sortie"' ``
+                   -Wait -PassThru -NoNewWindow
+exit `$p.ExitCode
 "@
     $fichierScript = Join-Path $travail "essai.ps1"
     Set-Content -Path $fichierScript -Value $script -Encoding utf8

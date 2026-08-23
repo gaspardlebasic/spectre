@@ -335,6 +335,19 @@ if surWindows {
                 .linkedLibrary("shell32"),
                 .linkedLibrary("comdlg32"),
                 .linkedLibrary("dwmapi"),
+                // Le sous-système « fenêtre », sans quoi Windows ouvre une console
+                // noire à côté de l'application : un double-clic sur un morceau en
+                // faisait apparaître deux, et fermer la noire fermait l'autre.
+                //
+                // `/ENTRY` va avec. Ce sous-système fait chercher `WinMain` à
+                // l'éditeur de liens, que Swift n'écrit pas ; `mainCRTStartup` est
+                // l'amorce que la bibliothèque C fournit déjà — celle-là même qu'en
+                // mode console. Le seul changement est donc le champ de l'en-tête
+                // qui dit à Windows de ne pas ouvrir de fenêtre de commandes.
+                //
+                // Ce que cela coûte, et comment on le récupère : `console.c`.
+                .unsafeFlags(["-Xlinker", "/SUBSYSTEM:WINDOWS",
+                              "-Xlinker", "/ENTRY:mainCRTStartup"]),
             ] + (avecIcone ? [.unsafeFlags(["-Xlinker", ressourceIcone.path])] : [])
         ),
         // Le pendant Windows de `RenderCheck` : la vraie chaîne — téléversement,

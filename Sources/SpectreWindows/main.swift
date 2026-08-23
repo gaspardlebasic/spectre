@@ -22,6 +22,10 @@ import WinSDK
 // `--reglages` ouvre le panneau dès le lancement. Même usage : c'est ce qui permet
 // de photographier les commandes, donc d'en juger l'allure sans être devant l'écran.
 //
+// Avant tout le reste : sans cet appel, rien de ce que les instruments ci-dessus
+// impriment n'arriverait jusqu'au terminal — voir `Sources/CPont/console.c`.
+rattacherLaConsole()
+
 // L'application est assemblée ici, et nulle part ailleurs : le comportement vit
 // dans `SpectreModele`, les pièces de Windows dans `SpectreWin`, et ce fichier ne
 // fait que les brancher les unes aux autres, puis tourner.

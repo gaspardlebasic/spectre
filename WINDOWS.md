@@ -1242,6 +1242,150 @@ appellent. Deux copies d'un environnement finissent par ne plus poser tout à fa
 même chose, et c'est le genre d'écart qui se paie sur un message d'erreur qui désigne
 autre chose.
 
+## Étape 11 — l'application s'installe, et n'ouvre plus de terminal
+
+**Faite.** `.\paquet.ps1` produit `build\Spectre-1.0.0-<arch>-installeur.exe`, et
+l'application ne traîne plus de console noire derrière elle.
+
+### La console noire, et ce qu'elle a coûté de la retirer
+
+Jusqu'ici l'exécutable était lié en sous-système « console », qui est ce que Swift
+fait par défaut. Windows ouvre alors un terminal à chaque lancement : un double-clic
+sur un morceau faisait apparaître **deux** fenêtres, et fermer la noire fermait
+l'autre. Personne ne livre une application graphique ainsi.
+
+La correction tient en deux drapeaux passés à l'éditeur de liens, dans
+`Package.swift` :
+
+    -Xlinker /SUBSYSTEM:WINDOWS  -Xlinker /ENTRY:mainCRTStartup
+
+Le second va avec le premier : ce sous-système fait chercher `WinMain` à l'éditeur
+de liens, que Swift n'écrit pas. `mainCRTStartup` est l'amorce que la bibliothèque C
+fournit déjà — la même qu'en mode console — si bien que le seul changement est le
+champ de l'en-tête PE qui dit à Windows de ne pas ouvrir de fenêtre de commandes.
+`dumpbin /headers` le dit en un mot : `2 subsystem (Windows GUI)`.
+
+Ce qui se paie ensuite est ailleurs, et c'est ce qui rend l'étape moins triviale
+qu'elle n'en a l'air.
+
+**Un programme « fenêtre » n'hérite d'aucune console.** Les instruments du dépôt —
+`--photo`, `--fluidite`, `--rendu` — écrivent leur relevé sur la sortie ordinaire, et
+`essai.ps1` le relit. Lancés à la main depuis un terminal, ils devenaient muets.
+`Sources/CPont/console.c` récupère la console du parent par
+`AttachConsole(ATTACH_PARENT_PROCESS)`, qui échoue exactement dans le cas qu'on veut
+— lancé par l'Explorateur, le parent n'en a pas. Trois précautions, chacune payée
+d'un essai :
+
+- **ne rien faire si un flux est déjà branché.** Sous tube ou redirection, Windows
+  transmet bel et bien les poignées, y compris à un programme « fenêtre » :
+  s'attacher par-dessus remplacerait le tube que le script lit par la console. Les
+  deux flux sont regardés séparément — `2>$null` n'en redirige qu'un ;
+- **`freopen` ne suffit pas.** Il rebranche les flux de la bibliothèque C, ce que
+  `print` emploie, mais laisse les poignées du processus à zéro — et c'est d'elles
+  que Foundation tire `FileHandle.standardOutput`, donc `Journal`. Sans le
+  `SetStdHandle` qui suit, la moitié des messages manquait ;
+- **`stdout` ne se nomme pas en Swift.** C'est une macro d'ucrt
+  (`__acrt_iob_func(1)`), et le compilateur le dit franchement : *macro 'stdout'
+  unavailable*. D'où un quatrième fichier dans `CPont`.
+
+### Le piège qui a fait passer une épreuve au vert sur rien
+
+**PowerShell n'attend pas un programme du sous-système « fenêtre ».** C'est le vrai
+coût de l'étape, et il ne se voit pas : `& Spectre.exe … --photo image.ppm` rend la
+main en **dix millisecondes**, `$LASTEXITCODE` vaut 0 sans que l'application ait rien
+fait, et rien n'est capturé — même avec `2>&1`. La ligne suivante relit alors une
+photographie qui n'existe pas encore, et le processus orphelin meurt avec le shell
+qui l'a lancé.
+
+Mesuré : l'appel rend la main en 0,01 s, zéro ligne capturée, et le fichier apparaît
+douze secondes plus tard. Une épreuve écrite ainsi ne mesure plus rien du tout.
+
+`atelier.ps1` porte donc `Lancer`, qui dit l'attente et la sortie explicitement —
+`Start-Process -Wait` et deux fichiers relus en UTF-8, la page de codes du système
+transformant sinon « 1200×700 » en « 1200Ã—700 ». `essai.ps1` s'en sert pour les
+trois photographies et le relevé de fluidité ; `build.ps1` fait la même chose à la
+main dans son épreuve du dossier propre, dont le processus est neuf et ne doit rien
+connaître de l'atelier.
+
+### Ce qu'un dossier ne peut pas faire
+
+`build.ps1` produit un dossier qui se suffit à lui-même, et c'était l'étape 10. Ce
+qu'il ne peut pas faire, c'est **se faire connaître de Windows** : un raccourci au
+menu Démarrer, une entrée dans « Applications installées », une icône et un nom sur
+les fichiers audio. Rien de cela n'est un fichier — ce sont des inscriptions dans la
+base de registres, qu'il faut poser et surtout savoir retirer.
+
+Windows ne fournit rien pour fabriquer un installeur : le SDK sait *lire* un MSI, pas
+en écrire un. Inno Setup s'installe donc **en mode portable dans `build\`**, ne
+touche à rien ailleurs et s'en va avec le dossier — exactement le régime d'ONNX
+Runtime. Le dépôt ne porte que `Spectre.iss`, qui est du texte.
+
+**La liste des extensions n'est pas écrite deux fois.** `paquet.ps1` la lit dans
+`DecodeurWindows.formats` et en engendre `build\formats.iss`. C'est le principe de
+l'icône tirée du `.icns` : les deux ne peuvent pas diverger, l'une étant faite de
+l'autre. Une liste recopiée aurait fini par faire proposer un format que le décodeur
+refuse — du point de vue de l'utilisateur, une application qui ne marche pas.
+
+### Ce que Windows ne laisse plus faire à un installeur
+
+Depuis Windows 8, **aucun programme d'installation ne peut décider seul quelle
+application ouvre les `.mp3`**. Le choix de l'utilisateur est scellé dans une clé
+`UserChoice` que le système signe, et les quelques méthodes qui parviennent encore à
+l'écraser sont précisément ce que Microsoft appelle un détournement. Un installeur
+qui promet « Spectre ouvrira vos fichiers audio » ment donc à moitié.
+
+Vérifié sur la machine d'essai, et c'est la mesure qui a fixé la conception : après
+l'installation avec la case cochée, la vue fusionnée `HKEY_CLASSES_ROOT` donne bien
+`.mp3 → Spectre.Audio`, mais `UserChoice` désigne toujours le lecteur du système —
+et c'est `UserChoice` que l'explorateur suit.
+
+L'installeur fait donc les trois choses qui, elles, marchent :
+
+1. **toujours** le type `Spectre.Audio` et son ajout à `OpenWithProgids` de chaque
+   extension : Spectre apparaît dans « Ouvrir avec », avec son icône et son nom, sans
+   rien enlever à personne ;
+2. **toujours** les `Capabilities` et `RegisteredApplications`, qui le font
+   apparaître dans Paramètres → Applications par défaut — le seul endroit d'où le
+   choix se fait réellement ;
+3. **si la case est cochée** l'association classique, qui prend là où rien n'avait
+   été choisi, et l'ouverture de cette page des réglages à la fin.
+
+La case est **décochée par défaut**. Une application de transcription qui s'empare
+des `.mp3` sans qu'on l'ait demandé est une application qu'on désinstalle le
+lendemain.
+
+Deux détails qui ont chacun coûté un essai :
+
+- **l'association ne s'écrit que dans `HKEY_CURRENT_USER`**, y compris pour une
+  installation faite à toute la machine. Poser un défaut dans `HKEY_LOCAL_MACHINE`
+  écraserait celui du système, et la désinstallation ne le rendrait pas : on
+  effacerait le lecteur audio de quelqu'un d'autre en s'en allant. Le reste suit le
+  mode d'installation ;
+- **`uninsdeletekey` sur `Capabilities` laisse `Software\Spectre` vide derrière
+  elle.** Trouvé en relisant la base après une désinstallation d'essai. Une clé vide
+  ne gêne personne, et c'est exactement le genre de trace qu'on reproche aux
+  installeurs : d'où la ligne `uninsdeletekeyifempty` sur la clé parente.
+
+`mp4` est dans « Ouvrir avec » et hors de la case. Media Foundation sait en tirer le
+son et Spectre l'ouvre volontiers, mais c'est d'abord un conteneur vidéo : une case
+qui dit « fichiers audio » n'a pas à emporter la vidéothèque de qui la coche.
+
+### Ce qui a été éprouvé
+
+Poser, regarder, lancer, retirer, regarder encore — sur la machine, pas sur le
+papier :
+
+- l'installation silencieuse avec les deux cases pose 24 fichiers, le raccourci du
+  menu Démarrer, celui du bureau et l'entrée de désinstallation ;
+- les inscriptions sont toutes là et au bon endroit : `SupportedTypes` porte les neuf
+  extensions, `Capabilities\FileAssociations` les huit de la case, l'association
+  classique `.mp3` et `.wav` mais pas `.mp4` ;
+- **l'application installée tourne depuis un `PATH` sans la moindre trace de Swift**
+  — la même épreuve que celle du dossier propre, mais sur ce qui a réellement été
+  posé ;
+- la désinstallation ne laisse ni fichier, ni raccourci, ni clé, et `.wav` et `.mp3`
+  retournent au lecteur du système.
+
 ## Le panneau rejoint celui du Mac
 
 Le panneau macOS a changé de forme après l'étape 10, et celui-ci l'a suivi. Ce sont
@@ -1412,6 +1556,7 @@ moins une borne inférieure entre deux essais sur du matériel réel.
 | 8. Sessions et préférences | **faite** — un panneau qui règle, et un harnais qui a trouvé un défaut |
 | 9. La séparation | **faite** — le calcul descend dans le noyau, et les quatre pistes sortent justes |
 | 10. La distribution | **faite** — seize bibliothèques, et une épreuve en dossier propre |
+| 11. L'installeur | **faite** — plus de console noire, et une application que Windows connaît |
 
 L'étape 2 est la seule qui puisse casser l'application Mac. Elle est placée tôt,
 elle est neutre en comportement, et elle se termine par une vérification sur le
@@ -1420,8 +1565,8 @@ cerveaux — moins bien, mais pas bloqué.
 
 ## Ce qui reste
 
-Le portage est fait au sens où l'application se pilote, s'écoute, se règle et se
-distribue. Ce qui manque encore, et qu'il ne faut pas croire fait :
+Le portage est fait au sens où l'application se pilote, s'écoute, se règle, se
+distribue et s'installe. Ce qui manque encore, et qu'il ne faut pas croire fait :
 
 - **L'accélération de la séparation.** Tout passe par les cœurs ; DirectML demande un
   autre paquet et un fournisseur choisi à la compilation. Sur le Mac, le GPU divise le
@@ -1437,4 +1582,12 @@ distribue. Ce qui manque encore, et qu'il ne faut pas croire fait :
   portable et `LangueCheck` tourne partout, mais la lecture de
   `GetUserPreferredUILanguages` et la tenue du panneau en allemand — la langue qui
   écrit le plus long — n'ont été éprouvées que par la compilation. À regarder à la
-  prochaine passe sur la VM.
+  prochaine passe sur la VM. L'installeur parle les mêmes cinq langues, et n'a lui
+  non plus été vu qu'en français.
+- **L'installeur n'est signé par personne.** SmartScreen affiche donc un écran bleu
+  au premier lancement, et il faut passer par « Informations complémentaires ». C'est
+  le pendant exact de la quarantaine macOS, et cela se règle de la même manière :
+  avec un certificat, qui se paie.
+- **Il n'y a pas de mise à jour automatique.** Réinstaller par-dessus fonctionne —
+  l'identifiant d'application est fixe, et l'ancienne version s'efface d'elle-même —
+  mais rien ne va voir si une version plus récente existe.

@@ -13,6 +13,8 @@ n'importe quel instant du morceau.
 
 ## Installer
 
+### Sur macOS
+
 **macOS 26 ou plus récent** — l'interface est bâtie sur Liquid Glass, qui n'existe
 pas avant ; voir « Les commandes, posées sur l'image ».
 
@@ -41,6 +43,38 @@ trompeur — c'est l'application qui est en cause.
 ```bash
 xattr -d com.apple.quarantine ~/Downloads/*.wav
 ```
+
+### Sur Windows
+
+**Windows 10 ou plus récent**, en x64 ou en ARM64 — chaque architecture a son
+installeur, et refuse l'autre. Rien à installer à côté : la bibliothèque standard
+de Swift et le runtime de Visual Studio voyagent avec l'application, et Media
+Foundation, qui décode le son, est dans le système depuis toujours — FLAC et ALAC
+compris.
+
+L'installeur pose l'application chez l'utilisateur, sans demander de droits
+d'administrateur, et l'inscrit auprès de Windows : un raccourci au menu Démarrer,
+une entrée dans « Applications installées », et Spectre proposé dans « Ouvrir
+avec » sur les fichiers audio. **Il n'est signé par personne** : SmartScreen
+affiche un écran bleu au lancement, et il faut passer par « Informations
+complémentaires » puis « Exécuter quand même ».
+
+Une case, décochée par défaut, propose d'**ouvrir les fichiers audio avec
+Spectre** — `.mp3`, `.wav`, `.flac`, `.m4a`, `.aac`, `.wma`, `.aif`, `.aiff`.
+Elle fait ce que Windows laisse encore faire, ce qui n'est plus grand-chose :
+depuis Windows 8, le système scelle le choix de l'utilisateur et aucun installeur
+ne peut l'écraser. L'association ne prend donc d'elle-même que là où rien n'avait
+encore été choisi ; ailleurs, la case ouvre à la fin Paramètres → Applications par
+défaut sur la page de Spectre, qui est le seul endroit d'où cela se décide. Sans
+la case, Spectre reste dans « Ouvrir avec » et n'enlève rien à personne.
+
+La désinstallation passe par « Applications installées » et ne laisse rien —
+ni fichier, ni clé, et les associations reviennent à ce qu'elles étaient. Les
+sessions et les réglages, eux, restent : ce sont des heures de calcul, et qui
+réinstalle veut les retrouver.
+
+Qui préfère ne rien inscrire nulle part peut prendre l'archive : le dossier se
+suffit à lui-même, et `Spectre.exe` s'y lance tel quel.
 
 ## Construire soi-même
 
@@ -71,6 +105,30 @@ seuls outils en ligne de commande. Il produit `build/Spectre.zip`, puis rouvre
 l'archive ailleurs et lance les deux tranches sur le morceau témoin — la seule
 manière de savoir que ce qui est livré démarre. `./build.sh universel` s'arrête au
 paquet, sans l'archive ni les essais.
+
+Sous Windows, il faut Swift 6.3 et les outils de compilation de Visual Studio
+2022 ; ensuite, deux scripts :
+
+```powershell
+.\build.ps1
+.\paquet.ps1
+```
+
+`build.ps1` assemble `build\Spectre` — l'exécutable et les seize bibliothèques
+d'exécution qu'il lui faut, relevées au `dumpbin` et non écrites à la main — puis
+lance le tout depuis un dossier temporaire dont le `PATH` ne porte plus la moindre
+trace de la chaîne de compilation. C'est la machine de quelqu'un d'autre, autant
+qu'on puisse la simuler sans en avoir une, et c'est le seul contrôle qui compte :
+une bibliothèque oubliée ne donne pas d'erreur lisible, Windows refuse d'ouvrir le
+programme sur `0xC0000135` sans un mot.
+
+`paquet.ps1` en fait l'installeur décrit plus haut. Il va chercher lui-même Inno
+Setup, qu'il pose **en mode portable** dans `build\` et qui s'en va avec ce
+dossier — le même régime qu'ONNX Runtime et que les poids de Demucs : hors dépôt,
+récupéré par un script, absent sans que rien d'autre ne casse. La liste des
+extensions à associer n'est écrite nulle part dans l'installeur : elle est lue
+dans `DecodeurWindows.formats`, pour que jamais Windows ne propose d'ouvrir avec
+Spectre un format que Spectre refuserait ensuite.
 
 ## Les six étages du code
 

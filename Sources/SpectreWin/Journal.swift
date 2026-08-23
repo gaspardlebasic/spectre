@@ -3,15 +3,15 @@ import WinSDK
 
 /// Où va ce qui ne peut pas s'afficher dans la fenêtre.
 ///
-/// Une application Windows bâtie en mode « fenêtre » n'a pas de console attachée :
-/// écrire sur la sortie d'erreur ne va nulle part, et le premier message qu'on
+/// L'application est bâtie en sous-système « fenêtre », donc sans console à elle :
+/// écrire sur la sortie d'erreur n'irait nulle part, et le premier message qu'on
 /// cherche est justement celui qui explique pourquoi la fenêtre ne s'est pas
-/// ouverte. `OutputDebugString` est lu par le débogueur et par DebugView, mais pas
-/// par un terminal.
+/// ouverte. `rattacherLaConsole()` reprend celle du terminal quand il y en avait
+/// une ; lancée par un double-clic, il n'y en a pas.
 ///
-/// On écrit donc aux deux endroits à la fois. Lancée depuis un terminal — ce que
-/// font les vérifications — l'application hérite de sa console et le message s'y
-/// lit ; lancée par un double-clic, il reste attrapable.
+/// On écrit donc aux deux endroits à la fois. `OutputDebugString` est lu par le
+/// débogueur et par DebugView, mais pas par un terminal : c'est ce qui reste
+/// attrapable quand l'application a été ouverte par l'Explorateur.
 public enum Journal {
     public static func erreur(_ message: String) {
         ecrire("Spectre : \(message)", surLErreur: true)

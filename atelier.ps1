@@ -49,3 +49,42 @@ cmd /c "call `"$vsdev`" -arch=$architecture -host_arch=$architecture >nul 2>nul 
 }
 # `set` ci-dessus a écrasé le PATH avec celui de MSVC : on remet Swift devant.
 $env:PATH = "$executions;$swift\Toolchains\$versionDeSwift\usr\bin;$env:PATH"
+
+# ── Lancer l'application, et attendre qu'elle ait fini ────────────────────────
+#
+# `Spectre.exe` est lié en sous-système « fenêtre » — c'est ce qui empêche Windows
+# d'ouvrir une console noire à côté d'elle. **Un shell n'attend pas un programme de
+# ce sous-système** : `& Spectre.exe … --photo image.ppm` rend la main en dix
+# millisecondes, `$LASTEXITCODE` ne dit rien de l'application, et la photographie
+# qu'on allait relire n'existe pas encore. Le contrôle passe alors au vert sur un
+# fichier qui sera écrit quinze secondes plus tard — ou jamais, le processus
+# orphelin mourant avec le shell qui l'a lancé.
+#
+# La redirection du shell ne traverse pas davantage : rien n'est capturé. Il faut
+# donc dire l'attente et la sortie explicitement, ce que fait `Lancer`.
+function Lancer {
+    param([string]$Exe, [string[]]$Arguments)
+
+    # Les arguments passent en une seule chaîne : `Start-Process` ne cite pas les
+    # éléments d'un tableau, et un chemin à espaces s'y couperait en deux.
+    $ligne = ($Arguments | ForEach-Object {
+        if ($_ -match '\s') { '"' + $_ + '"' } else { $_ }
+    }) -join ' '
+
+    $marque = [guid]::NewGuid().ToString('N')
+    $fluxSortie = Join-Path $env:TEMP "spectre-sortie-$marque.txt"
+    $fluxErreur = Join-Path $env:TEMP "spectre-erreur-$marque.txt"
+    $processus = Start-Process -FilePath $Exe -ArgumentList $ligne -Wait -PassThru `
+                               -NoNewWindow -RedirectStandardOutput $fluxSortie `
+                               -RedirectStandardError $fluxErreur
+
+    # `-Encoding UTF8` : l'application écrit de l'UTF-8, et `Get-Content` lit dans
+    # la page de codes du système. Sans quoi « 1200×700 » se lit « 1200Ã—700 », et
+    # une expression régulière qui cherche une flèche ne la trouve plus.
+    $lignes = @()
+    foreach ($flux in @($fluxSortie, $fluxErreur)) {
+        if (Test-Path $flux) { $lignes += @(Get-Content $flux -Encoding UTF8) }
+        Remove-Item $flux -ErrorAction SilentlyContinue
+    }
+    [pscustomobject]@{ Code = $processus.ExitCode; Sortie = $lignes }
+}

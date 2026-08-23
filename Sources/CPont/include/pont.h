@@ -1,10 +1,11 @@
 // Ce que Swift ne peut pas dire lui-même.
 //
-// Trois choses y tombent, et elles n'ont en commun que d'être hors de portée : le
-// vocabulaire COM de Direct3D 11 et celui de Media Foundation, qui sont faits de
-// macros (`d3d11.c`, `mediafoundation.c`), et la file principale de libdispatch,
-// dont l'appel qui la vide n'est dans aucun en-tête de la distribution Windows
-// (`file.c`).
+// Quatre choses y tombent, et elles n'ont en commun que d'être hors de portée :
+// le vocabulaire COM de Direct3D 11 et celui de Media Foundation, qui sont faits de
+// macros (`d3d11.c`, `mediafoundation.c`) ; la file principale de libdispatch, dont
+// l'appel qui la vide n'est dans aucun en-tête de la distribution Windows
+// (`file.c`) ; et les flux de la bibliothèque C, que Swift ne nomme pas parce que
+// `stdout` y est une macro (`console.c`).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // POURQUOI LE PONT DIRECT3D EXISTE
@@ -235,6 +236,15 @@ void spectre_surimpression_recoller(SpectreRendu *rendu);
 /// modèle rend par elle — le fichier ouvert, la matrice analysée, les accords
 /// relevés — n'arrive jamais.
 void spectre_vider_la_file_principale(void);
+
+/// Récupère la console du terminal qui nous a lancés, quand il y en a une.
+///
+/// L'application est liée en sous-système « fenêtre » pour qu'aucun terminal noir
+/// n'apparaisse au double-clic ; ce qui se paie par une sortie muette quand on la
+/// lance à la main. Voir `console.c`. Rend faux quand il n'y avait pas de console à
+/// prendre — un lancement depuis l'Explorateur — ou qu'un tube tenait déjà les
+/// flux, cas où il n'y a précisément rien à faire.
+int spectre_console_rattacher(void);
 
 // ───────────────────────────────────────────────── Le décodage, par Media Foundation
 //
