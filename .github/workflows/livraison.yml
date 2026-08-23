@@ -180,6 +180,13 @@ jobs:
             & "$bin\$harnais.exe"
             if ($LASTEXITCODE -ne 0) { throw "$harnais a echoue ($LASTEXITCODE)" }
           }
+          # Le rendu, hors ecran : la vraie chaine Direct3D 11 sans fenetre. Il dit
+          # si la machine a de quoi dessiner, ce qui est la question que l'epreuve
+          # du dossier propre pose ensuite avec une fenetre en plus. Ne fait pas
+          # echouer la livraison : un coureur sans carte n'a rien a en dire.
+          Write-Host "-- RenduCheck"
+          & "$bin\RenduCheck.exe"
+          Write-Host "   RenduCheck -> $LASTEXITCODE"
 
       # `paquet.ps1` refait l'icône avec ce numéro de version, assemble, éprouve le
       # tout dans un dossier propre, puis compile l'installeur et l'archive.
