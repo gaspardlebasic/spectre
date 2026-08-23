@@ -73,7 +73,7 @@ public struct DemucsSeparator: StemSeparator {
     /// elle passe pour une panne. On le sait d'avance : il suffit de regarder si une
     /// compilation attend déjà dans le dossier.
     private static func loadingStage(_ accelerated: Bool) -> String {
-        guard accelerated, let model = StemStore.modelFile,
+        guard accelerated, gpuDisponible, let model = StemStore.modelFile,
               let cache = compiledModelFolder(for: model) else {
             return "Ouverture du réseau…"
         }
@@ -215,9 +215,28 @@ public struct DemucsSeparator: StemSeparator {
         }
     }
 
+    /// Le chemin GPU se ferme sur les Mac Intel, et pas par prudence : MPSGraph y
+    /// refuse les tenseurs rembourrés — « MPSGraph doesn't support padded tensors on
+    /// Intel macs », dit-il lui-même — et le réseau en porte à chaque tranche.
+    /// CoreML accepte pourtant le graphe : la session s'ouvre, la séparation
+    /// avance jusqu'à cent pour cent, puis le processus meurt sur une instruction
+    /// illégale au moment d'écrire la première piste. Rien à rattraper après coup,
+    /// donc — ni un `try?` ni un cache jeté ne voient venir cela. On ne demande
+    /// simplement pas.
+    ///
+    /// Le processeur rend exactement les mêmes pistes, et sur ces machines-là il n'a
+    /// de toute façon pas de rival : leur GPU intégré ne vaut pas les cœurs.
+    private static var gpuDisponible: Bool {
+        #if arch(x86_64)
+        return false
+        #else
+        return true
+        #endif
+    }
+
     private static func acceleratedSession(in environment: ORTEnv,
                                            model: URL) throws -> ORTSession {
-        guard ORTIsCoreMLExecutionProviderAvailable(),
+        guard gpuDisponible, ORTIsCoreMLExecutionProviderAvailable(),
               let cache = compiledModelFolder(for: model) else {
             throw SeparationFailure.engine("CoreML indisponible")
         }

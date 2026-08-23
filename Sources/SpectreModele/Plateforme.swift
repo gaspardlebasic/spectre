@@ -68,9 +68,14 @@ public protocol LecteurAudio: AnyObject {
     var loop: ClosedRange<Double>? { get }
 
     func load(url: URL)
-    /// Change de fichier sans arrêter le moteur, quand le format s'y prête. Rend
-    /// `false` s'il a fallu renoncer — l'appelant recharge alors franchement.
-    func replace(with url: URL) -> Bool
+    /// Joue **la somme des pistes cochées, depuis la mémoire**.
+    ///
+    /// Remplace ce qui était un changement de fichier. Les combinaisons n'existent
+    /// plus sur le disque : elles se font au moment où le son sort, à partir des
+    /// quatre pistes que la banque tient. Rappeler cette méthode avec la même banque
+    /// et une autre sélection ne doit rien recharger — c'est tout l'intérêt, et c'est
+    /// ce qui rend la bascule d'une piste instantanée.
+    func charger(_ banque: BanqueDePistes, gardant: Set<Stem>)
     func play(from time: Double?)
     func pause()
     func stop()
@@ -173,15 +178,26 @@ public protocol ServiceDeSeparation: AnyObject {
     func estSepare(_ empreinte: String) -> Bool
     /// L'emplacement d'une piste isolée, si elle a déjà été produite.
     func urlDeLaPiste(_ piste: Stem, empreinte: String) -> URL?
-    /// La somme des pistes demandées, fabriquée si besoin puis gardée.
-    func urlCombinee(_ pistes: Set<Stem>, empreinte: String) throws -> URL?
+    /// Relit les quatre pistes rangées et les remonte en mémoire. Le rappel arrive
+    /// **sur le fil principal** ; `nil` si l'une des quatre manque ou ne se lit pas.
+    ///
+    /// C'est la seule lecture de fichiers de toute la séance : ce qui suit — les
+    /// combinaisons qu'on écoute, les images qu'on analyse — se fait dans la banque.
+    func chargerLesPistes(empreinte: String,
+                          fin: @escaping (BanqueDePistes?) -> Void)
     func oublierLesPistes(empreinte: String)
     /// Repousse ce morceau en tête du cache : le plafond efface les plus vieux, et
     /// celui qu'on écoute n'est pas un vieux.
     func marquerUtilise(_ empreinte: String)
 
-    /// Lance la séparation. Les deux rappels arrivent **sur le fil principal**.
+    /// Lance la séparation. Les trois rappels arrivent **sur le fil principal**.
+    ///
+    /// `fin` rend les pistes **dès que le réseau a fini**, sans attendre qu'elles
+    /// soient sur le disque : c'est ce qui retire une vingtaine de secondes à
+    /// l'attente. L'écriture en FLAC continue derrière, et `rangement` dit quand elle
+    /// est finie — d'ici là, fermer l'application perdrait le calcul.
     func separer(fichier: URL, empreinte: String,
                  avancement: @escaping (SeparationProgress) -> Void,
-                 fin: @escaping (Result<Void, Error>) -> Void) -> TravailAnnulable
+                 fin: @escaping (Result<BanqueDePistes, Error>) -> Void,
+                 rangement: @escaping (Error?) -> Void) -> TravailAnnulable
 }

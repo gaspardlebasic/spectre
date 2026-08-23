@@ -118,7 +118,7 @@ struct DrumLaneView: View {
             // relevé du mixage, mais ce relevé-là est approximatif et sera remplacé
             // dans la minute par celui de la piste de batterie isolée : l'afficher
             // reviendrait à faire lire deux fois deux rythmes différents.
-            if model.separating == nil {
+            if !model.calculEnCours {
                 for voice in DrumVoice.allCases { draw(voice, &context, size) }
             }
             drawLoop(&context, size)

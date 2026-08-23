@@ -124,15 +124,19 @@ func poser(_ empreinte: String, frequence: Double = RangementDesPistes.frequence
 poser(empreinte)
 verifie(RangementDesPistes.estSepare(empreinte), "les quatre pistes sont sur le disque")
 
-titre("Les sommes de pistes")
+titre("La banque en mémoire")
 
 do {
-    guard let melange = try RangementDesPistes.combinee([.bass, .drums], pour: empreinte),
+    guard let montee = try RangementDesPistes.banque(pour: empreinte),
           let basse = RangementDesPistes.url(.bass, pour: empreinte),
           let batterie = RangementDesPistes.url(.drums, pour: empreinte) else {
         throw SeparationFailure.noSourceFile
     }
-    let (somme, _) = try RangementDesPistes.lire(melange)
+    verifie(montee.complete, "les quatre pistes remontent en mémoire")
+    verifie(montee.frameCount == images, "la longueur est conservée",
+            "\(montee.frameCount) contre \(images)")
+
+    let somme = montee.melangeStereo([.bass, .drums])
     let (a, _) = try RangementDesPistes.lire(basse)
     let (b, _) = try RangementDesPistes.lire(batterie)
     var ecart: Float = 0
@@ -140,19 +144,34 @@ do {
     verifie(Double(ecart) < 2e-6, "la somme de deux pistes est bien leur somme",
             String(format: "écart %.1e", ecart))
 
-    // Le nom est trié : l'ordre dans lequel on a cliqué ne doit pas fabriquer deux
-    // fichiers pour la même combinaison.
-    let encore = try RangementDesPistes.combinee([.drums, .bass], pour: empreinte)
-    verifie(encore == melange, "l'ordre des clics ne change pas le fichier",
-            encore?.lastPathComponent ?? "—")
+    // Le mono moyenne les canaux, comme le décodeur : sommer les rendrait six décibels
+    // plus haut que le mixage dont ils sortent.
+    let mono = montee.melangeMono([.bass])
+    var ecartMono: Float = 0
+    for i in 0..<images { ecartMono = max(ecartMono, abs(mono[i] - (a[0][i] + a[1][i]) / 2)) }
+    verifie(Double(ecartMono) < 2e-6, "le mono moyenne les canaux",
+            String(format: "écart %.1e", ecartMono))
 
-    let seule = try RangementDesPistes.combinee([.vocals], pour: empreinte)
-    verifie(seule == RangementDesPistes.url(.vocals, pour: empreinte),
-            "une piste seule est elle-même, sans recopie")
-    verifie((try RangementDesPistes.combinee([], pour: empreinte)) == nil,
-            "aucune piste ne donne aucun fichier")
+    verifie(montee.masque([.bass]) != montee.masque([.drums]),
+            "le masque distingue les pistes")
+    verifie(montee.masque([]) == 0, "rien de coché n'allume rien")
+    verifie(montee.melangeMono([]).isEmpty, "aucune piste ne donne aucun son")
 } catch {
-    verifie(false, "sommes de pistes", "\(error)")
+    verifie(false, "la banque en mémoire", "\(error)")
+}
+
+titre("Les sommes d'hier")
+
+// Les combinaisons étaient des fichiers, écrits à côté des quatre pistes sous un nom
+// qui les énumère. Elles pesaient plus que les pistes elles-mêmes ; le ménage doit les
+// emporter sans toucher au reste.
+if let dossier = RangementDesPistes.dossier(pour: empreinte) {
+    let vieille = dossier.appendingPathComponent("bass+drums.wav")
+    try? Data(repeating: 0, count: 4096).write(to: vieille)
+    _ = RangementDesPistes.ranger(enGardant: empreinte, plafond: Int.max)
+    verifie(!FileManager.default.fileExists(atPath: vieille.path),
+            "le ménage emporte les anciennes combinaisons")
+    verifie(RangementDesPistes.estSepare(empreinte), "sans toucher aux quatre pistes")
 }
 
 titre("Une piste écrite à la mauvaise fréquence")

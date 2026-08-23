@@ -16,6 +16,12 @@ n'importe quel instant du morceau.
 **macOS 26 ou plus récent** — l'interface est bâtie sur Liquid Glass, qui n'existe
 pas avant ; voir « Les commandes, posées sur l'image ».
 
+**Apple Silicon et Intel.** L'application publiée porte les deux tranches dans un
+seul binaire. Côté Intel, la contrainte n'est pas elle mais macOS 26, que seuls
+quatre modèles atteignent — MacBook Pro 16" 2019, MacBook Pro 13" 2020 à quatre
+ports, iMac 2020, Mac Pro 2019. Plus ancien que cela, la machine reste sous macOS
+15 et rien de ce dépôt ne s'y ouvrira.
+
 Une application prête à l'emploi est publiée dans les
 [releases](../../releases). Elle n'est **pas signée par un identifiant Apple**,
 donc macOS la met en quarantaine au téléchargement et refuse de l'ouvrir. Deux
@@ -52,6 +58,19 @@ Xcode n'est pas nécessaire : le script compile avec SwiftPM, assemble le bundle
 `.app`, le signe en ad-hoc et l'enregistre auprès de LaunchServices — sans quoi un
 double-clic sur un fichier audio lancerait l'application *sans lui transmettre le
 fichier*.
+
+Pour les deux architectures à la fois — ce qu'on publie :
+
+```bash
+./livraison.sh
+```
+
+Celui-là **demande Xcode**, et pas par confort : compiler deux tranches d'un coup
+bascule SwiftPM sur le moteur de construction d'Xcode, qui ne vient pas avec les
+seuls outils en ligne de commande. Il produit `build/Spectre.zip`, puis rouvre
+l'archive ailleurs et lance les deux tranches sur le morceau témoin — la seule
+manière de savoir que ce qui est livré démarre. `./build.sh universel` s'arrête au
+paquet, sans l'archive ni les essais.
 
 ## Les quatre étages du code
 
@@ -240,6 +259,22 @@ de batterie**, qui reste vide en attendant. Cette place n'est pas un pis-aller :
 séparation part seule à l'ouverture, et c'est précisément cette ligne qu'elle va
 remplir. Montrer entre-temps un relevé tiré du mixage reviendrait à faire lire deux
 rythmes différents à une minute d'intervalle.
+
+Elle dit **l'étape, et pas seulement un pourcentage**. Une séparation n'est pas une
+barre qui monte : c'est un décodage d'une seconde, une ouverture de réseau d'une
+quinzaine de secondes dont rien ne se mesure — une minute la première fois, le temps
+de le compiler pour la machine —, puis quatre-vingts tranches qui, elles, se comptent.
+Un seul « 0 % » pour les seize premières secondes passait pour une panne. La ligne
+porte donc le nom de l'étape et **compte les secondes** tant qu'il n'y a rien à
+mesurer, puis le pourcentage et le temps restant dès que les tranches commencent :
+
+```
+Ouverture du réseau… 8 s
+Séparation des pistes : 30 % — encore 17 s
+```
+
+Le compteur ne prétend rien savoir de plus qu'avant ; il montre seulement que le
+travail avance, ce qu'un nombre immobile ne fait pas.
 
 C'est ce choix qui fixe le plancher du projet à **macOS 26** : `glassEffect`,
 `GlassEffectContainer` et `glassEffectUnion` n'existent pas avant. On aurait pu
@@ -613,7 +648,7 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
   ménage du cache : sur trois jeux d'essai datés, le plus ancien part, celui qu'on
   écoute reste.
 - **Séparation** — l'ossature d'abord, avec un moteur d'essai : rangement, écriture,
-  relecture, combinaisons, annulation, et le fait qu'une panne ne laisse pas derrière
+  relecture, banque en mémoire, annulation, et le fait qu'une panne ne laisse pas derrière
   elle un jeu de pistes incomplet que l'application prendrait pour un travail fait.
   Puis Demucs lui-même, sur ses deux routes — le GPU et les cœurs —, qui doivent
   rendre la même chose. Cette dernière partie se saute quand le réseau n'est pas
@@ -730,24 +765,27 @@ impossible à écrire, graphe refusé. Séparer reste alors possible, seulement 
 fois plus long.
 
 **Ce que ça coûte, et ce que l'écran en dit.** CoreML compile le réseau pour la
-machine, une fois : une trentaine de secondes avant la première séparation, puis
-huit à chaque reprise. Ces secondes-là tombent **avant la première tranche**, donc
-avant tout pourcentage. Sur un morceau de sept minutes et demie :
+machine, une fois : une quarantaine de secondes avant la première séparation, puis
+dix à chaque reprise. Ces secondes-là tombent **avant la première tranche**, donc
+avant tout pourcentage. Mesuré sur un morceau de sept minutes et demie, réseau déjà
+compilé :
 
-| | |
-|---|---|
-| lecture et rééchantillonnage | 0,6 s |
-| ouverture du réseau compilé | 8,6 s |
-| première tranche | 0,8 s |
-| → premier pourcentage | **10 s** |
-| les quatre-vingts tranches | 35 s |
+| | | ce que la ligne dit |
+|---|---|---|
+| lecture et rééchantillonnage | 0,6 s | « Lecture du morceau… 1 s » |
+| ouverture du réseau compilé | 10,0 s | « Ouverture du réseau… 8 s » |
+| les quatre-vingts tranches | 25 s | « 30 % — encore 17 s » |
+| montée en mémoire, somme, analyse | 0,3 s | — |
+| **de l'ouverture aux pistes à l'écran** | **39 s** | |
+| écriture des quatre FLAC, derrière | 10 s | rien : c'est fini pour l'œil |
 
-Rien là-dedans ne se mesure : l'ouverture est un seul appel qui rend la main quand
-il a fini. Une barre immobile à zéro passerait alors pour une panne, et c'est
-pourquoi l'avancement porte le **nom de l'étape** en plus de la fraction —
-« Lecture du morceau… », « Ouverture du réseau… », et, la toute première fois,
-« Compilation du réseau pour cette machine — une seule fois… ». Laquelle des deux
-se sait d'avance : il suffit de regarder si une compilation attend déjà.
+Rien dans les deux premières lignes ne se mesure : l'ouverture est un seul appel qui
+rend la main quand il a fini. Une barre immobile à zéro passerait pour une panne, et
+c'est pourquoi l'avancement porte le **nom de l'étape** et le compte des secondes en
+plus de la fraction — « Lecture du morceau… », « Ouverture du réseau… », et, la toute
+première fois, « Compilation du réseau pour cette machine — une seule fois… ».
+Laquelle des deux se sait d'avance : il suffit de regarder si une compilation attend
+déjà.
 
 Le réseau compilé occupe 625 Mo dans `Application Support`. Le dossier est ramené à ses deux compilations les
 plus récemment servies — au-delà, il ne ferait que grossir. Il porte l'empreinte du
@@ -787,9 +825,55 @@ mais leur dispersion tout au long du graphe. Les faire passer voudrait dire repl
 l'axe des échantillons en deux dimensions dans le patch d'export, en traitant les
 recouvrements aux plis. C'est là qu'est le prochain facteur, et il vaut environ 1,4.
 
+### La banque en mémoire
+
+**Ce qu'on écoute et ce qu'on analyse ne vient plus du disque.** Les quatre pistes
+tiennent en mémoire pour toute la séance — 85 Mo par minute de musique, 660 Mo sur un
+morceau de huit minutes — et toutes les combinaisons en sortent : le fil audio somme
+les pistes cochées **à chaque bloc**, et l'analyse somme les pistes visibles au moment
+où elle en a besoin.
+
+Ce n'était pas ainsi. Chaque combinaison écoutée était sommée, écrite en FLAC, relue
+et décodée. Ce que cela coûtait, mesuré sur le même morceau :
+
+| | avant | maintenant |
+|---|---:|---:|
+| après la dernière tranche, avant de voir et d'entendre | 21 s | **0,3 s** |
+| cocher ou décocher une piste | jusqu'à 7 s | **immédiat** |
+| rouvrir un morceau déjà séparé | 0,9 s, ou 6,2 s si la combinaison manquait | **0,8 s**, et tout le reste gratuit |
+| part du cache occupée par les combinaisons | 60 % | **rien** |
+
+Les vingt et une secondes n'étaient pas du calcul : la somme elle-même coûte deux
+centièmes de seconde. C'était l'encodage FLAC des quatre pistes (3,4 s la pièce), puis
+la relecture de trois d'entre elles et l'écriture d'une cinquième. Le disque a donc
+quitté le chemin de l'écoute, et le FLAC ne sert plus qu'à ce à quoi il est bon : garder
+le calcul pour demain.
+
+**L'écriture est passée derrière la fenêtre.** Les pistes sont rendues dès que le
+réseau a fini ; les quatre FLAC s'écrivent ensuite, pendant qu'on travaille déjà
+dessus. Elles s'écrivent sous un nom provisoire et ne sont renommées qu'à la fin :
+une application fermée au milieu laisserait sinon deux pistes sur quatre, que la
+séance suivante prendrait pour un travail fait — et l'on écouterait un morceau sans
+basse sans que rien ne l'explique. Fermer avant la fin de l'écriture perd le calcul,
+comme fermer pendant la séparation ; c'est une dizaine de secondes de fenêtre.
+
+**Le mélangeur est dans le fil audio.** Il lit dans un bloc alloué une fois, dont
+l'adresse ne bouge plus, et la sélection lui parvient sous la forme d'un masque de
+bits — un seul mot aligné, remplacé d'un coup, si bien que le rendu voit toujours une
+sélection entière et jamais la moitié de deux. Aucune allocation, aucun verrou, rien à
+retenir : ce sont les trois choses qu'un rappel de rendu n'a pas le droit de faire.
+`PlaybackCheck` monte ce mélangeur-là — pas une copie — en rendu hors ligne et compare
+les échantillons qui en sortent à la somme attendue.
+
+Sous Windows la banque est la même, dans le noyau ; le lecteur, lui, matérialise la
+somme au lieu de la faire au fil du rendu, parce que sa chaîne de lecture tire ses
+échantillons d'un tampon unique. Une bascule y coûte deux dixièmes de seconde au lieu
+d'être gratuite — contre sept secondes avant.
+
 ### Où les pistes sont rangées
 
-En **FLAC**, dans Application Support. Sans perte — il n'est pas question d'ajouter
+En **FLAC**, dans Application Support. Une par piste, et rien d'autre : les sommes ne
+sont plus des fichiers. Sans perte — il n'est pas question d'ajouter
 des artefacts de codec à ceux de la séparation, dans un signal qu'on va relire au
 spectrogramme — mais deux fois et demie plus petit : les quatre pistes d'un morceau
 de sept minutes et demie passent de 660 Mo à **261 Mo**.
@@ -808,7 +892,11 @@ emplacement : un FLAC de la discothèque n'a pas été écrit par nous et n'a au
 raison d'être remonté de six décibels. Les exports de `--separer --vers` n'en ont pas
 non plus — ils sont faits pour être emportés.
 
-Le dossier est plafonné à **un gigaoctet**, soit trois ou quatre morceaux. Au-delà,
+Le dossier est plafonné à **un gigaoctet**. Il tenait trois ou quatre morceaux ; il en
+tient deux fois et demie plus depuis que les combinaisons n'y sont plus — elles en
+occupaient soixante pour cent, plus que les pistes elles-mêmes. Le ménage les emporte
+au passage, ainsi que les brouillons d'écriture qu'une fermeture brutale aurait
+laissés. Au-delà,
 les moins récemment ouverts s'en vont entiers — jamais celui qu'on écoute — et ce qui
 est jeté se recalcule en une demi-minute. Les anciennes pistes en CAF, elles, ne sont
 pas réécrites : elles représentent du temps de GPU, et changer de format n'est pas une

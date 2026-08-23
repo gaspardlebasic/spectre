@@ -85,41 +85,82 @@ public enum RangementDesPistes {
 
     // MARK: Combinaisons
 
-    /// Le fichier correspondant à un ensemble de pistes — la piste elle-même quand
-    /// il n'y en a qu'une, leur somme sinon.
+    /// Relit les quatre pistes et les monte en mémoire, d'un seul bloc.
     ///
-    /// Les sommes sont gardées à côté des pistes, sous un nom formé des leurs :
-    /// réécouter « basse + batterie » ne doit pas coûter une nouvelle addition sur dix
-    /// millions d'échantillons. Le nom est trié, de sorte que l'ordre dans lequel on a
-    /// cliqué ne fabrique pas deux fichiers pour la même combinaison.
-    public static func combinee(_ pistes: Set<Stem>, pour empreinte: String) throws -> URL? {
-        let voulues = pistes.subtracting([.mix]).sorted { $0.rawValue < $1.rawValue }
-        guard !voulues.isEmpty else { return nil }
-        if voulues.count == 1 { return url(voulues[0], pour: empreinte) }
-
-        guard let dossier = dossier(pour: empreinte) else { return nil }
-        let nom = voulues.map(\.rawValue).joined(separator: "+")
-        let cible = existant(nomme: nom, dans: dossier)
-        if FileManager.default.fileExists(atPath: cible.path) { return cible }
-
-        var somme: [[Float]] = []
+    /// Les combinaisons ne sont plus des fichiers. Elles étaient sommées, écrites,
+    /// relues et décodées à chaque fois qu'on cochait une piste ; elles se font
+    /// maintenant dans la banque, où la somme coûte un demi-quart de ce que coûtait le
+    /// seul aller-retour par le disque. Voir `BanqueDePistes`, dans le noyau : les deux
+    /// plateformes montent la même.
+    ///
+    /// Les quatre lectures se font **de front** : elles sont indépendantes, et les
+    /// enchaîner ferait attendre quatre fois plus longtemps pour rien.
+    ///
+    /// Rend `nil` dès qu'une des quatre manque : une banque incomplète ferait jouer un
+    /// morceau amputé sans que rien ne le dise.
+    public static func banque(pour empreinte: String) throws -> BanqueDePistes? {
+        var canaux = [Stem: [[Float]]]()
         var frequence = frequenceDesPistes
-        for piste in voulues {
-            guard let fichier = url(piste, pour: empreinte) else { continue }
-            let (canaux, echantillonnage) = try lire(fichier)
-            frequence = echantillonnage
-            if somme.isEmpty { somme = canaux; continue }
-            // Les pistes viennent du même morceau : mêmes longueurs, même cadence.
-            // On se garde tout de même d'un dépassement, plutôt que d'y compter.
-            for c in 0..<min(somme.count, canaux.count) {
-                let n = min(somme[c].count, canaux[c].count)
-                for i in 0..<n { somme[c][i] += canaux[c][i] }
+        var echec: Error?
+        let verrou = NSLock()
+
+        DispatchQueue.concurrentPerform(iterations: Stem.separated.count) { i in
+            let piste = Stem.separated[i]
+            guard let url = url(piste, pour: empreinte),
+                  FileManager.default.fileExists(atPath: url.path) else { return }
+            do {
+                let lues = try lire(url)
+                verrou.lock()
+                canaux[piste] = lues.canaux
+                frequence = lues.echantillonnage
+                verrou.unlock()
+            } catch {
+                verrou.lock(); echec = echec ?? error; verrou.unlock()
             }
         }
-        guard !somme.isEmpty else { return nil }
-        // La somme peut, elle aussi, ne pas tenir dans la réserve : c'est le chemin
-        // réellement écrit qui fait foi.
-        return try ecrire(somme, echantillonnage: frequence, vers: cible)
+        if let echec { throw echec }
+        guard canaux.count == Stem.separated.count else { return nil }
+        return BanqueDePistes(empreinte: empreinte, sampleRate: frequence, pistes: &canaux)
+    }
+
+    /// Écrit les quatre pistes d'une banque, une par fichier.
+    ///
+    /// **Sous un nom provisoire, renommé à la fin.** L'écriture a lieu derrière la
+    /// fenêtre, pendant qu'on travaille déjà sur les pistes : une application fermée au
+    /// milieu laisserait sinon deux pistes sur quatre, que la séance suivante prendrait
+    /// pour un travail fait.
+    public static func ecrire(_ banque: BanqueDePistes, pour empreinte: String) throws {
+        guard let dossier = dossier(pour: empreinte) else {
+            throw SeparationFailure.cannotWrite(URL(fileURLWithPath: empreinte))
+        }
+        // Un brouillon d'une fois précédente — l'application fermée en pleine écriture —
+        // n'a plus rien à dire et occupe la place d'une piste entière.
+        for reste in (try? FileManager.default.contentsOfDirectory(atPath: dossier.path)) ?? []
+        where reste.contains(".encours.") {
+            try? FileManager.default.removeItem(at: dossier.appendingPathComponent(reste))
+        }
+        var faits = [(URL, URL)]()
+        for piste in banque.ordre {
+            guard let canaux = banque.canauxDe(piste),
+                  let destination = url(piste, pour: empreinte) else { continue }
+            // Le brouillon porte l'extension voulue : c'est elle qui décide du format
+            // écrit, et un nom sans extension produirait autre chose sous un nom qui
+            // ne le dirait pas.
+            let brouillon = dossier.appendingPathComponent(
+                "\(piste.rawValue).encours.\(destination.pathExtension)")
+            let reel = try ecrire(canaux, echantillonnage: banque.sampleRate, vers: brouillon)
+            let cible = destination.deletingPathExtension()
+                .appendingPathExtension(reel.pathExtension)
+            faits.append((reel, cible))
+        }
+        guard faits.count == banque.ordre.count else {
+            for (brouillon, _) in faits { try? FileManager.default.removeItem(at: brouillon) }
+            throw SeparationFailure.cannotWrite(dossier)
+        }
+        for (brouillon, cible) in faits {
+            try? FileManager.default.removeItem(at: cible)
+            try FileManager.default.moveItem(at: brouillon, to: cible)
+        }
     }
 
     // MARK: Lire et écrire
@@ -238,6 +279,14 @@ public enum RangementDesPistes {
         var total = 0
         for cas in parcours {
             guard let fichier = cas as? URL else { continue }
+            // Les sommes de pistes ont vécu : elles étaient écrites à côté des quatre
+            // pistes, sous un nom qui les énumère, et pesaient plus que les pistes
+            // elles-mêmes. Le ménage les emporte plutôt que de les laisser attendre.
+            if fichier.lastPathComponent.contains(".encours.")
+                || fichier.deletingPathExtension().lastPathComponent.contains("+") {
+                try? FileManager.default.removeItem(at: fichier)
+                continue
+            }
             total += (try? fichier.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
         }
         return total
@@ -264,8 +313,12 @@ public final class RangementWindows: ServiceDeSeparation {
         RangementDesPistes.url(piste, pour: empreinte)
     }
 
-    public func urlCombinee(_ pistes: Set<Stem>, empreinte: String) throws -> URL? {
-        try RangementDesPistes.combinee(pistes, pour: empreinte)
+    public func chargerLesPistes(empreinte: String,
+                                 fin: @escaping (BanqueDePistes?) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let banque = try? RangementDesPistes.banque(pour: empreinte)
+            DispatchQueue.main.async { fin(banque) }
+        }
     }
 
     public func oublierLesPistes(empreinte: String) {
@@ -278,10 +331,12 @@ public final class RangementWindows: ServiceDeSeparation {
 
     public func separer(fichier: URL, empreinte: String,
                         avancement: @escaping (SeparationProgress) -> Void,
-                        fin: @escaping (Result<Void, Error>) -> Void) -> TravailAnnulable {
+                        fin: @escaping (Result<BanqueDePistes, Error>) -> Void,
+                        rangement: @escaping (Error?) -> Void) -> TravailAnnulable {
         let travail = TravailDeSeparation()
         travail.lancer(fichier: fichier, empreinte: empreinte,
-                       moteur: SeparateurWindows(), avancement: avancement, fin: fin)
+                       moteur: SeparateurWindows(), avancement: avancement,
+                       fin: fin, range: rangement)
         return travail
     }
 }
@@ -307,43 +362,58 @@ public final class TravailDeSeparation: TravailAnnulable {
         verrou.lock(); annule = true; verrou.unlock()
     }
 
+    /// - Parameters:
+    ///   - fin: sur le fil principal, **dès que le réseau a fini** — les pistes ne sont
+    ///     pas encore sur le disque.
+    ///   - range: sur le fil principal, quand l'écriture est finie.
+    ///
+    /// L'ordre des deux est tout l'objet de cette classe. Les pistes étaient écrites
+    /// avant d'être rendues, et la fenêtre montrait une barre figée pendant tout
+    /// l'encodage alors que le son et l'image étaient prêts en mémoire. On rend
+    /// d'abord, on range ensuite.
     public func lancer(fichier: URL, empreinte: String, moteur: StemSeparator,
                        avancement: @escaping (SeparationProgress) -> Void,
-                       fin: @escaping (Result<Void, Error>) -> Void) {
+                       fin: @escaping (Result<BanqueDePistes, Error>) -> Void,
+                       range: @escaping (Error?) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async { [self] in
-            let issue: Result<Void, Error>
+            let banque: BanqueDePistes
             do {
-                let pistes = try moteur.separate(
+                var pistes = try moteur.separate(
                     fileAt: fichier,
                     progress: { p in DispatchQueue.main.async { avancement(p) } },
                     isCancelled: { self.isCancelled })
                 guard !isCancelled else { throw SeparationFailure.cancelled }
-
                 // La fréquence vient du moteur, jamais du fichier d'entrée : c'est
                 // exactement la confusion qui faisait jouer les pistes trop vite.
-                for (piste, canaux) in pistes.channels {
-                    guard let cible = RangementDesPistes.url(piste, pour: empreinte)
-                    else { continue }
-                    try RangementDesPistes.ecrire(canaux,
-                                                  echantillonnage: pistes.sampleRate,
-                                                  vers: cible)
+                guard let montee = BanqueDePistes(empreinte: empreinte,
+                                                  sampleRate: pistes.sampleRate,
+                                                  pistes: &pistes.channels),
+                      montee.complete else {
+                    throw SeparationFailure.engine("le réseau n'a pas rendu les quatre pistes")
                 }
+                banque = montee
+            } catch {
+                DispatchQueue.main.async { fin(.failure(error)) }
+                return
+            }
+            DispatchQueue.main.async { fin(.success(banque)) }
+
+            var echec: Error?
+            do {
+                try RangementDesPistes.ecrire(banque, pour: empreinte)
                 // C'est ici que le dossier grossit, donc ici qu'on fait le ménage — et
                 // en épargnant le morceau qu'on vient de calculer, qui serait sinon le
                 // premier candidat sur une machine dont le cache est déjà plein.
                 RangementDesPistes.marquerServi(empreinte)
                 RangementDesPistes.ranger(enGardant: empreinte)
-                issue = .success(())
             } catch {
-                // Un échec en cours d'écriture laisserait un jeu de pistes incomplet,
-                // que l'application prendrait ensuite pour un travail fait. On préfère
-                // ne rien garder.
-                if !(error is SeparationFailure) || isCancelled {
-                    RangementDesPistes.oublier(empreinte)
-                }
-                issue = .failure(error)
+                // Une écriture incomplète laisserait un jeu de pistes que la séance
+                // suivante prendrait pour un travail fait. On préfère ne rien garder.
+                RangementDesPistes.oublier(empreinte)
+                echec = error
             }
-            DispatchQueue.main.async { fin(issue) }
+            let rapport = echec
+            DispatchQueue.main.async { range(rapport) }
         }
     }
 }

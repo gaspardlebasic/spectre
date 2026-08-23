@@ -75,10 +75,16 @@ final class Panneau {
 
     /// Le rectangle qu'il occupe, en points. `hauteurUtile` est la hauteur de la
     /// fenêtre moins la barre d'état : le panneau ne la recouvre pas.
+    ///
+    /// Il se range **à gauche de la colonne flottante**, comme sur le Mac où le
+    /// panneau se déplie à gauche du sélecteur de pistes. Le recouvrir serait
+    /// reprendre d'une main ce qu'on vient de donner de l'autre : la colonne est
+    /// là pour qu'on change de piste sans ouvrir le panneau, encore faut-il
+    /// qu'elle reste visible quand il l'est.
     func cadre(largeurFenetre: Double, hauteurUtile: Double)
         -> (x: Double, y: Double, largeur: Double, hauteur: Double) {
         let marge = 12.0
-        let x = largeurFenetre - Self.largeur - marge
+        let x = largeurFenetre - Self.largeur - Flottant.encombrement
         return (x, marge, Self.largeur, max(hauteurUtile - 2 * marge, 80))
     }
 

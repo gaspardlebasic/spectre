@@ -146,47 +146,84 @@ public enum StemStore {
             at: root.appendingPathComponent("pistes/\(fingerprint)", isDirectory: true))
     }
 
-    // MARK: Combinaisons
+    // MARK: La banque
 
-    /// Le fichier correspondant à un ensemble de pistes — la piste elle-même quand
-    /// il n'y en a qu'une, leur somme sinon.
+    /// Relit les quatre pistes et les monte en mémoire, d'un seul bloc.
     ///
-    /// Les sommes sont mises en cache à côté des pistes, sous un nom formé des
-    /// leurs : réécouter « basse + batterie » ne doit pas coûter une nouvelle
-    /// addition sur dix millions d'échantillons. Le nom est trié, de sorte que
-    /// l'ordre dans lequel on a cliqué ne fabrique pas deux fichiers pour la même
-    /// combinaison.
-    public static func combined(_ stems: Set<Stem>, for fingerprint: String) throws -> URL? {
-        let wanted = stems.subtracting([.mix]).sorted { $0.rawValue < $1.rawValue }
-        guard !wanted.isEmpty else { return nil }
-        if wanted.count == 1 { return url(wanted[0], for: fingerprint) }
+    /// Les quatre lectures se font **de front** : elles sont indépendantes, chacune
+    /// coûte huit ou neuf dixièmes de seconde sur un morceau de huit minutes, et les
+    /// enchaîner ferait attendre trois secondes et demie là où il en faut une.
+    ///
+    /// Rend `nil` dès qu'une des quatre manque : une banque incomplète ferait jouer un
+    /// morceau amputé sans que rien ne le dise.
+    public static func banque(pour fingerprint: String) throws -> BanqueDePistes? {
+        var canaux = [Stem: [[Float]]]()
+        var frequence = stemSampleRate
+        var échec: Error?
+        let verrou = NSLock()
 
-        guard let folder = folder(for: fingerprint) else { return nil }
-        let name = wanted.map(\.rawValue).joined(separator: "+")
-        let target = existing(named: name, in: folder)
-        if FileManager.default.fileExists(atPath: target.path) { return target }
-
-        var sum: [[Float]] = []
-        var rate = 44100.0
-        for stem in wanted {
-            guard let file = url(stem, for: fingerprint) else { continue }
-            let (channels, sampleRate) = try readChannels(from: file)
-            rate = sampleRate
-            if sum.isEmpty {
-                sum = channels
-                continue
-            }
-            // Les pistes viennent du même morceau : mêmes longueurs, même cadence.
-            // On se garde tout de même d'un dépassement, plutôt que d'y compter.
-            for c in 0..<min(sum.count, channels.count) {
-                let n = min(sum[c].count, channels[c].count)
-                for i in 0..<n { sum[c][i] += channels[c][i] }
+        DispatchQueue.concurrentPerform(iterations: Stem.separated.count) { i in
+            let stem = Stem.separated[i]
+            guard let url = url(stem, for: fingerprint),
+                  FileManager.default.fileExists(atPath: url.path) else { return }
+            do {
+                let lues = try readChannels(from: url)
+                verrou.lock()
+                canaux[stem] = lues.channels
+                frequence = lues.sampleRate
+                verrou.unlock()
+            } catch {
+                verrou.lock(); échec = échec ?? error; verrou.unlock()
             }
         }
-        guard !sum.isEmpty else { return nil }
-        // La somme peut, elle aussi, ne pas tenir dans la réserve : c'est le chemin
-        // réellement écrit qui fait foi.
-        return try write(sum, sampleRate: rate, to: target)
+        if let échec { throw échec }
+        guard canaux.count == Stem.separated.count else { return nil }
+        return BanqueDePistes(empreinte: fingerprint, sampleRate: frequence,
+                              pistes: &canaux)
+    }
+
+    /// Écrit les quatre pistes d'une banque, une par fichier.
+    ///
+    /// **Sous un nom provisoire, renommé à la fin.** L'écriture a lieu derrière la
+    /// fenêtre, pendant qu'on travaille déjà sur les pistes : une application fermée
+    /// au milieu laisserait sinon deux pistes sur quatre, que la séance suivante
+    /// prendrait pour un travail fait — et l'on écouterait un morceau sans basse sans
+    /// que rien ne l'explique.
+    public static func ecrire(_ banque: BanqueDePistes, pour fingerprint: String) throws {
+        guard let folder = folder(for: fingerprint) else {
+            throw SeparationFailure.cannotWrite(URL(fileURLWithPath: fingerprint))
+        }
+        // Un brouillon d'une fois précédente — l'application fermée en pleine écriture —
+        // n'a plus rien à dire et occupe la place d'une piste entière.
+        for reste in (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        where reste.contains(".encours.") {
+            try? FileManager.default.removeItem(at: folder.appendingPathComponent(reste))
+        }
+        var écrits = [(URL, URL)]()
+        for stem in banque.ordre {
+            guard let canaux = banque.canauxDe(stem),
+                  let destination = url(stem, for: fingerprint) else { continue }
+            // Le brouillon porte l'extension voulue : c'est elle qui décide du format
+            // écrit, et un nom sans extension aurait produit du PCM brut sous un nom de
+            // FLAC — un jeu de pistes complet, illisible, et que rien n'aurait signalé.
+            let brouillon = folder.appendingPathComponent(
+                ".\(stem.rawValue).encours.\(destination.pathExtension)")
+            let réel = try write(canaux, sampleRate: banque.sampleRate, to: brouillon)
+            // `write` choisit parfois le CAF flottant plutôt que le FLAC : c'est le
+            // chemin qu'il rend qui décide de l'extension finale, pas celui qu'on
+            // avait demandé.
+            let cible = destination.deletingPathExtension()
+                .appendingPathExtension(réel.pathExtension)
+            écrits.append((réel, cible))
+        }
+        guard écrits.count == banque.ordre.count else {
+            for (brouillon, _) in écrits { try? FileManager.default.removeItem(at: brouillon) }
+            throw SeparationFailure.cannotWrite(folder)
+        }
+        for (brouillon, cible) in écrits {
+            try? FileManager.default.removeItem(at: cible)
+            try FileManager.default.moveItem(at: brouillon, to: cible)
+        }
     }
 
     /// Lit un fichier canal par canal, en virgule flottante.
@@ -202,6 +239,11 @@ public enum StemStore {
         // ici, une fois pour toutes, de sorte que personne d'autre n'ait à le savoir.
         let restore = gain(for: url)
         var channels = [[Float]](repeating: [], count: count)
+        // La place est réservée d'avance. Sans cela, `append` double sa capacité à
+        // chaque débordement : sur les quatre pistes d'un morceau de huit minutes,
+        // c'est jusqu'à six cent soixante mégaoctets alloués pour rien, au moment
+        // précis où la banque en demande autant.
+        for c in 0..<count { channels[c].reserveCapacity(Int(file.length)) }
         let block: AVAudioFrameCount = 1 << 16
         guard count > 0, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: block)
         else { throw SeparationFailure.engine("format illisible") }
@@ -360,6 +402,17 @@ public enum StemStore {
             var size = 0
             if let walk = manager.enumerator(at: entry, includingPropertiesForKeys: [.fileSizeKey]) {
                 for case let file as URL in walk {
+                    // Les sommes de pistes ont vécu : elles étaient écrites à côté des
+                    // quatre pistes, sous un nom qui les énumère, et représentaient
+                    // ici soixante pour cent du cache. Elles se refont maintenant en
+                    // mémoire au moment où le son sort. Le ménage les emporte au
+                    // passage plutôt que de laisser des gigaoctets attendre qu'on
+                    // efface le dossier à la main.
+                    if file.lastPathComponent.contains(".encours.")
+                        || file.deletingPathExtension().lastPathComponent.contains("+") {
+                        try? manager.removeItem(at: file)
+                        continue
+                    }
                     size += (try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
                 }
             }

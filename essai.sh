@@ -223,11 +223,17 @@ else
       else
         PISTES=0
         for _ in $(seq 1 120); do
-          PISTES="$(find "$SPECTRE_RANGEMENT/pistes" -name '*.flac' 2>/dev/null | wc -l | tr -d ' ')"
+          # `! -name '.*'` : les brouillons d'écriture s'appellent « .basse.encours.flac »
+          # et les compter ferait croire le rangement fini alors qu'il commence.
+          PISTES="$(find "$SPECTRE_RANGEMENT/pistes" -name '*.flac' ! -name '.*' 2>/dev/null | wc -l | tr -d ' ')"
           [ "$PISTES" -ge 4 ] && break
           sleep 1
         done
         if [ "$PISTES" -ge 4 ]; then
+          # Les pistes sont à l'écran avant d'être sur le disque — elles passent
+          # d'abord par la mémoire. Attendre les fichiers est donc plus strict que ce
+          # que la fenêtre demande, et c'est voulu : c'est ce qui vérifie que le
+          # rangement en fond aboutit.
           vert "les pistes se séparent — $PISTES fichiers écrits, la batterie peut se relever"
           sleep 5      # le temps que les lignes se dessinent
         else

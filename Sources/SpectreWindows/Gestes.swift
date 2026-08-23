@@ -52,6 +52,7 @@ final class Gestes {
     private let modele: AppModel
     private let fenetre: Fenetre
     private let panneau: Panneau
+    private let flottant: Flottant
     private var glisser: GlisserDeBoucle?
     private var suitLaSouris = false
     private var dernierClic = 0.0
@@ -61,10 +62,11 @@ final class Gestes {
     /// depuis quand on attend une image.
     var mesures: Mesures?
 
-    init(modele: AppModel, fenetre: Fenetre, panneau: Panneau) {
+    init(modele: AppModel, fenetre: Fenetre, panneau: Panneau, flottant: Flottant) {
         self.modele = modele
         self.fenetre = fenetre
         self.panneau = panneau
+        self.flottant = flottant
     }
 
     /// Hauteur que le panneau peut occuper : la fenêtre moins la barre d'état, qu'il
@@ -78,6 +80,12 @@ final class Gestes {
     private func dansLePanneau(_ p: CGPoint) -> Bool {
         panneau.contient(p, largeurFenetre: fenetre.taillePoints.largeur,
                          hauteurUtile: hauteurUtile)
+    }
+
+    /// Vrai quand ce point tombe sur la colonne flottante — le sélecteur de pistes
+    /// et le bouton des réglages, qui sont là en permanence.
+    private func surLaColonne(_ p: CGPoint) -> Bool {
+        flottant.contient(p, largeurFenetre: fenetre.taillePoints.largeur)
     }
 
     /// Le point sous le curseur, **en points depuis le coin haut-gauche** — comme
@@ -127,6 +135,9 @@ final class Gestes {
             panneau.defiler(crans * 48)
             return
         }
+        // Rien sous la colonne : elle ne défile pas, et zoomer l'image par-dessous
+        // ferait bouger ce qu'elle cache sans qu'on l'ait visé.
+        if surLaColonne(CGPoint(x: x, y: y)) { return }
 
         // Combien de lignes vaut un cran, d'après les réglages de l'utilisateur.
         // Une valeur en dur ferait défiler trop vite chez qui a réglé finement, et
@@ -191,6 +202,14 @@ final class Gestes {
             return
         }
 
+        // La colonne ensuite, et pour la même raison : cocher une piste ne doit pas
+        // déplacer la tête de lecture par-dessous. Pas de capture ici — ses boutons
+        // se pressent, ils ne se tirent pas.
+        if surLaColonne(p) {
+            flottant.appuiA(p)
+            return
+        }
+
         modele.cancelTurn()
 
         // Le double-clic dans la réglette efface la boucle. Windows sait le dire
@@ -227,12 +246,13 @@ final class Gestes {
         let p = point(l)
         demanderLeMessageDeSortie()
         panneau.sourisA(p)
+        flottant.sourisA(p)
 
         // Le panneau est posé **sur** l'image : sans ce garde-fou, viser un curseur
         // ferait afficher par-dessous la note et la fréquence du point qu'il cache.
         // C'est le même `pointerOverControls` que la vue macOS pose au survol de ses
         // commandes flottantes.
-        let survole = dansLePanneau(p) || panneau.glisseEnCours
+        let survole = dansLePanneau(p) || panneau.glisseEnCours || surLaColonne(p)
         if modele.pointerOverControls != survole { modele.pointerOverControls = survole }
         if survole {
             SetCursor(LoadCursorW(nil, curseurFleche))
@@ -280,6 +300,7 @@ final class Gestes {
         suitLaSouris = false
         modele.hover = nil
         panneau.sourisPartie()
+        flottant.sourisPartie()
         SetCursor(LoadCursorW(nil, curseurFleche))
     }
 

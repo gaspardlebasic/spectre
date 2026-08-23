@@ -89,21 +89,11 @@ final class Commandes {
             p.explication(erreur)
         }
 
-        // Du haut vers le bas : voix, accompagnement, basse, batterie. C'est l'ordre
-        // des hauteurs, celui qu'on a déjà sous les yeux dans l'image — et non
-        // l'ordre où le réseau rend ses sorties, qui n'a de sens que pour lui.
-        let ordre: [Stem] = [.vocals, .other, .bass, .drums]
-        let vide = modele.spectrogram.columnCount == 0
-        for piste in ordre {
-            // La dernière piste cochée ne se décoche pas : il faut bien entendre
-            // quelque chose, et `silence` n'est pas une sélection utile.
-            let seule = modele.selection == [piste]
-            if let voulu = p.bascule(piste.label, modele.selection.contains(piste),
-                                     actif: !vide && !seule),
-               voulu != modele.selection.contains(piste) {
-                modele.toggle(piste)
-            }
-        }
+        // Les quatre bascules ne sont plus ici : elles vivent dans la colonne
+        // flottante, à l'écran en permanence — voir `Flottant.swift`. Les répéter
+        // dans le panneau reviendrait à montrer deux fois le même interrupteur à
+        // deux points de l'écran, l'un d'eux étant caché neuf fois sur dix.
+        p.note("Gardées", valeur: Stem.label(for: modele.selection))
         if let remarque = modele.drumLaneNotice { p.explication(remarque) }
 
         var inactifs = Set<Int>()
@@ -156,13 +146,16 @@ final class Commandes {
     private func lecture(_ p: Panneau) {
         p.titre("Lecture")
 
+        // En pourcentage et non en « × », et « Transposition » et non « Ton » : les
+        // mêmes mots que le panneau macOS, parce que ce sont les mêmes réglages.
         if let vitesse = p.curseur("Vitesse", modele.player.speed, 0.25...1.5,
-                                   texte: String(format: "×%.2f", modele.player.speed),
+                                   texte: String(format: "%.0f %%",
+                                                 modele.player.speed * 100),
                                    actif: modele.duration > 0) {
             modele.player.speed = vitesse
         }
-        if let ton = p.curseur("Ton", modele.player.transpose, -12...12,
-                               texte: String(format: "%+.1f", modele.player.transpose),
+        if let ton = p.curseur("Transposition", modele.player.transpose, -12...12,
+                               texte: String(format: "%+.1f dt", modele.player.transpose),
                                actif: modele.duration > 0) {
             modele.player.transpose = ton
         }
@@ -261,9 +254,12 @@ final class Commandes {
                       + "et ce qui ne l'est pas — l'éclaircir fait entrer des raies "
                       + "pâles dans le relevé d'accords, et les noms changent sous vos "
                       + "yeux pendant que vous tirez.")
-        switch p.boutons(["Auto", "Ouverture"], inactifs: vide ? [0, 1] : []) {
-        case 0: modele.applyAutoContrast()
-        case 1: modele.restoreOpeningContrast()
+        // « Global » et « local » disent la seule chose qui les sépare : sur quoi le
+        // réglage est mesuré. L'un relit le morceau entier tel qu'il a été mesuré à
+        // l'ouverture, l'autre ce que la fenêtre montre en ce moment.
+        switch p.boutons(["Auto global", "Auto local"], inactifs: vide ? [0, 1] : []) {
+        case 0: modele.restoreOpeningContrast()
+        case 1: modele.applyAutoContrast()
         default: break
         }
 
@@ -274,18 +270,10 @@ final class Commandes {
         }
 
         p.air()
-        p.note("Palette")
-        if let choisie = p.choix(ColorMap.allCases.map(\.label),
-                                 modele.display.colorMap.rawValue),
-           let palette = ColorMap(rawValue: choisie) {
-            modele.display.colorMap = palette
-        }
-
-        p.air()
-        if let batterie = p.bascule("Ligne de batterie", modele.showDrumLane) {
+        if let batterie = p.bascule("Batterie", modele.showDrumLane) {
             modele.showDrumLane = batterie
         }
-        if let grille = p.bascule("Grille d'accords", modele.showChords) {
+        if let grille = p.bascule("Accords", modele.showChords) {
             modele.showChords = grille
         }
         if let bemols = p.segments("Noms des touches noires", ["Bémols", "Dièses"],

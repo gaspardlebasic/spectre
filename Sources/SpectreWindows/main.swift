@@ -104,6 +104,8 @@ final class Application: EchosDeLaFenetre {
     let modele: AppModel
     let gestes: Gestes
     let panneau = Panneau()
+    /// Ce qui ne se replie jamais : les quatre pistes et la porte des réglages.
+    let flottant = Flottant()
     let commandes: Commandes
     /// Le titre déjà posé sur la fenêtre. Comparé plutôt que reposé à chaque image :
     /// `SetWindowTextW` fait repeindre la barre de titre, cent vingt fois par seconde
@@ -128,7 +130,8 @@ final class Application: EchosDeLaFenetre {
         self.modele = AppModel(fenetre: fenetre.poignee)
         self.commandes = Commandes(modele: modele,
                                    preferences: PreferencesWindows.partagees)
-        self.gestes = Gestes(modele: modele, fenetre: fenetre, panneau: panneau)
+        self.gestes = Gestes(modele: modele, fenetre: fenetre, panneau: panneau,
+                             flottant: flottant)
         modele.renderer = rendu
         rendu.origineDesTeintes = PreferencesWindows.partagees.hueOrigin
         fenetre.echos = self
@@ -309,6 +312,12 @@ final class Application: EchosDeLaFenetre {
             panneau.dessiner(pinceau: pinceau, largeurFenetre: points.largeur,
                              hauteurUtile: points.hauteur - hauteurDeLaBarre) {
                 commandes.dessiner(dans: $0)
+            }
+            // La colonne par-dessus le panneau, et non l'inverse : elle est ce qui
+            // ne se replie jamais, et le panneau vient se ranger à sa gauche.
+            flottant.dessiner(pinceau: pinceau, largeurFenetre: points.largeur,
+                              modele: modele, panneauOuvert: panneau.ouvert) {
+                gestes.basculerLePanneau()
             }
             Barre(modele: modele, pinceau: pinceau, largeur: points.largeur,
                   haut: points.hauteur - hauteurDeLaBarre,
