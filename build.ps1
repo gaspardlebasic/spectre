@@ -183,26 +183,36 @@ if (-not $SansEpreuve) {
     # l'épreuve conclurait à l'échec sur une image pas encore écrite. `atelier.ps1`
     # a la fonction qui fait cela, mais elle n'est pas ici : ce processus est neuf
     # et ne doit rien connaître de l'atelier.
+    # La sortie de l'application passe par des fichiers, et pas par le tube du
+    # shell : un programme du sous-système « fenêtre » lancé par `Start-Process`
+    # n'écrit dans aucun des deux à moins qu'on ne le lui dise. Sans ces deux
+    # redirections, l'épreuve rate en silence et l'on ne voit pas pourquoi — ce qui
+    # est exactement le contraire de ce qu'elle est là pour faire.
     $sortie = Join-Path $travail "image.ppm"
     $script = @"
 `$env:PATH = '$propre'
 `$env:SPECTRE_RANGEMENT = '$travail\rangement'
 `$p = Start-Process -FilePath '$travail\Spectre\Spectre.exe' ``
                    -ArgumentList '"$travail\temoin.wav" --photo "$sortie"' ``
-                   -Wait -PassThru -NoNewWindow
+                   -Wait -PassThru -NoNewWindow ``
+                   -RedirectStandardOutput '$travail\dit.txt' ``
+                   -RedirectStandardError '$travail\erreur.txt'
 exit `$p.ExitCode
 "@
     $fichierScript = Join-Path $travail "essai.ps1"
     Set-Content -Path $fichierScript -Value $script -Encoding utf8
     # Un processus **neuf** : notre propre environnement porte déjà tout ce qu'il
     # faut, et le retirer d'une variable ne le retire pas des DLL déjà chargées.
-    $rapport = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $fichierScript 2>&1
+    $rapport = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $fichierScript 2>&1)
+    foreach ($flux in @("$travail\dit.txt", "$travail\erreur.txt")) {
+        if (Test-Path $flux) { $rapport += @(Get-Content $flux -Encoding UTF8) }
+    }
     $ok = (Test-Path $sortie)
     if ($ok) {
         Write-Host "  ok    l'application tourne sans la chaîne de compilation"
     } else {
         Write-Host "  ECHEC l'application ne tourne pas hors de l'atelier"
-        $rapport | ForEach-Object { Write-Host "        $_" }
+        $rapport | Where-Object { $_ } | ForEach-Object { Write-Host "        $_" }
     }
     Remove-Item -Recurse -Force $travail -ErrorAction SilentlyContinue
     if (-not $ok) { exit 1 }
