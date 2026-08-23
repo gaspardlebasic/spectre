@@ -3,6 +3,7 @@
 #     .\build.ps1                 assemble build\Spectre
 #     .\build.ps1 -Archive        et en fait un .zip
 #     .\build.ps1 -SansEpreuve    sans l'épreuve du dossier propre
+#     .\build.ps1 -SansFenetre    l'épreuve, mais par le rendu hors écran
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # CE QU'ASSEMBLER VEUT DIRE ICI
@@ -35,7 +36,8 @@
 
 param(
     [switch]$Archive,
-    [switch]$SansEpreuve
+    [switch]$SansEpreuve,
+    [switch]$SansFenetre
 )
 
 $ErrorActionPreference = "Continue"
@@ -188,12 +190,30 @@ if (-not $SansEpreuve) {
     # n'écrit dans aucun des deux à moins qu'on ne le lui dise. Sans ces deux
     # redirections, l'épreuve rate en silence et l'on ne voit pas pourquoi — ce qui
     # est exactement le contraire de ce qu'elle est là pour faire.
+    #
+    # ── `--photo`, ou `--rendu` là où il n'y a pas de bureau ───────────────────
+    #
+    # `--photo` ouvre une vraie fenêtre et relit l'image de sa chaîne d'échange :
+    # c'est le chemin complet, et c'est celui qu'on veut. Il demande une session
+    # graphique, que **n'a pas un coureur d'intégration continue** — son travail
+    # tourne en session 0, sans bureau, et DXGI meurt d'une violation d'accès en
+    # tentant d'attacher une chaîne d'échange à une fenêtre qui n'est sur aucun
+    # écran. Ce n'est pas une panne de Spectre : sur la même machine, `RenduCheck`
+    # fait passer toute la chaîne Direct3D hors écran sans broncher.
+    #
+    # `-SansFenetre` prend alors `--rendu`, qui dessine sans fenêtre. Ce que
+    # l'épreuve est là pour dire — **l'application trouve-t-elle ses bibliothèques
+    # hors de l'atelier ?** — se lit tout aussi bien : c'est le même exécutable et
+    # les mêmes DLL. Ce qu'on y perd est la fenêtre, que la machine de
+    # développement éprouve de toute façon à chaque `.\essai.ps1`. C'est la même
+    # concession que `./essai.sh --sans-fenetre` sur le Mac, et pour la même raison.
     $sortie = Join-Path $travail "image.ppm"
+    $commande = if ($SansFenetre) { "--rendu" } else { "--photo" }
     $script = @"
 `$env:PATH = '$propre'
 `$env:SPECTRE_RANGEMENT = '$travail\rangement'
 `$p = Start-Process -FilePath '$travail\Spectre\Spectre.exe' ``
-                   -ArgumentList '"$travail\temoin.wav" --photo "$sortie"' ``
+                   -ArgumentList '"$travail\temoin.wav" $commande "$sortie"' ``
                    -Wait -PassThru -NoNewWindow ``
                    -RedirectStandardOutput '$travail\dit.txt' ``
                    -RedirectStandardError '$travail\erreur.txt'
@@ -222,26 +242,22 @@ exit `$p.ExitCode
     # premier piège du portage, et c'est celui qu'une distribution ratée rejoue chez
     # l'utilisateur.
     #
-    # Une machine sans carte graphique utilisable échoue autrement : le programme
-    # démarre, dit que Direct3D n'a pas voulu, et sort. Les bibliothèques, elles,
-    # étaient bel et bien là — c'est le cas d'un coureur d'intégration continue, qui
-    # n'a ni écran ni pilote. Confondre les deux ferait échouer la livraison sur une
-    # panne qui n'existe que chez celui qui la fabrique ; les séparer demande de
-    # regarder le code de sortie, et de croire l'application quand elle parle.
-    $manqueUneDLL = $code -in @(-1073741515, -1073741511)
-    $aParle = @($rapport | Where-Object { $_ -match '^Spectre :' }).Count -gt 0
-
+    # Elle reste **stricte** : une image, ou un échec. Ce qui varie selon la
+    # machine, c'est par quel chemin on la demande — voir `-SansFenetre` plus haut —
+    # et non l'exigence.
+    #
+    # Le code de sortie est rapporté parce qu'il désigne le coupable sans qu'on ait
+    # à chercher : `0xC0000135` est une DLL introuvable, `0xC0000139` un point
+    # d'entrée manquant, `0xC0000005` un plantage. Sans lui, l'échec se lisait
+    # « l'application ne tourne pas », suivi de rien, et l'on cherchait pendant une
+    # heure du côté de la liste des bibliothèques.
     if ($imageFaite) {
         Write-Host "  ok    l'application tourne sans la chaîne de compilation"
-    } elseif ($manqueUneDLL -or -not $aParle) {
+        if ($SansFenetre) { Write-Host "        (par le rendu hors écran — pas de bureau ici)" }
+    } else {
         Write-Host ("  ECHEC l'application ne tourne pas hors de l'atelier (code 0x{0:X8})" -f $code)
         $rapport | Where-Object { $_ } | ForEach-Object { Write-Host "        $_" }
         exit 1
-    } else {
-        Write-Host "  ok    les bibliothèques sont toutes là — l'application démarre"
-        Write-Host "        (pas d'image : cette machine n'a pas de quoi en dessiner une)"
-        $rapport | Where-Object { $_ -match '^Spectre :' } |
-            ForEach-Object { Write-Host "        $_" }
     }
 }
 

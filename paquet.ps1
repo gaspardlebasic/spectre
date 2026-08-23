@@ -55,7 +55,11 @@
 param(
     [string]$Version = "1.0.0",
     [string]$InnoSetup = "6.7.3",
-    [switch]$Force
+    [switch]$Force,
+    # Passé tel quel à `build.ps1` : là où il n'y a pas de bureau — un coureur
+    # d'intégration continue — l'épreuve du dossier propre passe par le rendu hors
+    # écran. Voir la longue note dans `build.ps1`.
+    [switch]$SansFenetre
 )
 
 $ErrorActionPreference = "Stop"
@@ -85,7 +89,7 @@ Etape "Le dossier à empaqueter"
 # la construction parce qu'un dossier existe déjà livrerait un exécutable qui
 # annonce dans ses propriétés une version que l'installeur dément.
 & (Join-Path $racine "logo.ps1") -Version $Version | Out-Null
-& (Join-Path $racine "build.ps1")
+& (Join-Path $racine "build.ps1") -SansFenetre:$SansFenetre
 if ($LASTEXITCODE -ne 0) { throw "L'assemblage a échoué." }
 $poids = (Get-ChildItem $assemble -Recurse -File | Measure-Object Length -Sum).Sum
 Write-Host ("  {0} ({1:N1} Mo)" -f $assemble, ($poids / 1MB))

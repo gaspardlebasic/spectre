@@ -190,11 +190,18 @@ jobs:
 
       # `paquet.ps1` refait l'icône avec ce numéro de version, assemble, éprouve le
       # tout dans un dossier propre, puis compile l'installeur et l'archive.
+      #
+      # `-SansFenetre` : le travail d'un coureur tourne en session 0, sans bureau, et
+      # DXGI y meurt d'une violation d'accès en attachant une chaîne d'échange à une
+      # fenêtre qui n'est sur aucun écran. Ce n'est pas une panne de Spectre — sur la
+      # même machine, `RenduCheck` fait passer toute la chaîne Direct3D hors écran
+      # sans broncher, et c'est par là que l'épreuve passe alors. Ce qu'elle est là
+      # pour dire, la liste des bibliothèques, se lit tout aussi bien.
       - name: L'installeur et l'archive
         shell: powershell
         env:
           SPECTRE_RANGEMENT: ${{ runner.temp }}\spectre
-        run: .\paquet.ps1 -Version $env:VERSION
+        run: .\paquet.ps1 -Version $env:VERSION -SansFenetre
 
       - name: Ce qui a été produit
         shell: powershell
