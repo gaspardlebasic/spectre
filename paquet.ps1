@@ -189,9 +189,19 @@ Write-Host "  → $engendre"
 # ── La compilation ───────────────────────────────────────────────────────────
 
 Etape "Compilation"
+# Le bloc de ressources de Windows ne connaît que quatre nombres : une étiquette
+# comme « 0.4-beta » y est refusée net, et l'erreur d'Inno Setup ne nomme que la
+# directive. On lui passe donc la part chiffrée à part, comme `logo.ps1` la calcule
+# pour la sienne ; le nom qu'on lit, lui, reste celui qu'on a donné.
+$quatre = @($Version -split '[^0-9]+' | Where-Object { $_ -ne '' } |
+            ForEach-Object { [int]$_ })
+while ($quatre.Count -lt 4) { $quatre += 0 }
+$versionNumerique = ($quatre[0..3]) -join '.'
+
 $iss = Join-Path $racine "Spectre.iss"
 $journal = & (Join-Path $outils "ISCC.exe") `
-    "/DVersion=$Version" "/DArch=$architecture" `
+    "/DVersion=$Version" "/DVersionNumerique=$versionNumerique" `
+    "/DArch=$architecture" `
     "/DSource=build\Spectre" "/DSortie=build" $iss 2>&1 | ForEach-Object { "$_" }
 $compile = $LASTEXITCODE -eq 0
 if (-not $compile) {

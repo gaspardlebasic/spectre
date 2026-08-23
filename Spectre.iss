@@ -65,6 +65,13 @@
 #ifndef Version
   #define Version "1.0.0"
 #endif
+; Windows compte les versions par quatre nombres, et n'accepte rien d'autre dans le
+; bloc de ressources : une étiquette comme « 0.4-beta » y est refusée net. Le nom
+; qu'on lit reste `Version` ; celui-ci n'est que sa part chiffrée, calculée par
+; `paquet.ps1` comme `logo.ps1` calcule la sienne.
+#ifndef VersionNumerique
+  #define VersionNumerique "1.0.0.0"
+#endif
 #ifndef Source
   #define Source "build\Spectre"
 #endif
@@ -96,7 +103,7 @@ AppVerName={#Application} {#Version}
 AppPublisherURL={#Adresse}
 AppSupportURL={#Adresse}
 AppUpdatesURL={#Adresse}/releases
-VersionInfoVersion={#Version}
+VersionInfoVersion={#VersionNumerique}
 
 DefaultDirName={autopf}\{#Application}
 DefaultGroupName={#Application}
