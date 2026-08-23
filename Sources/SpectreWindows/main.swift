@@ -125,11 +125,21 @@ final class Application: EchosDeLaFenetre {
     private var enMarche = true
     private var tailleAChanger: (largeur: Int, hauteur: Int)?
 
+    // Les deux échecs possibles sont **dits**, et c'est ce qui manquait. Sans ces
+    // messages, une machine sans carte graphique utilisable rend un `exit(1)` muet :
+    // pas une fenêtre, pas une ligne, rien. On accuse alors la distribution — une
+    // bibliothèque oubliée donne exactement le même silence — et l'on cherche du
+    // côté des DLL une panne qui est celle du pilote. Un coureur d'intégration
+    // continue a coûté trois exécutions à ce silence-là.
     init?() {
         guard let fenetre = Fenetre(titre: "Spectre", largeur: 1200, hauteur: 700) else {
+            Journal.erreur("Windows a refusé d'ouvrir une fenêtre "
+                           + "(erreur \(GetLastError())).")
             return nil
         }
         guard let rendu = RenduD3D11(fenetre: UnsafeMutableRawPointer(fenetre.poignee!)) else {
+            Journal.erreur("Direct3D 11 n'a pas démarré : pas de carte graphique "
+                           + "utilisable, ou un pilote trop ancien.")
             return nil
         }
         self.fenetre = fenetre

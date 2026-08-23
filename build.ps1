@@ -204,18 +204,45 @@ exit `$p.ExitCode
     # Un processus **neuf** : notre propre environnement porte déjà tout ce qu'il
     # faut, et le retirer d'une variable ne le retire pas des DLL déjà chargées.
     $rapport = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $fichierScript 2>&1)
+    $code = $LASTEXITCODE
     foreach ($flux in @("$travail\dit.txt", "$travail\erreur.txt")) {
         if (Test-Path $flux) { $rapport += @(Get-Content $flux -Encoding UTF8) }
     }
-    $ok = (Test-Path $sortie)
-    if ($ok) {
-        Write-Host "  ok    l'application tourne sans la chaîne de compilation"
-    } else {
-        Write-Host "  ECHEC l'application ne tourne pas hors de l'atelier"
-        $rapport | Where-Object { $_ } | ForEach-Object { Write-Host "        $_" }
-    }
+    # L'image est relevée **avant** de faire le ménage : le dossier de travail la
+    # porte, et l'effacer d'abord fait échouer l'épreuve sur son propre nettoyage.
+    $imageFaite = Test-Path $sortie
     Remove-Item -Recurse -Force $travail -ErrorAction SilentlyContinue
-    if (-not $ok) { exit 1 }
+
+    # ── Ce que l'épreuve distingue, et pourquoi ────────────────────────────────
+    #
+    # Elle est là pour une seule question : **l'application trouve-t-elle ses
+    # bibliothèques hors de l'atelier ?** Quand la réponse est non, Windows arrête
+    # le programme sur `0xC0000135` — DLL introuvable — ou sur `0xC0000139` — un
+    # point d'entrée manquant — avant qu'une ligne de Swift ne s'exécute. C'est le
+    # premier piège du portage, et c'est celui qu'une distribution ratée rejoue chez
+    # l'utilisateur.
+    #
+    # Une machine sans carte graphique utilisable échoue autrement : le programme
+    # démarre, dit que Direct3D n'a pas voulu, et sort. Les bibliothèques, elles,
+    # étaient bel et bien là — c'est le cas d'un coureur d'intégration continue, qui
+    # n'a ni écran ni pilote. Confondre les deux ferait échouer la livraison sur une
+    # panne qui n'existe que chez celui qui la fabrique ; les séparer demande de
+    # regarder le code de sortie, et de croire l'application quand elle parle.
+    $manqueUneDLL = $code -in @(-1073741515, -1073741511)
+    $aParle = @($rapport | Where-Object { $_ -match '^Spectre :' }).Count -gt 0
+
+    if ($imageFaite) {
+        Write-Host "  ok    l'application tourne sans la chaîne de compilation"
+    } elseif ($manqueUneDLL -or -not $aParle) {
+        Write-Host ("  ECHEC l'application ne tourne pas hors de l'atelier (code 0x{0:X8})" -f $code)
+        $rapport | Where-Object { $_ } | ForEach-Object { Write-Host "        $_" }
+        exit 1
+    } else {
+        Write-Host "  ok    les bibliothèques sont toutes là — l'application démarre"
+        Write-Host "        (pas d'image : cette machine n'a pas de quoi en dessiner une)"
+        $rapport | Where-Object { $_ -match '^Spectre :' } |
+            ForEach-Object { Write-Host "        $_" }
+    }
 }
 
 # ── L'archive ────────────────────────────────────────────────────────────────
