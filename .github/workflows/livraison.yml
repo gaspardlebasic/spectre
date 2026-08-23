@@ -160,6 +160,10 @@ jobs:
           } else {
             Write-Host "  (aucun poids attache a la release : la separation sera absente)"
           }
+          # Le coureur termine chaque etape par `exit $LASTEXITCODE`, qui porte encore
+          # le 1 du `gh` ci-dessus. Sans cette ligne, l'etape echoue apres avoir dit
+          # que tout allait bien.
+          exit 0
 
       # Les harnais qui ne demandent ni écran ni carte son. Le rendu, le décodage et
       # la sortie audio sont éprouvés sur la machine de développement et par l'épreuve
@@ -194,6 +198,10 @@ jobs:
           Write-Host "-- RenduCheck"
           & "$bin\RenduCheck.exe"
           Write-Host "   RenduCheck -> $LASTEXITCODE"
+          # Meme raison que dans l'etape des poids : le coureur termine l'etape par
+          # `exit $LASTEXITCODE`, et celui de RenduCheck ne doit pas faire echouer la
+          # livraison. Les vrais echecs, au-dessus, passent par `throw`.
+          exit 0
 
       # `paquet.ps1` refait l'icône avec ce numéro de version, assemble, éprouve le
       # tout dans un dossier propre, puis compile l'installeur et l'archive.
