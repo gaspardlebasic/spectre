@@ -50,8 +50,8 @@ Les installeurs sont dans les [releases](../../releases), un par architecture :
 
 | à télécharger | pour |
 |---|---|
-| `Spectre-…-x64-installeur.exe` | les PC Intel et AMD, c'est-à-dire presque tous |
-| `Spectre-…-arm64-installeur.exe` | les PC ARM — Snapdragon X, Surface Pro |
+| [`Spectre-x64-installeur.exe`](../../releases/latest/download/Spectre-x64-installeur.exe) | les PC Intel et AMD, c'est-à-dire presque tous |
+| [`Spectre-arm64-installeur.exe`](../../releases/latest/download/Spectre-arm64-installeur.exe) | les PC ARM — Snapdragon X, Surface Pro |
 
 En cas de doute : Paramètres → Système → Informations système, ligne « Type du
 système ». **Chaque installeur refuse l'autre architecture** plutôt que de poser

@@ -127,7 +127,13 @@ ChangesAssociations=yes
 Compression=lzma2/max
 SolidCompression=yes
 OutputDir={#Sortie}
-OutputBaseFilename={#Application}-{#Version}-{#Arch}-installeur
+; Le nom ne porte pas le numéro de version, et c'est voulu : la page de
+; téléchargement vise `releases/latest/download/Spectre-x64-installeur.exe`, une
+; adresse qui ne vaut que si le nom ne bouge pas d'une livraison à l'autre. C'est
+; déjà la règle du paquet macOS, qui s'appelle `Spectre.zip` tout court. La version,
+; elle, est dans l'étiquette de la release, dans les propriétés du fichier, et dans
+; « Applications installées ».
+OutputBaseFilename={#Application}-{#Arch}-installeur
 
 [Languages]
 ; Les cinq langues de l'application, et dans le même ordre — voir

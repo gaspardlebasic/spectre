@@ -182,8 +182,8 @@ jobs:
         shell: powershell
         run: |
           Get-ChildItem build -File |
-            Where-Object { $_.Name -like "Spectre-$env:VERSION-*" } |
-            ForEach-Object { "{0,-48} {1,8:N1} Mo" -f $_.Name, ($_.Length / 1MB) }
+            Where-Object { $_.Name -like "Spectre-${{ matrix.arch }}*" } |
+            ForEach-Object { "{0,-40} {1,8:N1} Mo" -f $_.Name, ($_.Length / 1MB) }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -226,8 +226,8 @@ jobs:
 
           | fichier | pour |
           |---|---|
-          | \`Spectre-$version-x64-installeur.exe\` | PC Intel et AMD |
-          | \`Spectre-$version-arm64-installeur.exe\` | PC ARM — Snapdragon X, Surface Pro |
+          | \`Spectre-x64-installeur.exe\` | PC Intel et AMD |
+          | \`Spectre-arm64-installeur.exe\` | PC ARM — Snapdragon X, Surface Pro |
 
           Windows 10 ou plus récent. L'installeur n'est signé par personne : SmartScreen
           affiche un écran bleu au premier lancement, et il faut passer par

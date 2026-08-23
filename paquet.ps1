@@ -4,10 +4,14 @@
 #     .\paquet.ps1 -Version 0.3       le numéro que porte la livraison
 #     .\paquet.ps1 -Force             en réinstallant le compilateur
 #
-# Produit deux fichiers, sous le même numéro : l'installeur, et l'archive du dossier
-# pour qui préfère ne rien inscrire dans la base de registres. Le script refait
-# l'icône et l'assemblage à chaque fois — c'est l'ordre qui compte, la ressource
-# posant le numéro de version dans l'exécutable avant qu'il ne soit construit.
+# Produit deux fichiers : l'installeur, et l'archive du dossier pour qui préfère ne
+# rien inscrire dans la base de registres. Ni l'un ni l'autre ne porte le numéro de
+# version dans son nom — la page de téléchargement vise une adresse qui ne doit pas
+# bouger d'une livraison à l'autre, et c'est déjà la règle du paquet macOS.
+#
+# Le script refait l'icône et l'assemblage à chaque fois — c'est l'ordre qui compte,
+# la ressource posant le numéro de version dans l'exécutable avant qu'il ne soit
+# construit.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # CE QUE CE SCRIPT AJOUTE À `build.ps1`
@@ -191,7 +195,7 @@ if (-not $compile) {
     throw "ISCC a échoué."
 }
 
-$installeur = Join-Path $build "Spectre-$Version-$architecture-installeur.exe"
+$installeur = Join-Path $build "Spectre-$architecture-installeur.exe"
 if (-not (Test-Path $installeur)) { throw "$installeur n'a pas été produit." }
 Write-Host ("  → {0} ({1:N1} Mo)" -f $installeur, ((Get-Item $installeur).Length / 1MB))
 
@@ -203,7 +207,7 @@ Write-Host ("  → {0} ({1:N1} Mo)" -f $installeur, ((Get-Item $installeur).Leng
 # puisse pas se tromper sur ce qu'on télécharge.
 
 Etape "L'archive"
-$archiveZip = Join-Path $build "Spectre-$Version-$architecture.zip"
+$archiveZip = Join-Path $build "Spectre-$architecture.zip"
 Remove-Item $archiveZip -ErrorAction SilentlyContinue
 Compress-Archive -Path $assemble -DestinationPath $archiveZip
 Write-Host ("  → {0} ({1:N1} Mo)" -f $archiveZip, ((Get-Item $archiveZip).Length / 1MB))
