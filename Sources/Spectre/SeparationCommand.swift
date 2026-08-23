@@ -1,5 +1,6 @@
 import Foundation
 import SpectreCore
+import SpectreTextes
 import SpectreModele
 import SpectreMac
 
@@ -15,17 +16,18 @@ enum SeparationCommand {
     static func run(path: String, into destination: String?, accelerated: Bool = true) -> Int32 {
         let url = URL(fileURLWithPath: path)
         guard FileManager.default.fileExists(atPath: url.path) else {
-            FileHandle.standardError.write(Data("Fichier introuvable : \(path)\n".utf8))
+            FileHandle.standardError.write(Data((T(.cliFichierIntrouvable, path) + "\n").utf8))
             return 1
         }
         guard StemStore.hasModel else {
-            FileHandle.standardError.write(Data(
-                "Modèle absent : lancer ./modele.sh puis ./build.sh\n".utf8))
+            FileHandle.standardError.write(Data((T(.cliModeleAbsent) + "\n").utf8))
             return 1
         }
 
         let folder = destination.map { URL(fileURLWithPath: $0) }
-            ?? url.deletingLastPathComponent().appendingPathComponent(url.deletingPathExtension().lastPathComponent + " — pistes")
+            ?? url.deletingLastPathComponent()
+                .appendingPathComponent(url.deletingPathExtension().lastPathComponent
+                                        + T(.cliSuffixePistes))
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
 
         let started = Date()
@@ -60,18 +62,20 @@ enum SeparationCommand {
                 // `%@` avec des chaînes Swift est un piège — un pointeur C passé à
                 // un `%@`, qui attend un objet, termine le programme sur-le-champ.
                 let nom = stem.rawValue.padding(toLength: 8, withPad: " ", startingAt: 0)
-                print("  \(nom) crête \(String(format: "%.3f", peak))  → \(file.lastPathComponent)")
+                print("  \(nom) \(T(.cliCrete)) \(String(format: "%.3f", peak))"
+                      + "  → \(file.lastPathComponent)")
             }
             // Le rapport au temps du morceau est la seule mesure comparable d'un
             // fichier à l'autre : les secondes brutes ne disent rien seules.
             let elapsed = Date().timeIntervalSince(started)
             let duration = Double(stems.channels.values.first?.first?.count ?? 0) / stems.sampleRate
             let ratio = duration > 0 ? elapsed / duration : 0
-            print(String(format: "Fait en %.0f s pour %.0f s de musique (×%.2f temps réel).",
-                         elapsed, duration, ratio))
+            print(T(.cliSeparationFaite, String(format: "%.0f", elapsed),
+                    String(format: "%.0f", duration), String(format: "%.2f", ratio)))
             return 0
         } catch {
-            FileHandle.standardError.write(Data("\nÉchec : \(error.localizedDescription)\n".utf8))
+            FileHandle.standardError.write(
+                Data(("\n" + T(.cliEchec, error.localizedDescription) + "\n").utf8))
             return 1
         }
     }

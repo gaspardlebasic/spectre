@@ -1,4 +1,5 @@
 import Foundation
+import SpectreTextes
 
 /// Relevé de la batterie : *quand*, *quoi*, *combien fort* — les trois seules
 /// questions qu'on se pose devant une piste de percussions.
@@ -21,18 +22,22 @@ public enum DrumVoice: Int, CaseIterable, Codable, Sendable {
 
     public var label: String {
         switch self {
-        case .kick: "Grosse caisse"
-        case .snare: "Caisse claire"
-        case .cymbal: "Cymbales"
+        case .kick: T(.voieGrosseCaisse)
+        case .snare: T(.voieCaisseClaire)
+        case .cymbal: T(.voieCymbales)
         }
     }
 
     /// De quoi tenir sur la marge d'une ligne haute de quinze points.
+    ///
+    /// Deux lettres et pas trois : la marge n'en accueille pas davantage, dans
+    /// aucune des cinq langues. C'est ce qui interdit `BD`/`SD`/`HH` d'un côté et
+    /// `Bass`/`Snare` de l'autre — l'abréviation est traduite, la place ne l'est pas.
     public var short: String {
         switch self {
-        case .kick: "GC"
-        case .snare: "CC"
-        case .cymbal: "CY"
+        case .kick: T(.voieGrosseCaisseCourt)
+        case .snare: T(.voieCaisseClaireCourt)
+        case .cymbal: T(.voieCymbalesCourt)
         }
     }
 

@@ -2,6 +2,7 @@ import AVFoundation
 import Foundation
 import OnnxRuntimeBindings
 import SpectreCore
+import SpectreTextes
 import SpectreModele
 
 /// Séparation par Demucs v4, exécutée par ONNX Runtime.
@@ -40,14 +41,14 @@ public struct DemucsSeparator: StemSeparator {
                          isCancelled: @escaping () -> Bool) throws -> SeparatedStems {
         guard StemStore.hasModel else { throw SeparationFailure.modelMissing }
 
-        progress(SeparationProgress(fraction: 0, stage: "Lecture du morceau…"))
+        progress(SeparationProgress(fraction: 0, stage: T(.etapeLectureDuMorceau)))
         let mix = try Self.loadForNetwork(url)
 
         let environment: ORTEnv
         do {
             environment = try ORTEnv(loggingLevel: .warning)
         } catch {
-            throw SeparationFailure.engine("environnement ONNX indisponible — \(error.localizedDescription)")
+            throw SeparationFailure.engine(T(.erreurEnvironnementOnnx, error.localizedDescription))
         }
 
         // L'ouverture du réseau est le long moment muet : huit à neuf secondes pour
@@ -75,13 +76,13 @@ public struct DemucsSeparator: StemSeparator {
     private static func loadingStage(_ accelerated: Bool) -> String {
         guard accelerated, gpuDisponible, let model = StemStore.modelFile,
               let cache = compiledModelFolder(for: model) else {
-            return "Ouverture du réseau…"
+            return T(.etapeOuvertureDuReseau)
         }
         let compiled = (try? FileManager.default.contentsOfDirectory(atPath: cache.path))?
             .isEmpty == false
         return compiled
-            ? "Ouverture du réseau…"
-            : "Compilation du réseau pour cette machine — une seule fois…"
+            ? T(.etapeOuvertureDuReseau)
+            : T(.etapeCompilationDuReseau)
     }
 
     /// Où CoreML garde le réseau compilé pour cette machine.
@@ -238,7 +239,7 @@ public struct DemucsSeparator: StemSeparator {
                                            model: URL) throws -> ORTSession {
         guard gpuDisponible, ORTIsCoreMLExecutionProviderAvailable(),
               let cache = compiledModelFolder(for: model) else {
-            throw SeparationFailure.engine("CoreML indisponible")
+            throw SeparationFailure.engine(T(.erreurCoreMLIndisponible))
         }
         let options = try ORTSessionOptions()
         // `MLProgram` et non le format hérité : c'est lui qui accepte les opérations
@@ -275,13 +276,13 @@ public struct DemucsSeparator: StemSeparator {
                                          channels: AVAudioChannelCount(Demucs.channels),
                                          interleaved: false),
               let converter = AVAudioConverter(from: file.processingFormat, to: target)
-        else { throw SeparationFailure.engine("format d'entrée inutilisable") }
+        else { throw SeparationFailure.engine(T(.erreurFormatEntree)) }
 
         let block: AVAudioFrameCount = 1 << 16
         guard let input = AVAudioPCMBuffer(pcmFormat: file.processingFormat,
                                            frameCapacity: block),
               let output = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: block * 2)
-        else { throw SeparationFailure.engine("tampons indisponibles") }
+        else { throw SeparationFailure.engine(T(.erreurTampons)) }
 
         var result = [[Float]](repeating: [], count: Demucs.channels)
         var finished = false
@@ -312,7 +313,7 @@ public struct DemucsSeparator: StemSeparator {
             if status == .endOfStream || status == .error { finished = true }
             if status == .inputRanDry && produced == 0 { finished = true }
         }
-        guard !result[0].isEmpty else { throw SeparationFailure.engine("aucun échantillon lu") }
+        guard !result[0].isEmpty else { throw SeparationFailure.engine(T(.erreurAucunEchantillon)) }
         return result
     }
 }
@@ -343,7 +344,7 @@ private struct MoteurCoreML: MoteurDemucs {
         let outputs = try session.run(withInputs: inputs,
                                       outputNames: ["zout", "xt"], runOptions: nil)
         guard let zout = outputs["zout"], let xt = outputs["xt"] else {
-            throw SeparationFailure.engine("le réseau n'a rien rendu")
+            throw SeparationFailure.engine(T(.erreurReseauRienRendu))
         }
         return (try Self.flottants(zout), try Self.flottants(xt))
     }

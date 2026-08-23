@@ -1,16 +1,20 @@
 import Foundation
+import SpectreTextes
 
 public enum ColorMap: Int, CaseIterable, Identifiable, Codable {
     case gray = 0, inferno = 1, magma = 2, viridis = 3, turbo = 4, notes = 5
     public var id: Int { rawValue }
+    /// Inferno, Magma, Viridis et Turbo ne sont pas traduits : ce sont les noms
+    /// propres de ces palettes, les mêmes dans tous les logiciels qui les emploient,
+    /// et les traduire reviendrait à les rendre méconnaissables.
     public var label: String {
         switch self {
-        case .gray: return "Niveaux de gris"
+        case .gray: return T(.paletteGris)
         case .inferno: return "Inferno"
         case .magma: return "Magma"
         case .viridis: return "Viridis"
         case .turbo: return "Turbo"
-        case .notes: return "Notes (cycle des quintes)"
+        case .notes: return T(.paletteNotes)
         }
     }
 }

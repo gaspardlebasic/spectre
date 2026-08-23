@@ -1,5 +1,6 @@
 import Foundation
 import SpectreCore
+import SpectreTextes
 import SpectreModele
 import SpectreWin
 
@@ -127,11 +128,11 @@ final class Flottant {
             basculerLesReglages()
         }
         let capsule = Self.hauteurBouton / 2
-        bouton(p, zoneReglages, icone: .reglages, texte: "Réglages",
+        bouton(p, zoneReglages, icone: .reglages, texte: T(.panneauReglages),
                allume: panneauOuvert, utilisable: true,
                hautGauche: capsule, hautDroite: capsule,
                basDroite: capsule, basGauche: capsule, fondEteint: true)
-        survol(infobulle, zoneReglages, "Lecture, boucle, tempo, affichage — R.")
+        survol(infobulle, zoneReglages, T(.panneauOuvrirAideWin))
 
         // ── La capsule des quatre pistes ──────────────────────────────────────
         let yPistes = yReglages + Self.hauteurBouton + 10
@@ -163,8 +164,7 @@ final class Flottant {
                    basDroite: dernier ? Self.rayonDome : Self.rayonInterne,
                    basGauche: dernier ? Self.rayonDome : Self.rayonInterne,
                    fondEteint: false)
-            survol(infobulle, zone, piste.help
-                   + "\nDécocher retire cette piste ; ce qui reste est joué ensemble.")
+            survol(infobulle, zone, piste.help + T(.pisteDecocherAide))
         }
     }
 

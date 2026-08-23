@@ -1,5 +1,6 @@
 import Foundation
 import SpectreCore
+import SpectreTextes
 import SpectreModele
 import SpectreWin
 
@@ -55,7 +56,7 @@ struct Frise {
 
     /// Une fenêtre vide sans explication passe pour une panne.
     private func attente() {
-        let message = modele.status ?? "Ouvrir un fichier : Ctrl + O"
+        let message = modele.status ?? T(.winFriseOuvrir)
         pinceau.texte(message, x: 0, y: hauteur / 2, largeur: largeur, taille: 13,
                       Pinceau.blanc(0.55), alignement: .centre)
         if let avancement = modele.progress, avancement > 0 {
@@ -298,7 +299,7 @@ struct Frise {
         var nom = AppModel.format(plage.upperBound - plage.lowerBound)
         if let tempo = modele.tempo, tempo.barSeconds > 0 {
             let mesures = (plage.upperBound - plage.lowerBound) / tempo.barSeconds
-            nom += String(format: "  ·  %.2g mesures", mesures)
+            nom += String(format: "  ·  %.2g ", mesures) + T(.uniteMesures)
         }
         guard x1 - x0 > 90 else { return }
         pinceau.texte(nom, x: x0, y: hauteurDeLaReglette / 2, largeur: x1 - x0,

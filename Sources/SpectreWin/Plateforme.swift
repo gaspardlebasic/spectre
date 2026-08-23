@@ -1,5 +1,6 @@
 import Foundation
 import SpectreCore
+import SpectreTextes
 import SpectreModele
 import WinSDK
 
@@ -56,7 +57,7 @@ public struct DialogueWindows: DialogueFichier {
         filtre.append(0)
 
         var chemin = [UInt16](repeating: 0, count: 1024)
-        var titre = Array("Choisir un fichier audio à transcrire".utf16)
+        var titre = Array(T(.dialogueChoisirUnMorceau).utf16)
         titre.append(0)
 
         var choix = OPENFILENAMEW()
@@ -157,6 +158,68 @@ public final class PreferencesWindows: PreferencesGlobales {
     /// ⌘, — un endroit que Windows n'a pas.
     public var hueOrigin = 0 { didSet { marquer(hueOrigin != oldValue) } }
 
+    // MARK: - La langue
+
+    /// La langue choisie à la main. `nil` — le défaut — la fait suivre le système.
+    ///
+    /// Reposer `Textes` à chaque écriture, et pas seulement l'enregistrer : le
+    /// catalogue est un état global que lisent des étages qui ne connaissent pas
+    /// cette classe. Le panneau étant redessiné à chaque image, le changement se voit
+    /// à l'image suivante — Windows n'a rien à rafraîchir, contrairement au Mac.
+    public var langue: Langue? {
+        didSet {
+            guard langue != oldValue else { return }
+            marquer(true)
+            appliquerLaLangue()
+        }
+    }
+
+    /// Le système de noms de notes choisi à la main. `nil` le fait suivre la langue.
+    public var systemeDeNotes: SystemeDeNotes? {
+        didSet {
+            guard systemeDeNotes != oldValue else { return }
+            marquer(true)
+            appliquerLaLangue()
+        }
+    }
+
+    private func appliquerLaLangue() {
+        Textes.demarrer(choix: langue, notes: systemeDeNotes,
+                        etiquettesDuSysteme: Self.languesDuSysteme)
+    }
+
+    /// Ce que Windows dit préférer, de la plus souhaitée à la moins.
+    ///
+    /// `GetUserPreferredUILanguages` et non la locale de formatage : ce sont deux
+    /// réglages distincts sous Windows, et c'est bien la langue *d'affichage* qu'on
+    /// veut — une machine peut compter à l'allemande et s'afficher en anglais.
+    ///
+    /// La fonction s'appelle deux fois : une première pour savoir la taille du
+    /// tampon, une seconde pour le remplir. Le résultat est une suite de chaînes
+    /// terminées par un zéro, elle-même close par un zéro — c'est la convention des
+    /// « multi-strings » de Win32, et il faut la défaire à la main.
+    public static var languesDuSysteme: [String] {
+        var nombre: ULONG = 0
+        var taille: ULONG = 0
+        guard GetUserPreferredUILanguages(DWORD(MUI_LANGUAGE_NAME), &nombre, nil,
+                                          &taille), taille > 0 else { return [] }
+        var tampon = [WCHAR](repeating: 0, count: Int(taille))
+        guard GetUserPreferredUILanguages(DWORD(MUI_LANGUAGE_NAME), &nombre, &tampon,
+                                          &taille) else { return [] }
+        var etiquettes: [String] = []
+        var courante: [WCHAR] = []
+        for unite in tampon {
+            if unite == 0 {
+                if courante.isEmpty { break }        // le zéro final de la suite
+                etiquettes.append(String(decoding: courante, as: UTF16.self))
+                courante = []
+            } else {
+                courante.append(unite)
+            }
+        }
+        return etiquettes
+    }
+
     /// Plafond du dossier des pistes séparées, en octets.
     ///
     /// Hors du protocole, contrairement aux trois autres : le modèle ne demande
@@ -191,11 +254,17 @@ public final class PreferencesWindows: PreferencesGlobales {
         else { return }
         hueOrigin = lues.hueOrigin
         cacheLimit = lues.cacheLimit
+        langue = lues.langue.flatMap(Langue.init(rawValue:))
+        systemeDeNotes = lues.systemeDeNotes.flatMap(SystemeDeNotes.init(rawValue:))
         // Posé à la main : les observateurs de propriété ne sont pas appelés pour une
         // affectation faite dans l'initialiseur de la classe qui les déclare. Sans
         // cette ligne, le plafond relu du fichier ne serait appliqué qu'à la première
         // fois où l'on y toucherait — c'est-à-dire jamais chez qui l'a réglé une fois.
         RangementDesPistes.plafond = cacheLimit
+        // Posée à la main pour la même raison que le plafond : les observateurs de
+        // propriété ne sont pas appelés depuis l'initialiseur qui les déclare, et
+        // sans cette ligne la langue relue du fichier ne s'appliquerait jamais.
+        appliquerLaLangue()
         // Relire n'est pas modifier : sans cela, le premier tour de boucle
         // réécrirait le fichier avec ce qu'il vient d'en sortir.
         enAttenteDepuis = nil
@@ -218,7 +287,9 @@ public final class PreferencesWindows: PreferencesGlobales {
     public func enregistrerMaintenant() {
         guard enAttenteDepuis != nil else { return }
         enAttenteDepuis = nil
-        let contenu = Enregistrement(hueOrigin: hueOrigin, cacheLimit: cacheLimit)
+        let contenu = Enregistrement(hueOrigin: hueOrigin, cacheLimit: cacheLimit,
+                                     langue: langue?.rawValue,
+                                     systemeDeNotes: systemeDeNotes?.rawValue)
         let encodeur = JSONEncoder()
         // Lisible : ce fichier est le seul endroit où l'on peut aller voir pourquoi
         // un réglage ne revient pas, et une ligne unique de mille caractères ne s'y
@@ -241,10 +312,17 @@ public final class PreferencesWindows: PreferencesGlobales {
     private struct Enregistrement: Codable {
         var hueOrigin: Int
         var cacheLimit: Int
+        /// Absents quand le réglage suit le système : « pas de choix » et « le
+        /// premier choix de la liste » ne sont pas la même chose, et un entier ne
+        /// sait pas les distinguer.
+        var langue: String?
+        var systemeDeNotes: Int?
 
-        init(hueOrigin: Int, cacheLimit: Int) {
+        init(hueOrigin: Int, cacheLimit: Int, langue: String?, systemeDeNotes: Int?) {
             self.hueOrigin = hueOrigin
             self.cacheLimit = cacheLimit
+            self.langue = langue
+            self.systemeDeNotes = systemeDeNotes
         }
 
         init(from decoder: Decoder) throws {
@@ -252,6 +330,8 @@ public final class PreferencesWindows: PreferencesGlobales {
             hueOrigin = try c.decodeIfPresent(Int.self, forKey: .hueOrigin) ?? 0
             cacheLimit = try c.decodeIfPresent(Int.self, forKey: .cacheLimit)
                 ?? 1_000_000_000
+            langue = try c.decodeIfPresent(String.self, forKey: .langue)
+            systemeDeNotes = try c.decodeIfPresent(Int.self, forKey: .systemeDeNotes)
         }
     }
 

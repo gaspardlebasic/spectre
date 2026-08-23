@@ -1,4 +1,5 @@
 import Foundation
+import SpectreTextes
 
 // Ce que la séparation de pistes est, indépendamment de qui la calcule.
 //
@@ -20,17 +21,17 @@ public enum SeparationFailure: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .modelMissing:
-            "Le modèle de séparation n'est pas installé."
+            T(.erreurModeleAbsent)
         case .modelUnreadable(let why):
-            "Modèle illisible : \(why)"
+            T(.erreurModeleIllisible, why)
         case .noSourceFile:
-            "Aucun morceau ouvert."
+            T(.erreurAucunMorceau)
         case .cannotWrite(let url):
-            "Impossible d'écrire « \(url.lastPathComponent) »."
+            T(.erreurEcritureImpossible, url.lastPathComponent)
         case .cancelled:
-            "Séparation interrompue."
+            T(.erreurInterrompue)
         case .engine(let why):
-            "La séparation a échoué : \(why)"
+            T(.erreurSeparationEchouee, why)
         }
     }
 }

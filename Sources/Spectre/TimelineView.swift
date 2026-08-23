@@ -3,6 +3,7 @@ import MetalKit
 import SpectreCore
 import SpectreModele
 import SpectreMac
+import SpectreTextes
 import SwiftUI
 
 /// Hauteur de la réglette du haut, où se dessine et s'attrape la boucle.
@@ -652,7 +653,7 @@ struct TimelineOverlay: View {
         var label = AppModel.format(loop.upperBound - loop.lowerBound)
         if let tempo = model.tempo, tempo.barSeconds > 0 {
             let bars = (loop.upperBound - loop.lowerBound) / tempo.barSeconds
-            label += String(format: "  ·  %.2g mesures", bars)
+            label += String(format: "  ·  %.2g ", bars) + T(.uniteMesures)
         }
         guard x1 - x0 > 90 else { return }
         context.draw(Text(label).font(.system(size: 9, design: .rounded))

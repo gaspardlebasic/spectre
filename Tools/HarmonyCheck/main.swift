@@ -1,5 +1,6 @@
 import Foundation
 import SpectreCore
+import SpectreTextes
 
 // Vérifie le relevé des accords sur une grille fabriquée : on sait ce qui est joué,
 // donc on sait ce qui doit être lu.
@@ -135,6 +136,12 @@ func noms(_ notes: [SoundingNote]) -> String {
 
 // MARK: - L'écriture des noms
 
+// Le banc travaille en français, quelle que soit la machine qui le fait tourner :
+// tout ce qui suit compare des noms d'accords écrits d'avance, et un relevé juste
+// ne doit pas passer pour faux parce que le Mac est réglé en polonais.
+Textes.langue = .fr
+Textes.choixDeNotes = nil
+
 print("=== Noms ===")
 check(Chord(root: 0, quality: .major).label() == "Do", "un majeur ne porte pas de symbole",
       Chord(root: 0, quality: .major).label())
@@ -157,6 +164,65 @@ check(Chord(root: 0, quality: .major6).pitchClasses == [0, 4, 7, 9],
       Chord(root: 0, quality: .major6).pitchClasses.map(String.init).joined(separator: " "))
 check(Chord.vocabulary.count == 12 * ChordQuality.allCases.count,
       "douze fondamentales par couleur", "\(Chord.vocabulary.count) accords")
+
+// MARK: - Les mêmes accords, dans les quatre écritures
+//
+// Un accord ne change pas de notes en changeant de pays : ce qui change est son
+// nom. On le vérifie sur les trois cas qui séparent réellement les systèmes — le
+// mineur, la septième majeure, et le si, que l'allemand et le polonais appellent H
+// quand ils réservent B au si bémol.
+
+print("\n=== Les quatre écritures ===")
+
+/// Le nom d'un accord dans un système donné, sans laisser le harnais dans cet état.
+func nomDans(_ systeme: SystemeDeNotes, _ accord: Chord) -> String {
+    let avant = Textes.choixDeNotes
+    Textes.choixDeNotes = systeme
+    let ecrit = accord.label()
+    Textes.choixDeNotes = avant
+    return ecrit
+}
+
+let accordLaMineur = Chord(root: 9, quality: .minor)
+let doMajeur7 = Chord(root: 0, quality: .major7)
+let siMajeur = Chord(root: 11, quality: .major)
+let siBemolMajeur = Chord(root: 10, quality: .major)
+let faDieseMineur = Chord(root: 6, quality: .minor)
+
+check(nomDans(.latinFr, accordLaMineur) == "La-", "français : le mineur au tiret",
+      nomDans(.latinFr, accordLaMineur))
+check(nomDans(.latinEs, accordLaMineur) == "Lam", "espagnol : Do Re Mi, mais le m anglo-saxon",
+      nomDans(.latinEs, accordLaMineur))
+check(nomDans(.anglo, accordLaMineur) == "Am", "anglais", nomDans(.anglo, accordLaMineur))
+check(nomDans(.germanique, accordLaMineur) == "Am", "allemand et polonais",
+      nomDans(.germanique, accordLaMineur))
+
+check(nomDans(.latinFr, doMajeur7) == "DoΔ", "français : la septième majeure en Δ",
+      nomDans(.latinFr, doMajeur7))
+check(nomDans(.anglo, doMajeur7) == "Cmaj7", "anglais : maj7", nomDans(.anglo, doMajeur7))
+check(nomDans(.latinEs, doMajeur7) == "Domaj7",
+      "espagnol : maj7 sur une fondamentale latine",
+      nomDans(.latinEs, doMajeur7))
+
+// Le seul point de tout ce fichier qu'on ne devine pas depuis le français.
+check(nomDans(.germanique, siMajeur) == "H", "en allemand, le si naturel s'écrit H",
+      nomDans(.germanique, siMajeur))
+check(nomDans(.germanique, siBemolMajeur) == "B", "et le si bémol s'écrit B",
+      nomDans(.germanique, siBemolMajeur))
+check(nomDans(.anglo, siMajeur) == "B", "là où l'anglais écrit B pour le si naturel",
+      nomDans(.anglo, siMajeur))
+
+// En dièses, l'écriture germanique nomme les altérations en toutes lettres.
+let avantDieses = Textes.choixDeNotes
+Textes.choixDeNotes = .germanique
+check(faDieseMineur.label(flats: false) == "Fism", "et Fa♯ mineur s'écrit Fism",
+      faDieseMineur.label(flats: false))
+Textes.choixDeNotes = avantDieses
+
+// Les notes, elles, n'ont pas bougé : c'est tout l'objet de ce contrôle.
+check(accordLaMineur.pitchClasses == [9, 0, 4],
+      "et les notes de l'accord sont les mêmes dans les quatre écritures",
+      accordLaMineur.pitchClasses.map(String.init).joined(separator: " "))
 
 // MARK: - Le découpage
 

@@ -2,10 +2,11 @@
 import Foundation
 import PackageDescription
 
-// Cinq étages, du plus portable au moins portable, chacun ne connaissant que
+// Six étages, du plus portable au moins portable, chacun ne connaissant que
 // ceux d'en dessous.
 //
-// `SpectreDSP` isole les quelques opérations vectorielles et la transformée réelle :
+// `SpectreTextes` porte les textes qui s'affichent, dans les cinq langues, et la
+// façon d'écrire les douze notes ; il ne dépend de rien. `SpectreDSP` isole les quelques opérations vectorielles et la transformée réelle :
 // c'est la seule frontière numérique avec la plateforme. `SpectreCore` porte
 // l'analyse, le tempo, les palettes, le relevé de la batterie — tout ce qui se
 // décide sans écran ni carte son. `SpectreModele` porte le comportement de
@@ -13,7 +14,7 @@ import PackageDescription
 // protocoles. `SpectreMac` porte les implémentations Apple, et `Spectre` la
 // fenêtre.
 //
-// Les trois premiers compilent partout où Swift compile, et c'est ce qui fait
+// Les quatre premiers compilent partout où Swift compile, et c'est ce qui fait
 // qu'une seconde plateforme obtient la même application plutôt qu'une application
 // qui lui ressemble.
 //
@@ -71,6 +72,7 @@ let avecIcone = surWindows
 // SHA-256 qui rattache une session à un fichier.
 let dependancesNoyau: [Target.Dependency] = [
     "SpectreDSP",
+    "SpectreTextes",
     .product(name: "Crypto", package: "swift-crypto",
              condition: .when(platforms: [.linux, .windows, .android])),
 ]
@@ -88,6 +90,17 @@ var cibles: [Target] = [
     // faire tourner toutes les vérifications sur ce chemin-là. C'est ce qui permet
     // à `DSPCheck` de mesurer les deux implémentations l'une contre l'autre : une
     // frontière qu'on ne peut pas comparer des deux côtés n'est qu'une promesse.
+    // Les textes qui s'affichent, dans les cinq langues, et la façon d'écrire les
+    // douze notes. Il ne dépend de rien — pas même de la couche numérique — parce
+    // que les noms de pistes et de voies de batterie sont déjà à traduire dans
+    // `SpectreCore`, et qu'un catalogue ne peut pas être au-dessus de son premier
+    // lecteur. C'est du Swift ordinaire : ni `.strings`, ni `Bundle.module`, rien
+    // qui se cherche à l'exécution et se casse sous Windows.
+    .target(
+        name: "SpectreTextes",
+        path: "Sources/SpectreTextes",
+        swiftSettings: reglagesRelease
+    ),
     .target(
         name: "SpectreDSP",
         path: "Sources/SpectreDSP",
@@ -115,6 +128,8 @@ var cibles: [Target] = [
         path: "Sources/SpectreModele",
         swiftSettings: reglagesRelease
     ),
+    .executableTarget(name: "LangueCheck", dependencies: ["SpectreTextes"],
+                      path: "Tools/LangueCheck"),
     .executableTarget(name: "DSPCheck", dependencies: ["SpectreDSP"],
                       path: "Tools/DSPCheck"),
     .executableTarget(name: "WAVCheck", dependencies: ["SpectreCore"],
@@ -167,6 +182,8 @@ var produits: [Product] = [
     .library(name: "SpectreCore", type: .static, targets: ["SpectreCore"]),
     .library(name: "SpectreModele", type: .static, targets: ["SpectreModele"]),
     .library(name: "SpectreDSP", type: .static, targets: ["SpectreDSP"]),
+    .library(name: "SpectreTextes", type: .static, targets: ["SpectreTextes"]),
+    .executable(name: "LangueCheck", targets: ["LangueCheck"]),
     .executable(name: "DSPCheck", targets: ["DSPCheck"]),
     .executable(name: "WAVCheck", targets: ["WAVCheck"]),
     .executable(name: "SessionCheck", targets: ["SessionCheck"]),

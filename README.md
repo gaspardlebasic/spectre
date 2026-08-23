@@ -72,13 +72,14 @@ l'archive ailleurs et lance les deux tranches sur le morceau témoin — la seul
 manière de savoir que ce qui est livré démarre. `./build.sh universel` s'arrête au
 paquet, sans l'archive ni les essais.
 
-## Les quatre étages du code
+## Les six étages du code
 
-Le paquet est coupé en quatre, du plus portable au moins portable. La règle est
+Le paquet est coupé en six, du plus portable au moins portable. La règle est
 qu'un module ne connaît que ceux d'en dessous.
 
 | module | ce qu'il porte | ce qu'il connaît du système |
 |---|---|---|
+| `SpectreTextes` | les textes affichés dans les cinq langues, et l'écriture des douze notes | **rien** |
 | `SpectreDSP` | opérations vectorielles, transformée réelle | Accelerate, ou du Swift pur |
 | `SpectreCore` | l'analyse, le tempo, les palettes, les boucles, les sessions | **rien** |
 | `SpectreModele` | **le comportement de l'application** : ouverture, tourne-page, aimantation, boucle, pistes, survol | **rien** |
@@ -86,9 +87,14 @@ qu'un module ne connaît que ceux d'en dessous.
 | `Spectre` | la fenêtre, les menus, la réglette | SwiftUI, AppKit |
 | `SpectreWin`, `SpectreWindows`, `CPont` | le pendant Windows des deux derniers | Win32, Direct3D 11, Direct2D, Media Foundation, WASAPI |
 
-`SpectreCore` n'importe que Foundation : c'est vérifiable d'un coup d'œil, et
-c'est ce qui donne son sens au découpage. Les deux tiers du code y vivent, et ne
-dépendent d'aucune plateforme.
+`SpectreCore` n'importe que Foundation et `SpectreTextes` : c'est vérifiable d'un
+coup d'œil, et c'est ce qui donne son sens au découpage. Les deux tiers du code y
+vivent, et ne dépendent d'aucune plateforme.
+
+`SpectreTextes` est tout en bas, sous la couche numérique, et ce n'est pas un
+caprice de rangement : les noms de pistes, ceux des voies de batterie et ceux des
+palettes sont déjà à traduire dans `SpectreCore`, et un catalogue ne peut pas être
+au-dessus de son premier lecteur.
 
 Les vérifications de `check.sh` sont des exécutables du paquet plutôt que des
 compilations à la main. Celles qui ne tirent que le noyau — couche numérique, WAV,
@@ -185,6 +191,11 @@ rien.
 ⌘, ouvre un panneau pour les réglages qui valent pour l'application entière, et non
 pour un morceau — ils ne sont donc pas dans la session, qui est enregistrée par
 fichier.
+
+**La langue de l'interface et le nom des notes**, en tête du panneau parce qu'ils
+commandent tout ce qu'il y a en dessous — voir « Les cinq langues ». Les douze noms
+sont écrits en clair sous les deux menus : c'est le seul endroit où l'on voit, sans
+ouvrir un morceau, que l'allemand appelle `B` le si bémol.
 
 **Taille du cache des pistes séparées**, de 500 Mo à 10 Go, avec ce qu'il occupe et
 de quoi le vider (on demande confirmation : ce sont des minutes de GPU). Baisser le
@@ -477,6 +488,72 @@ La bulle de survol donne la note et l'écart en cents, sans le numéro d'octave 
 il se lit déjà sur les repères, et l'ajouter ne fait qu'encombrer ce qu'on vient
 lire.
 
+**Quatre écritures**, réglables dans ⌘, et par défaut celle de la langue. Elles
+commandent tout ce qui nomme une hauteur : les accords sous l'image, la note au
+survol, les repères d'octaves dans la marge, la bande des douze couleurs.
+
+| | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **Do Ré Mi** (fr) | Do | Ré♭ | Ré | Mi♭ | Mi | Fa | Sol♭ | Sol | La♭ | La | Si♭ | Si |
+| **Do Re Mi** (es) | Do | Re♭ | Re | Mi♭ | Mi | Fa | Sol♭ | Sol | La♭ | La | Si♭ | Si |
+| **C D E** (en) | C | D♭ | D | E♭ | E | F | G♭ | G | A♭ | A | B♭ | B |
+| **C D E H** (de, pl) | C | Des | D | Es | E | F | Ges | G | As | A | **B** | **H** |
+
+En dièses, l'écriture germanique nomme les altérations en toutes lettres : Cis,
+Dis, Fis, Gis, Ais.
+
+Le piège à connaître : **en allemand et en polonais, `B` est le si bémol et `H` le
+si naturel.** Ce n'est pas une coquille, c'est la convention de ces deux pays, et
+c'est la seule chose de tout le catalogue qu'on ne devine pas depuis le français.
+
+Les symboles d'accords suivent l'écriture. Le français garde celle des grilles de
+jazz — `La-`, `DoΔ`, `Siø` — et les quatre autres langues prennent l'anglo-saxonne,
+`Am`, `Cmaj7`, `Bm7♭5`, y compris l'espagnol, qui écrit pourtant `Do Re Mi` : c'est
+ce qu'on lit sur les grilles hispanophones, et coller un tiret sur un `A` donnerait
+quelque chose qui ne se lit nulle part.
+
+## Les cinq langues
+
+L'interface parle **français, anglais, espagnol, allemand et polonais**. Au premier
+lancement elle prend la langue du système ; ⌘, permet d'en choisir une autre, et
+sous Windows le même réglage est en queue de panneau.
+
+Deux réglages et non un seul — **la langue de l'interface** et **le nom des notes** —
+parce que ce ne sont pas la même question : un guitariste français qui a appris sur
+des grilles américaines veut son interface en français et ses accords en `Am`. Par
+défaut le second suit le premier.
+
+Ni `.strings`, ni `.lproj`, ni `NSLocalizedString`, ni `Bundle.module` : tout cela
+marche sur le Mac et se casse ailleurs, où la recherche de ressources d'un paquet
+n'est pas le chemin qu'on veut emprunter pour afficher un bouton. Le catalogue est
+du Swift ordinaire — une clé par texte, cinq tables, un repli sur le français —
+compilé dans l'exécutable et identique sur les trois systèmes. Les textes à trous
+sont positionnels (`%1$@`, `%2$@`) : l'ordre des mots n'est pas le même d'une langue
+à l'autre.
+
+`LangueCheck` échoue si une clé manque quelque part, si un texte est vide, si les
+repères de substitution d'une traduction ne correspondent pas à ceux du français, ou
+si une table de notes n'a pas douze entrées. C'est le premier harnais de `check.sh`,
+et pour une raison : une traduction oubliée ne casse rien, ne lève aucune erreur, et
+se découvrirait dans une fenêtre six mois plus tard sur la seule machine qui parle
+cette langue-là.
+
+Le français reste la **langue de référence** : chaque texte y est écrit d'abord, et
+c'est vers lui qu'on retombe si une clé manque. Le code, les commentaires et cette
+documentation restent en français.
+
+Les menus que macOS fournit lui-même — « À propos de Spectre », « Masquer »,
+« Quitter », « Édition », « Fenêtre » — suivent la langue **du Mac**, et non le
+réglage de l'application : `build.sh` pose cinq dossiers `.lproj` dans le paquet et
+l'`Info.plist` déclare les cinq langues, ce qui suffit à les faire traduire par le
+système. Choisir le polonais dans ⌘, sur un Mac français laissera donc ces
+entrées-là en français.
+
+**`SPECTRE_LANGUE`** impose la langue et passe avant tout le reste. C'est le levier
+des harnais : `essai.sh` la pose à `fr` pour comparer un relevé d'accords à une
+grille écrite d'avance sans dépendre de la langue de la machine. Quand elle est
+posée, le panneau le dit plutôt que de paraître cassé.
+
 ## Le contraste automatique
 
 Le noir à −95 dB, le clair à −25 et la pente de 3 dB par octave sont un compromis
@@ -521,6 +598,10 @@ paraît jamais plus forte qu'une autre à niveau égal.
 
 Deux niveaux. `check.sh` prouve que les pièces marchent ; `essai.sh` prouve que
 l'application marche.
+
+`check.sh` commence par `LangueCheck`, qui compte les cinq catalogues et compare
+les repères de substitution d'une langue à l'autre. Le reste — couche numérique,
+WAV, sessions, batterie, accords, analyse, rendu, séparation, lecture — vient après.
 
 ```bash
 ./essai.sh

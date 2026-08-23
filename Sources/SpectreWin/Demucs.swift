@@ -1,6 +1,7 @@
 import CPont
 import Foundation
 import SpectreCore
+import SpectreTextes
 
 // La séparation des pistes sous Windows — le jumeau de `SpectreMac/DemucsEngine.swift`.
 //
@@ -155,7 +156,7 @@ public struct SeparateurWindows: StemSeparator {
         guard let modele = Reseau.fichier else { throw SeparationFailure.modelMissing }
         guard spectre_reseau_disponible() != 0, let dll = Reseau.bibliotheque else {
             throw SeparationFailure.engine(
-                "ONNX Runtime n'est pas installé — lancer .\\onnx.ps1.")
+                T(.erreurOnnxAbsent))
         }
 
         progress(SeparationProgress(fraction: 0, stage: "Lecture du morceau…"))
@@ -165,7 +166,7 @@ public struct SeparateurWindows: StemSeparator {
         // relire les 166 Mo de poids et optimiser le graphe. Il n'y a rien à mesurer
         // là-dedans — c'est un seul appel qui rend la main quand il a fini — mais une
         // barre immobile à zéro sans un mot passe pour une panne.
-        progress(SeparationProgress(fraction: 0, stage: "Ouverture du réseau…"))
+        progress(SeparationProgress(fraction: 0, stage: T(.etapeOuvertureDuReseau)))
         let moteur = try MoteurONNX(modele: modele, bibliotheque: dll)
 
         return try Demucs.separer(mix, par: moteur,
@@ -195,7 +196,7 @@ public struct SeparateurWindows: StemSeparator {
         let images = Int(resultat.images)
         let canaux = Int(resultat.canaux)
         guard images > 0, canaux == Demucs.channels else {
-            throw SeparationFailure.engine("aucun échantillon lu")
+            throw SeparationFailure.engine(T(.erreurAucunEchantillon))
         }
         var sortie = [[Float]](repeating: [Float](repeating: 0, count: images),
                                count: canaux)

@@ -1,4 +1,5 @@
 import Foundation
+import SpectreTextes
 
 /// Les réglages du relevé d'accords.
 ///
@@ -28,8 +29,8 @@ public struct ChordSettings: Equatable, Hashable, Codable, Sendable {
 
         public var label: String {
             switch self {
-            case .beat: "Un accord par temps"
-            case .span: "Un accord par mesure"
+            case .beat: T(.porteeParTemps)
+            case .span: T(.porteeParMesure)
             }
         }
     }
@@ -44,10 +45,10 @@ public struct ChordSettings: Equatable, Hashable, Codable, Sendable {
 
         public var label: String {
             switch self {
-            case .triads: "Triades seules"
-            case .sevenths: "Triades et septièmes"
-            case .all: "Sixtes et diminués compris"
-            case .extended: "Avec les enrichissements — 9, 11, 13"
+            case .triads: T(.vocabulaireTriades)
+            case .sevenths: T(.vocabulaireSeptiemes)
+            case .all: T(.vocabulaireTout)
+            case .extended: T(.vocabulaireEnrichis)
             }
         }
 

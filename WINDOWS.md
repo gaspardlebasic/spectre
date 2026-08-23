@@ -1305,6 +1305,37 @@ Deux boutons sur quatre seraient donc muets, et ce sont ceux qu'on reconnaît le
 par leur seul intitulé. Cinq formes de quinze points, faites des mêmes primitives que
 les curseurs et les bascules, et rien à installer sur la machine de personne.
 
+## Les cinq langues, des deux côtés
+
+Le catalogue vit dans `SpectreTextes`, un étage neuf posé **sous** `SpectreCore` :
+il ne dépend de rien, et Windows le reçoit donc au même titre que le Mac. Le panneau,
+le menu du clic droit, la barre du bas et la colonne flottante y prennent leurs
+textes ; il n'y a plus de chaîne écrite en clair dans `SpectreWindows` hors des
+traces de `Journal`, qui ne s'affichent nulle part.
+
+Deux choses sont propres à Windows.
+
+**La langue du système** se lit par `GetUserPreferredUILanguages` et non par la
+locale de Foundation : ce sont deux réglages distincts sous Windows — une machine
+peut compter à l'allemande et s'afficher en anglais — et c'est la langue *d'affichage*
+qu'on veut. La fonction s'appelle deux fois, une pour la taille du tampon et une pour
+le remplir, et rend une suite de chaînes terminées par un zéro, close par un zéro :
+la convention des *multi-strings* de Win32, à défaire à la main.
+
+**Le sélecteur de langue tient en codes à deux lettres.** Six segments dans les trois
+cents points du panneau laissent cinquante points chacun : « Français » n'y tient pas,
+« FR » oui. Le nom entier se lit sur la ligne au-dessus. C'est déjà ainsi que la page
+d'accueil présente les cinq langues.
+
+Le réglage est enregistré dans le même fichier JSON que le plafond du cache et
+l'ancrage des couleurs, en deux champs facultatifs : « pas de choix » et « le premier
+choix de la liste » ne sont pas la même chose, et un entier ne sait pas les
+distinguer.
+
+Le panneau étant redessiné à chaque image, changer de langue s'y voit à l'image
+suivante — il n'y a rien à rafraîchir, contrairement au Mac, où SwiftUI ne sait pas
+qu'un catalogue a changé sous lui.
+
 ## L'épreuve complète, sous Windows
 
 `essai.ps1` est le pendant d'`essai.sh`, et il fait tout en une commande :
@@ -1402,3 +1433,8 @@ distribue. Ce qui manque encore, et qu'il ne faut pas croire fait :
 - **Linux.** Le coureur mesure tous les jours que le noyau reste écrit sans rien
   connaître du système ; la fenêtre, elle, reste à écrire — SDL3 et OpenGL, comme dit
   au début de ce document.
+- **Les cinq langues n'ont pas encore été vues sous Windows.** Le catalogue est
+  portable et `LangueCheck` tourne partout, mais la lecture de
+  `GetUserPreferredUILanguages` et la tenue du panneau en allemand — la langue qui
+  écrit le plus long — n'ont été éprouvées que par la compilation. À regarder à la
+  prochaine passe sur la VM.

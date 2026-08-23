@@ -13,6 +13,14 @@ cd "$(dirname "$0")"
 
 OUT="build/check"
 mkdir -p "$OUT"
+# Les harnais parlent français, quelle que soit la langue de la machine.
+#
+# Ils comparent des noms d'accords et des noms de notes écrits d'avance — « Do La-
+# Fa Sol » pour la grille du morceau témoin. Sans cette variable, un relevé juste
+# passerait pour faux sur un Mac réglé en polonais, où les mêmes accords s'écrivent
+# « C a F G ». `LangueCheck`, lui, éprouve les cinq langues quoi qu'il arrive.
+export SPECTRE_LANGUE=fr
+
 
 # Les vérifications rangent leurs sessions et leurs pistes d'essai **ailleurs** que
 # l'application. Sans cela elles séparaient des morceaux de synthèse dans le vrai
@@ -29,6 +37,13 @@ trap 'rm -rf "$SPECTRE_RANGEMENT"' EXIT
 swift build -c release
 BIN="$(swift build -c release --show-bin-path)"
 
+echo "=== Les cinq langues ==="
+# En tête, et pour une raison : une clé manquante ne casse rien, ne lève aucune
+# erreur, et se découvre dans une fenêtre six mois plus tard sur la seule machine
+# qui parle cette langue-là. Autant l'apprendre en trois secondes.
+"$BIN/LangueCheck"
+
+echo
 echo "=== Couche numérique ==="
 "$BIN/DSPCheck"
 

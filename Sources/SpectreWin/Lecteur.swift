@@ -2,6 +2,7 @@ import CPont
 import Foundation
 import Observation
 import SpectreCore
+import SpectreTextes
 import SpectreModele
 
 /// La lecture sous Windows : WASAPI en dessous, et rien d'autre.
@@ -166,7 +167,8 @@ import SpectreModele
                 guard let lecteur, lecteur.chargementEnCours == nouvelle else { return }
                 lecteur.chargementEnCours = nil
                 guard let contenu, !contenu.mono.isEmpty else {
-                    lecteur.message = "« \(nouvelle.lastPathComponent) » n'a pas pu être lu."
+                    lecteur.message = T(.erreurFichierIllisible,
+                                        nouvelle.lastPathComponent)
                     return
                 }
                 lecteur.installer(contenu)

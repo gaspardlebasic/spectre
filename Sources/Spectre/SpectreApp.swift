@@ -2,6 +2,7 @@ import AppKit
 import SpectreCore
 import SpectreModele
 import SpectreMac
+import SpectreTextes
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -65,6 +66,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct Entry {
     static func main() {
+        // La langue d'abord, avant tout ce qui s'affiche — y compris les deux
+        // commandes en ligne ci-dessous, dont les messages sortent du même
+        // catalogue que la fenêtre. `Preferences.shared` la pose en s'ouvrant.
+        _ = Preferences.shared
         let arguments = CommandLine.arguments
         if let flag = arguments.firstIndex(of: "--separer"), flag + 1 < arguments.count {
             let destination = arguments.firstIndex(of: "--vers").flatMap {
@@ -83,10 +88,14 @@ struct Entry {
 struct SpectreApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var model = AppModel()
+    /// Observé pour la seule langue. Les intitulés des menus sont bâtis dans ce
+    /// corps de scène, et rien d'autre n'apprendrait à SwiftUI qu'ils ont changé.
+    @State private var preferences = Preferences.shared
 
     var body: some Scene {
         Window("Spectre", id: "principale") {
             ContentView(model: model)
+                .id(preferences.revisionDeLangue)
                 .frame(minWidth: 860, minHeight: 460)
                 // La barre de titre nomme le morceau ouvert, pas le programme :
                 // c'est ce qu'on cherche en regardant une fenêtre parmi d'autres.
@@ -114,9 +123,15 @@ struct SpectreApp: App {
         }
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Ouvrir…") { model.openPanel() }
+                // Lu ici, et surtout **pas** en tête du corps de scène : lire un état
+                // observé à ce niveau-là fait recréer la fenêtre à chaque évaluation,
+                // et `navigationTitle` n'y survit pas — la barre de titre reste sur
+                // « Spectre » au lieu de porter le nom du morceau. `essai.sh` l'a
+                // attrapé, ce qui est exactement ce qu'on lui demande.
+                let _ = preferences.revisionDeLangue
+                Button(T(.menuOuvrir)) { model.openPanel() }
                     .keyboardShortcut("o")
-                Menu("Ouvrir récemment") {
+                Menu(T(.menuOuvrirRecemment)) {
                     // Le nom du fichier sans son extension : dans un menu, « .mp3 »
                     // répété dix fois n'aide personne à reconnaître un morceau.
                     ForEach(model.recentFiles, id: \.self) { url in
@@ -126,38 +141,40 @@ struct SpectreApp: App {
                     }
                     if !model.recentFiles.isEmpty {
                         Divider()
-                        Button("Vider le menu") { model.clearRecentFiles() }
+                        Button(T(.menuViderLeMenu)) { model.clearRecentFiles() }
                     }
                 }
                 .disabled(model.recentFiles.isEmpty)
             }
-            CommandMenu("Lecture") {
-                Button(model.player.isPlaying ? "Pause" : "Lire") { model.togglePlayback() }
-                    .keyboardShortcut(.space, modifiers: [])
-                Button("Revenir au début") { model.seek(to: 0) }
+            CommandMenu(T(.menuLecture)) {
+                Button(model.player.isPlaying ? T(.lecturePause) : T(.lectureLire)) {
+                    model.togglePlayback()
+                }
+                .keyboardShortcut(.space, modifiers: [])
+                Button(T(.lectureRevenirAuDebut)) { model.seek(to: 0) }
                     .keyboardShortcut(.home, modifiers: [])
             }
-            CommandMenu("Boucle") {
-                Button("Début ici") { model.setLoopStart(at: model.playhead) }
+            CommandMenu(T(.menuBoucle)) {
+                Button(T(.boucleDebutIci)) { model.setLoopStart(at: model.playhead) }
                     .keyboardShortcut("[", modifiers: [])
-                Button("Fin ici") { model.setLoopEnd(at: model.playhead) }
+                Button(T(.boucleFinIci)) { model.setLoopEnd(at: model.playhead) }
                     .keyboardShortcut("]", modifiers: [])
-                Button("Caler sur les mesures") { model.snapLoopToBars() }
+                Button(T(.boucleCalerSurMesures)) { model.snapLoopToBars() }
                     .keyboardShortcut("b", modifiers: [])
                     .disabled(model.loop == nil || model.tempo == nil)
                 Divider()
-                Toggle("Boucler", isOn: Binding(get: { model.loopEnabled },
-                                                set: { model.loopEnabled = $0 }))
+                Toggle(T(.boucleBoucler), isOn: Binding(get: { model.loopEnabled },
+                                                        set: { model.loopEnabled = $0 }))
                     .keyboardShortcut("l", modifiers: [])
-                Button("Effacer la boucle") { model.loop = nil }
+                Button(T(.boucleEffacerLaBoucle)) { model.loop = nil }
                     .keyboardShortcut(.escape, modifiers: [])
                     .disabled(model.loop == nil)
             }
-            CommandMenu("Affichage") {
+            CommandMenu(T(.menuAffichage)) {
                 // Le panneau se replie ; sans entrée de menu, son bouton serait le
                 // seul chemin vers lui, et un bouton qui disparaît en s'ouvrant
                 // n'est pas un chemin.
-                Button("Panneau de réglages") {
+                Button(T(.menuPanneauDeReglages)) {
                     NotificationCenter.default.post(name: .toggleControlPanel, object: nil)
                 }
                 .keyboardShortcut("r", modifiers: [.command, .option])
@@ -167,20 +184,20 @@ struct SpectreApp: App {
                 // exactement ce que K rend maintenant, à ceci près qu'il le rend
                 // tel qu'il était à l'ouverture plutôt que recalculé sur la piste
                 // qu'on affiche à cet instant.
-                Button("Contraste de l'ouverture") { model.restoreOpeningContrast() }
+                Button(T(.menuContrasteOuverture)) { model.restoreOpeningContrast() }
                     .keyboardShortcut("k", modifiers: [])
-                Button("Contraste automatique sur ce qui est à l'écran") {
+                Button(T(.menuContrasteAutomatique)) {
                     model.applyAutoContrast()
                 }
                 .keyboardShortcut("k", modifiers: [.shift])
             }
-            CommandMenu("Tempo") {
+            CommandMenu(T(.menuTempo)) {
                 // « 1 » comme le premier temps, et comme l'intitulé du bouton du
                 // panneau : la touche et l'étiquette disent la même chose.
-                Button("Poser le premier temps ici") { model.setDownbeatAtPlayhead() }
+                Button(T(.menuPoserLePremierTemps)) { model.setDownbeatAtPlayhead() }
                     .keyboardShortcut("1", modifiers: [])
                 Divider()
-                Button("Recalculer la grille") { model.recomputeTempo() }
+                Button(T(.menuRecalculerLaGrille)) { model.recomputeTempo() }
             }
         }
 
@@ -244,9 +261,9 @@ struct ContentView: View {
 
     private var welcome: some View {
         VStack(spacing: 10) {
-            Text("Déposer un fichier audio")
+            Text(T(.accueilDeposer))
                 .font(.system(size: 17, weight: .medium, design: .rounded))
-            Text("ou ⌘O")
+            Text(T(.accueilRaccourci))
                 .font(.system(size: 12, design: .rounded))
                 .foregroundStyle(.secondary)
         }
@@ -257,7 +274,7 @@ struct ContentView: View {
         VStack(spacing: 8) {
             ProgressView(value: progress)
                 .frame(width: 220)
-            Text(model.status ?? "Analyse…")
+            Text(model.status ?? T(.accueilAnalyse))
                 .font(.system(size: 11, design: .rounded))
                 .foregroundStyle(.white.opacity(0.7))
         }

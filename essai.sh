@@ -37,6 +37,14 @@ done
 OUT="build/essai"
 mkdir -p "$OUT"
 ECHECS=0
+# Les harnais parlent français, quelle que soit la langue de la machine.
+#
+# Ils comparent des noms d'accords et des noms de notes écrits d'avance — « Do La-
+# Fa Sol » pour la grille du morceau témoin. Sans cette variable, un relevé juste
+# passerait pour faux sur un Mac réglé en polonais, où les mêmes accords s'écrivent
+# « C a F G ». `LangueCheck`, lui, éprouve les cinq langues quoi qu'il arrive.
+export SPECTRE_LANGUE=fr
+
 
 # L'application et ses harnais rangent leurs sessions, leurs pistes séparées et le
 # modèle recompilé **ici**, et pas dans le dossier de l'utilisateur. Sans cela une
@@ -169,7 +177,11 @@ else
     # Par LaunchServices, comme un double-clic : c'est le seul chemin qui prouve
     # que l'application reçoit vraiment le fichier qu'on lui désigne. Lancer le
     # binaire du paquet à la main donnerait un processus sans fenêtre.
+    # `--env` deux fois : l'application lancée par LaunchServices n'hérite pas de
+    # l'environnement du terminal, et la langue de la capture doit être celle de
+    # l'épreuve — sans quoi la photographie sortirait dans la langue du Mac.
     open --env SPECTRE_RANGEMENT="$SPECTRE_RANGEMENT" \
+         --env SPECTRE_LANGUE="${SPECTRE_LANGUE:-fr}" \
          -a "$PWD/build/Spectre.app" "$PWD/$OUT/temoin.wav"
 
     # Le temps que l'analyse se fasse : elle est hors ligne, donc elle a lieu une

@@ -37,10 +37,14 @@ let beat = 60 / bpm
 
 // MARK: - La grille
 
-/// Une mesure : ce que joue l'accompagnement, ce que joue la basse, et le nom que
+/// Une mesure : ce que joue l'accompagnement, ce que joue la basse, et l'accord que
 /// le relevé doit rendre.
+///
+/// L'accord est un `Chord` et non un nom écrit à la main : il s'écrivait `C`, `Am`,
+/// `F`, `G` en dur, ce qui ne ressemblait à rien de ce que l'épreuve compare — elle
+/// attend `Do La- Fa Sol` — et se contredirait de toute façon avec la langue du jour.
 struct Mesure {
-    let accord: String
+    let accord: Chord
     let basse: Int
     let notes: [Int]
 }
@@ -50,10 +54,10 @@ struct Mesure {
 // partout. Les voicings restent serrés autour de do3 pour que les raies tombent
 // dans la partie du spectre que l'application montre par défaut.
 let grille: [Mesure] = [
-    Mesure(accord: "C",  basse: 36, notes: [60, 64, 67]),
-    Mesure(accord: "Am", basse: 45, notes: [57, 60, 64]),
-    Mesure(accord: "F",  basse: 41, notes: [57, 60, 65]),
-    Mesure(accord: "G",  basse: 43, notes: [59, 62, 67]),
+    Mesure(accord: Chord(root: 0, quality: .major), basse: 36, notes: [60, 64, 67]),
+    Mesure(accord: Chord(root: 9, quality: .minor), basse: 45, notes: [57, 60, 64]),
+    Mesure(accord: Chord(root: 5, quality: .major), basse: 41, notes: [57, 60, 65]),
+    Mesure(accord: Chord(root: 7, quality: .major), basse: 43, notes: [59, 62, 67]),
 ]
 
 // MARK: - Les instruments
@@ -216,7 +220,8 @@ do {
     exit(1)
 }
 
-let noms = (0..<mesures).map { grille[$0 % grille.count].accord }.joined(separator: " ")
+let noms = (0..<mesures).map { grille[$0 % grille.count].accord.label() }
+    .joined(separator: " ")
 print("""
     → \(url.path)
       \(String(format: "%.1f", durée)) s, \(Int(rate)) Hz, \(canaux) canaux, \(bits) bits

@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import SpectreCore
+import SpectreTextes
 
 // MARK: - Rangement
 
@@ -246,7 +247,7 @@ public enum StemStore {
         for c in 0..<count { channels[c].reserveCapacity(Int(file.length)) }
         let block: AVAudioFrameCount = 1 << 16
         guard count > 0, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: block)
-        else { throw SeparationFailure.engine("format illisible") }
+        else { throw SeparationFailure.engine(T(.erreurFormatIllisible)) }
 
         while file.framePosition < file.length {
             try file.read(into: buffer, frameCount: block)

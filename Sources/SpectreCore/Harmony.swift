@@ -1,4 +1,5 @@
 import Foundation
+import SpectreTextes
 
 /// Relevé des accords : *quand* on en change, et *lequel* on joue.
 ///
@@ -25,10 +26,11 @@ import Foundation
 
 /// Ce qu'on sait nommer.
 ///
-/// Le symbole est celui des grilles de jazz, pas la notation littérale : `-` pour la
-/// tierce mineure, `Δ` pour la septième majeure, `°` et `ø` pour les diminués. Il
-/// s'accole à une fondamentale nommée en français, comme partout ailleurs dans
-/// l'application — `La-`, `DoΔ`, `Si-7♭5` s'écrivant `Siø`.
+/// Le symbole dépend de la langue, et l'harmonie non : les intervalles ci-dessous
+/// sont les mêmes partout, seule leur écriture change. En français c'est celle des
+/// grilles de jazz — `-` pour la tierce mineure, `Δ` pour la septième majeure, `°`
+/// et `ø` pour les diminués, accolés à une fondamentale nommée `La`, `Do`, `Si`.
+/// Ailleurs c'est `Am`, `Cmaj7`, `Bm7♭5`. Voir `SymbolesDaccord`.
 public enum ChordQuality: Int, CaseIterable, Codable, Sendable {
     case major, minor, suspended4, dominant7, minor7, major7
     case halfDiminished, diminished, augmented
@@ -53,52 +55,39 @@ public enum ChordQuality: Int, CaseIterable, Codable, Sendable {
     case add9, minorAdd9, ninth, minorNinth, major9
     case eleventh, minorEleventh, thirteenth
 
+    /// `-` ou `m`, `Δ` ou `maj7` : cela dépend du pays, pas de l'harmonie.
+    ///
+    /// La table est dans `SpectreTextes`, et se lit par le rang de la couleur. Le
+    /// français garde l'écriture des grilles de jazz ; partout ailleurs on écrit
+    /// `Am` et `Cmaj7`, y compris en espagnol, qui nomme pourtant ses notes
+    /// `Do Re Mi` — coller un tiret sur un `A` donnerait quelque chose que personne
+    /// ne lit hors de France.
     public var symbol: String {
-        switch self {
-        case .major: ""
-        case .minor: "-"
-        case .suspended4: "sus4"
-        case .dominant7: "7"
-        case .minor7: "-7"
-        case .major7: "Δ"
-        case .halfDiminished: "ø"
-        case .diminished: "°"
-        case .augmented: "+"
-        case .major6: "6"
-        case .minor6: "-6"
-        case .add9: "add9"
-        case .minorAdd9: "-add9"
-        case .ninth: "9"
-        case .minorNinth: "-9"
-        case .major9: "Δ9"
-        case .eleventh: "11"
-        case .minorEleventh: "-11"
-        case .thirteenth: "13"
-        }
+        SymbolesDaccord.symbole(rang: rawValue, jeu: Textes.systemeDeNotes.symboles)
     }
 
     /// Nom entier, pour les endroits où la place ne manque pas.
     public var label: String {
         switch self {
-        case .major: "majeur"
-        case .minor: "mineur"
-        case .suspended4: "suspendu 4"
-        case .dominant7: "septième"
-        case .minor7: "mineur septième"
-        case .major7: "septième majeure"
-        case .halfDiminished: "demi-diminué"
-        case .diminished: "diminué"
-        case .augmented: "augmenté"
-        case .major6: "sixte"
-        case .minor6: "mineur sixte"
-        case .add9: "neuvième ajoutée"
-        case .minorAdd9: "mineur neuvième ajoutée"
-        case .ninth: "neuvième"
-        case .minorNinth: "mineur neuvième"
-        case .major9: "septième majeure neuvième"
-        case .eleventh: "onzième"
-        case .minorEleventh: "mineur onzième"
-        case .thirteenth: "treizième"
+        case .major: T(.couleurMajeur)
+        case .minor: T(.couleurMineur)
+        case .suspended4: T(.couleurSuspendu4)
+        case .dominant7: T(.couleurSeptieme)
+        case .minor7: T(.couleurMineurSeptieme)
+        case .major7: T(.couleurSeptiemeMajeure)
+        case .halfDiminished: T(.couleurDemiDiminue)
+        case .diminished: T(.couleurDiminue)
+        case .augmented: T(.couleurAugmente)
+        case .major6: T(.couleurSixte)
+        case .minor6: T(.couleurMineurSixte)
+        case .add9: T(.couleurNeuviemeAjoutee)
+        case .minorAdd9: T(.couleurMineurNeuviemeAjoutee)
+        case .ninth: T(.couleurNeuvieme)
+        case .minorNinth: T(.couleurMineurNeuvieme)
+        case .major9: T(.couleurSeptiemeMajeureNeuvieme)
+        case .eleventh: T(.couleurOnzieme)
+        case .minorEleventh: T(.couleurMineurOnzieme)
+        case .thirteenth: T(.couleurTreizieme)
         }
     }
 
@@ -169,9 +158,12 @@ public struct Chord: Equatable, Hashable, Sendable {
         quality.intervals.map { (root + $0) % 12 }
     }
 
-    /// `La-`, `DoΔ`, `Sol7`. Les bémols par défaut, comme le reste de l'application :
-    /// aucune des deux écritures n'est plus juste, c'est la tonalité qui tranche et
-    /// on ne la connaît pas.
+    /// `La-`, `DoΔ`, `Sol7` en français ; `Am`, `Cmaj7`, `G7` en anglais ; et en
+    /// allemand `B` désigne le si bémol quand `H` désigne le si naturel.
+    ///
+    /// Les bémols par défaut, comme le reste de l'application : aucune des deux
+    /// écritures n'est plus juste, c'est la tonalité qui tranche et on ne la connaît
+    /// pas.
     public func label(flats: Bool = true) -> String {
         Pitch.names(flats: flats)[root] + quality.symbol
     }

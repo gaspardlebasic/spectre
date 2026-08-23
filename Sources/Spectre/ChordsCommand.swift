@@ -1,5 +1,6 @@
 import Foundation
 import SpectreCore
+import SpectreTextes
 import SpectreModele
 import SpectreMac
 
@@ -27,18 +28,18 @@ enum ChordsCommand {
 
         let url = URL(fileURLWithPath: path)
         guard FileManager.default.fileExists(atPath: url.path) else {
-            FileHandle.standardError.write(Data("Fichier introuvable : \(path)\n".utf8))
+            FileHandle.standardError.write(Data((T(.cliFichierIntrouvable, path) + "\n").utf8))
             return 1
         }
         guard var source = try? AudioSource.load(url) else {
-            FileHandle.standardError.write(Data("Lecture impossible : \(path)\n".utf8))
+            FileHandle.standardError.write(Data((T(.cliLectureImpossible, path) + "\n").utf8))
             return 1
         }
 
         // Les pistes, comme l'application les montre : tout sauf la batterie, quand
         // elles existent. C'est ce qui est à l'écran qui est relevé, donc c'est ce
         // qu'il faut lire ici pour que les chiffres veuillent dire quelque chose.
-        var lu = "mixage"
+        var lu = T(.cliMixage)
         var basseSeule: AudioSource?
         let wanted: Set<Stem> = arguments.contains("--sans-voix")
             ? [.bass, .other] : [.bass, .other, .vocals]
@@ -52,7 +53,8 @@ enum ChordsCommand {
                                  frameCount: banque.frameCount,
                                  mono: banque.melangeMono(wanted),
                                  fingerprint: fingerprint)
-            lu = wanted.contains(.vocals) ? "pistes sans batterie" : "basse et accompagnement"
+            lu = wanted.contains(.vocals) ? T(.cliPistesSansBatterie)
+                                          : T(.cliBasseEtAccompagnement)
             // La basse toute seule : c'est elle qui dira lesquelles de ses raies sont
             // ses propres harmoniques. `--sans-carte-basse` l'écarte, pour mesurer ce
             // qu'elle change.
@@ -69,11 +71,11 @@ enum ChordsCommand {
                                               sampleRate: source.sampleRate,
                                               settings: AnalysisSettings())
         guard spectrogram.columnCount > 0 else {
-            FileHandle.standardError.write(Data("Matrice vide\n".utf8))
+            FileHandle.standardError.write(Data((T(.cliMatriceVide) + "\n").utf8))
             return 1
         }
         guard let tempo = TempoEstimator.estimate(spectrogram), tempo.bpm > 0 else {
-            FileHandle.standardError.write(Data("Aucune grille métrique trouvée\n".utf8))
+            FileHandle.standardError.write(Data((T(.cliAucuneGrille) + "\n").utf8))
             return 1
         }
 
@@ -122,18 +124,18 @@ enum ChordsCommand {
         let span = number("--duree") ?? .infinity
         let to = span.isFinite ? from + span : .infinity
 
-        print(String(format: "%@ — %.1f s, %@%@, %.1f BPM, %d/4",
-                     url.lastPathComponent, spectrogram.duration, lu,
-                     bassMap == nil ? "" : " · carte de basse",
-                     tempo.bpm, tempo.beatsPerBar))
-        print(String(format: "%@ — %d accords", settings.vocabulary.label as NSString,
-                     settings.chords.count))
-        print(String(format: "contraste %.0f…%.0f dB, pente %.1f dB/octave ; "
-                     + "clarté %.2f, tenue %.0f %%",
-                     display.floorDb, display.ceilingDb, display.tiltDbPerOctave,
-                     settings.clarity, settings.hold * 100))
-        print(String(format: "carte %.2f s, relevé %.3f s, analyse comprise %.1f s",
-                     mapSeconds, detectSeconds, Date().timeIntervalSince(started)))
+        func n(_ v: Double, _ decimales: Int = 1) -> String {
+            String(format: "%.\(decimales)f", v)
+        }
+        print(T(.cliEnTete, url.lastPathComponent, n(spectrogram.duration), lu,
+                bassMap == nil ? "" : T(.cliCarteDeBasse),
+                n(tempo.bpm), "\(tempo.beatsPerBar)"))
+        print(T(.cliVocabulaire, settings.vocabulary.label, "\(settings.chords.count)"))
+        print(T(.cliReglages, n(display.floorDb, 0), n(display.ceilingDb, 0),
+                n(display.tiltDbPerOctave), n(settings.clarity, 2),
+                n(settings.hold * 100, 0)))
+        print(T(.cliTemps, n(mapSeconds, 2), n(detectSeconds, 3),
+                n(Date().timeIntervalSince(started))))
 
         var named = 0
         var lines = 0
@@ -149,7 +151,7 @@ enum ChordsCommand {
                          segment.start, name as NSString, segment.confidence,
                          arguments.contains("--notes") ? notes : ""))
         }
-        if lines == 0 { print("(aucun intervalle dans la fenêtre demandée)") }
+        if lines == 0 { print(T(.cliAucunIntervalle)) }
 
         // Ce qu'on regarde pour régler : combien d'intervalles reçoivent un nom,
         // combien de raies ont décidé chacun, combien restent inexpliquées, et
@@ -164,15 +166,12 @@ enum ChordsCommand {
             changes += 1
         }
         let sure = track.segments.filter { $0.confidence >= 0.5 }.count
-        print(String(format: "%d intervalles, %d nommés (%.0f %%), %d changements",
-                     track.segments.count, named, 100 * Double(named) / Double(total), changes))
-        print(String(format: "%.1f raies tenues par intervalle, %.1f %% inexpliquées, "
-                     + "%.0f %% des intervalles en portent une",
-                     Double(heldCount) / Double(total),
-                     100 * Double(extras) / Double(max(heldCount, 1)),
-                     100 * Double(withExtra) / Double(total)))
-        print(String(format: "%.0f %% des noms sont sûrs (marge ≥ 0,5 raie)",
-                     100 * Double(sure) / Double(total)))
+        print(T(.cliIntervalles, "\(track.segments.count)", "\(named)",
+                n(100 * Double(named) / Double(total), 0), "\(changes)"))
+        print(T(.cliRaiesTenues, n(Double(heldCount) / Double(total)),
+                n(100 * Double(extras) / Double(max(heldCount, 1))),
+                n(100 * Double(withExtra) / Double(total), 0)))
+        print(T(.cliNomsSurs, n(100 * Double(sure) / Double(total), 0)))
 
         // Ce que les raies inexpliquées sont, par rapport à la fondamentale retenue :
         // c'est ce qui dit s'il manque une couleur au vocabulaire ou si ce sont
@@ -185,9 +184,12 @@ enum ChordsCommand {
                 intervals[step, default: 0] += 1
             }
         }
-        let degrees = ["fond.", "♭9", "9", "♭3", "3", "11", "♭5", "5", "♭13", "13", "♭7", "7"]
+        // Les degrés sont des chiffres, non des mots : ils s'écrivent pareil partout.
+        // Seule la fondamentale porte un nom, et celui-là se traduit.
+        let degrees = [T(.cliFondamentale), "♭9", "9", "♭3", "3", "11", "♭5", "5",
+                       "♭13", "13", "♭7", "7"]
         let ranked = intervals.sorted { $0.value > $1.value }.prefix(6)
-        print("inexpliquées : " + ranked.map { "\(degrees[$0.key]) ×\($0.value)" }
+        print(T(.cliInexpliquees) + ranked.map { "\(degrees[$0.key]) ×\($0.value)" }
                 .joined(separator: "  "))
         return 0
     }

@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import SpectreCore
+import SpectreTextes
 import SpectreModele
 import UniformTypeIdentifiers
 
@@ -32,8 +33,8 @@ public struct DialogueApple: DialogueFichier {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.audio]
         panel.allowsMultipleSelection = false
-        panel.prompt = "Ouvrir"
-        panel.message = "Choisir un fichier audio à transcrire"
+        panel.prompt = T(.dialogueOuvrir)
+        panel.message = T(.dialogueChoisirUnMorceau)
         return panel.runModal() == .OK ? panel.url : nil
     }
 }

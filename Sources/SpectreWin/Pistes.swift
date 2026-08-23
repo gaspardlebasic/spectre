@@ -1,5 +1,6 @@
 import Foundation
 import SpectreCore
+import SpectreTextes
 import SpectreModele
 
 // Le rangement des pistes séparées, sous Windows — le jumeau de
@@ -389,7 +390,7 @@ public final class TravailDeSeparation: TravailAnnulable {
                                                   sampleRate: pistes.sampleRate,
                                                   pistes: &pistes.channels),
                       montee.complete else {
-                    throw SeparationFailure.engine("le réseau n'a pas rendu les quatre pistes")
+                    throw SeparationFailure.engine(T(.erreurQuatrePistes))
                 }
                 banque = montee
             } catch {

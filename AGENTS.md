@@ -20,10 +20,17 @@ reste, et les pièges déjà payés.
 
 ## Les règles de la maison
 
-1. **Tout est en français** : le code, les commentaires, les noms qui s'affichent,
-   les messages d'erreur, la documentation, les messages de commit. Les noms de
-   notes aussi (Do, Ré, Mi…). Un identifiant anglais qui traîne dans un fichier
-   existant se laisse tranquille ; du neuf s'écrit en français.
+1. **Tout est en français** : le code, les commentaires, la documentation, les
+   messages de commit. Un identifiant anglais qui traîne dans un fichier existant
+   se laisse tranquille ; du neuf s'écrit en français.
+
+   **Ce qui s'affiche est traduit**, depuis le français, en cinq langues. Aucun
+   texte visible ne s'écrit en clair dans une vue : il prend une clé dans
+   `SpectreTextes`, et les cinq catalogues la portent — `LangueCheck` échoue sinon.
+   Le français y reste la langue de référence, la seule dont la complétude est
+   garantie et celle vers laquelle on retombe. Les noms de notes suivent le pays
+   (Do Ré Mi, C D E, C D E H) et non plus le seul français ; en allemand et en
+   polonais, `B` est le si bémol et `H` le si naturel.
 2. **L'auteur ne lit pas le code.** Il donne des instructions et juge sur le
    comportement de l'application. Lui montrer un extrait de code ou lui demander
    d'arbitrer un choix d'implémentation ne l'aide pas : décider soi-même, l'assumer,
@@ -41,7 +48,7 @@ reste, et les pièges déjà payés.
 | Commande | Ce qu'elle fait |
 |----------|-----------------|
 | `./build.sh` | Compile et assemble `build/Spectre.app` (signature ad-hoc, enregistrement LaunchServices). |
-| `./check.sh` | Les harnais hors écran : couche numérique, WAV, sessions, batterie, accords, analyse, rendu, séparation, lecture. Aucun fichier audio, aucune fenêtre. |
+| `./check.sh` | Les harnais hors écran : les cinq langues, couche numérique, WAV, sessions, batterie, accords, analyse, rendu, séparation, lecture. Aucun fichier audio, aucune fenêtre. |
 | `./essai.sh` | **L'épreuve complète, application comprise** — voir plus bas. |
 | `.\essai.ps1` | La même épreuve, sous Windows : quatorze harnais, la fenêtre, et un relevé de fluidité. |
 | `./modele.sh` | Refabrique `Resources/htdemucs.onnx` (les poids de Demucs, ~166 Mo, hors dépôt). |
@@ -107,15 +114,16 @@ juger vraiment il faut un vrai morceau — que l'on donne à l'application, ou �
 `Spectre --accords "…" --notes` qui écrit la grille et les compteurs de mise au
 point.
 
-## Les cinq étages
+## Les six étages
 
 Un module ne connaît que ceux d'en dessous. C'est ce qui garde le calcul
 vérifiable là où il n'y a ni écran ni carte son.
 
 | Étage | Ce qu'il contient | Dépend de |
 |-------|-------------------|-----------|
+| `SpectreTextes` | Les textes affichés, dans les cinq langues, et l'écriture des douze notes. | rien |
 | `SpectreDSP` | Fenêtres, FFT, décimation, demi-flottants. Rien d'autre que des nombres. | Accelerate, ou du Swift pur avec `-DSPECTRE_PORTABLE` |
-| `SpectreCore` | Analyse, spectrogramme, tempo, batterie, accords, WAV, sessions, réglages. | `SpectreDSP` |
+| `SpectreCore` | Analyse, spectrogramme, tempo, batterie, accords, WAV, sessions, réglages. | `SpectreDSP`, `SpectreTextes` |
 | `SpectreModele` | **Le comportement de l'application** : ouverture, tourne-page, aimantation, boucle, sélection de pistes, survol des accords. | `SpectreCore` |
 | `SpectreMac` | Décodage, rendu Metal, lecture, séparation Demucs. | `SpectreModele` + Apple |
 | `Spectre` | L'interface SwiftUI, et les commandes en ligne. | tout le reste |
@@ -125,7 +133,7 @@ mêmes protocoles avec Direct3D 11 et Win32 — c'est le jumeau de `SpectreMac`,
 fait la même longueur — tandis que `SpectreWindows` porte la fenêtre. Le pont C vers
 ce que Swift ne peut pas dire lui-même est dans `Sources/CPont`.
 
-**Les trois premiers compilent partout où Swift compile.** `SpectreModele` est
+**Les quatre premiers compilent partout où Swift compile.** `SpectreModele` est
 l'étage qui a manqué au premier portage : faute de lui, Windows avait son propre
 modèle, plus fruste, qui divergeait un peu plus chaque semaine. Ce qu'il demande au
 système tient dans `Sources/SpectreModele/Plateforme.swift` — une dizaine de
@@ -133,7 +141,9 @@ protocoles, et rien d'autre. Ajouter une plateforme, c'est les remplir.
 
 Corollaire pour qui écrit du neuf : **un comportement se met dans `SpectreModele`,
 pas dans la vue**. Une règle écrite dans une `View` SwiftUI est une règle que
-Windows n'aura pas.
+Windows n'aura pas. Et **un texte se met dans `SpectreTextes`, pas dans la vue** :
+une chaîne écrite en clair dans un bouton est une chaîne que quatre langues sur
+cinq n'auront pas.
 
 `SpectreCore` ne doit rien importer d'Apple : c'est la frontière que
 `verification.yml` mesure des deux côtés, en repassant les mêmes contrôles sur le

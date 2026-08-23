@@ -12,6 +12,22 @@
 	<string>Spectre</string>
 	<key>CFBundleIdentifier</key>
 	<string>local.spectre</string>
+	<!-- Les cinq langues, déclarées pour macOS lui-même. Ce sont elles qui font
+	     que les menus fournis par AppKit — « À propos de Spectre », « Masquer »,
+	     « Quitter », « Édition », « Fenêtre » — suivent la langue du Mac. Sans
+	     cette déclaration et sans les dossiers .lproj que build.sh pose à côté,
+	     le système tient l'application pour monolingue et sort ces entrées-là
+	     en anglais, quelle que soit la langue choisie. -->
+	<key>CFBundleDevelopmentRegion</key>
+	<string>fr</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>fr</string>
+		<string>en</string>
+		<string>es</string>
+		<string>de</string>
+		<string>pl</string>
+	</array>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundlePackageType</key>

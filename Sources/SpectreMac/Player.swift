@@ -2,6 +2,7 @@ import AVFoundation
 import Foundation
 import Observation
 import SpectreCore
+import SpectreTextes
 import SpectreDSP
 
 /// Lecture, avec ralenti et transposition indépendants.
@@ -210,7 +211,7 @@ import SpectreDSP
             file = nil
             duration = 0
             source = .aucune
-            message = "Lecture impossible : \(error.localizedDescription)"
+            message = T(.erreurLectureImpossible, error.localizedDescription)
         }
     }
 
@@ -347,7 +348,7 @@ import SpectreDSP
             try engine.start()
             return true
         } catch {
-            message = "Moteur audio indisponible : \(error.localizedDescription)"
+            message = T(.erreurMoteurAudio, error.localizedDescription)
             return false
         }
     }

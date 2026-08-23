@@ -1,14 +1,21 @@
 import Foundation
+import SpectreTextes
 
 public enum Pitch {
     /// Les cinq touches noires, nommées par le haut ou par le bas. Aucune des deux
     /// écritures n'est plus juste que l'autre — c'est la tonalité qui tranche, et
     /// l'application ne la connaît pas — mais les bémols sont plus fréquents dans
     /// la plupart des répertoires, d'où le choix par défaut.
-    public static let sharpNames = ["Do", "Do♯", "Ré", "Ré♯", "Mi", "Fa", "Fa♯", "Sol", "Sol♯", "La", "La♯", "Si"]
-    public static let flatNames = ["Do", "Ré♭", "Ré", "Mi♭", "Mi", "Fa", "Sol♭", "Sol", "La♭", "La", "Si♭", "Si"]
+    ///
+    /// Les douze noms ne sont plus écrits ici : ils dépendent du pays autant que du
+    /// goût. `Fa♯` s'écrit `Fis` en allemand et en polonais, et ces deux langues
+    /// appellent `H` ce que le français appelle `Si` — voir `SystemeDeNotes`.
+    public static var sharpNames: [String] { Textes.systemeDeNotes.dieses }
+    public static var flatNames: [String] { Textes.systemeDeNotes.bemols }
 
-    public static func names(flats: Bool) -> [String] { flats ? flatNames : sharpNames }
+    public static func names(flats: Bool) -> [String] {
+        Textes.systemeDeNotes.noms(bemols: flats)
+    }
 
     /// Diapason usuel, en hertz. Toutes les fonctions ci-dessous acceptent une
     /// autre référence : le La₃ ne vaut pas 440 Hz partout ni à toutes les époques.
@@ -38,7 +45,7 @@ public enum Pitch {
                           : "\(name) \(sign)\(abs(cents))¢"
     }
 
-    /// Fréquences des Do contenues dans l'intervalle donné.
+    /// Fréquences des Do — des C ailleurs — contenues dans l'intervalle donné.
     public static func octaveMarkers(from fmin: Double, to fmax: Double,
                               referenceA: Double = standardA) -> [(frequency: Double, label: String)] {
         var result: [(Double, String)] = []
@@ -46,7 +53,7 @@ public enum Pitch {
         while octave <= 11 {
             let f = frequency(ofMidi: Double((octave + 1) * 12), referenceA: referenceA)
             if f > fmax { break }
-            if f >= fmin { result.append((f, "Do\(octave)")) }
+            if f >= fmin { result.append((f, "\(names(flats: true)[0])\(octave)")) }
             octave += 1
         }
         return result

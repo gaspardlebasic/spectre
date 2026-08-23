@@ -1,5 +1,6 @@
 import Foundation
 import SpectreCore
+import SpectreTextes
 import SpectreModele
 import SpectreWin
 
@@ -55,19 +56,21 @@ struct Barre {
                                    fond: Pinceau.blanc(0.08)) + 16
         }
         if modele.player.transpose != 0 {
-            x += pinceau.etiquette(String(format: "%+.1f demi-tons",
-                                          modele.player.transpose),
+            x += pinceau.etiquette(String(format: "%+.1f ", modele.player.transpose)
+                                   + T(.uniteDemiTonsLong),
                                    x: x, y: milieu, taille: 10,
                                    Pinceau.rvb(1.0, 0.78, 0.55),
                                    fond: Pinceau.blanc(0.08)) + 16
         }
         if let tempo = modele.tempo, tempo.bpm > 0 {
-            pinceau.texte(String(format: "%.0f BPM", tempo.bpm), x: x, y: milieu,
+            pinceau.texte(String(format: "%.0f ", tempo.bpm) + T(.tempoBPM),
+                          x: x, y: milieu,
                           largeur: 80, taille: 10, Pinceau.blanc(0.5))
             x += 78
         }
         if modele.loop != nil {
-            pinceau.texte(modele.loopEnabled ? "boucle" : "boucle (hors service)",
+            pinceau.texte(modele.loopEnabled ? T(.winBarreBoucle)
+                                             : T(.winBarreBoucleHorsService),
                           x: x, y: milieu, largeur: 130, taille: 10,
                           Pinceau.jaune(modele.loopEnabled ? 0.8 : 0.4))
             x += 130
@@ -81,7 +84,7 @@ struct Barre {
             pinceau.texte(message, x: largeur - 420, y: milieu, largeur: 408,
                           taille: 10, Pinceau.blanc(0.6), alignement: .droite)
         } else {
-            pinceau.texte("R réglages · espace lire · ⇧glisser boucler · Ctrl molette zoomer · clic droit menu",
+            pinceau.texte(T(.winBarreAide),
                           x: largeur - 480, y: milieu, largeur: 468, taille: 10,
                           Pinceau.blanc(0.32), alignement: .droite)
         }

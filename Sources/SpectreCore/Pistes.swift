@@ -1,4 +1,5 @@
 import Foundation
+import SpectreTextes
 
 /// Les cinq voies du sélecteur : le mixage tel qu'il est, et les quatre pistes que
 /// la séparation isole.
@@ -14,11 +15,11 @@ public enum Stem: String, CaseIterable, Codable, Identifiable {
 
     public var label: String {
         switch self {
-        case .mix: "Mixage"
-        case .drums: "Batterie"
-        case .bass: "Basse"
-        case .vocals: "Voix"
-        case .other: "Reste"
+        case .mix: T(.pisteMixage)
+        case .drums: T(.pisteBatterie)
+        case .bass: T(.pisteBasse)
+        case .vocals: T(.pisteVoix)
+        case .other: T(.pisteReste)
         }
     }
 
@@ -43,15 +44,11 @@ public enum Stem: String, CaseIterable, Codable, Identifiable {
 
     public var help: String {
         switch self {
-        case .mix: "Le morceau tel qu'il est."
-        case .drums: """
-            Batterie et percussions.
-            Une fois les pistes séparées, elle ne se voit plus dans le spectrogramme : elle nourrit les trois lignes du bas, qui disent d'elle ce qu'un spectre ne sait pas dire.
-            Décochée, on ne l'entend plus et ces lignes restent vides.
-            """
-        case .bass: "La basse seule — la piste la mieux isolée, et la plus difficile à relever à l'oreille dans un mixage dense."
-        case .vocals: "Le chant seul."
-        case .other: "Tout le reste : claviers, guitares, cuivres, cordes."
+        case .mix: T(.pisteMixageAide)
+        case .drums: T(.pisteBatterieAide)
+        case .bass: T(.pisteBasseAide)
+        case .vocals: T(.pisteVoixAide)
+        case .other: T(.pisteResteAide)
         }
     }
 
@@ -65,14 +62,18 @@ public enum Stem: String, CaseIterable, Codable, Identifiable {
     /// La sélection étant soustractive, on la dit comme on l'a faite : « sans Voix »
     /// plutôt que « Basse + Batterie + Reste ». On n'énumère ce qui reste que
     /// lorsqu'il en reste moins qu'on n'en a retiré.
+    ///
+    /// La tournure entière est dans le catalogue, séparateur compris : « sans A ni B »
+    /// devient « without A or B », et l'allemand ne coupe pas sa liste au même
+    /// endroit que le français.
     public static func label(for stems: Set<Stem>) -> String {
         let kept = separated.filter(stems.contains)
         let dropped = separated.filter { !stems.contains($0) }
         if dropped.isEmpty { return Stem.mix.label }
-        if kept.isEmpty { return "silence" }
+        if kept.isEmpty { return T(.pisteSilence) }
         if dropped.count < kept.count {
-            return "sans " + dropped.map(\.label).joined(separator: " ni ")
+            return T(.pisteSans, dropped.map(\.label).joined(separator: T(.pisteNi)))
         }
-        return kept.map(\.label).joined(separator: " + ")
+        return kept.map(\.label).joined(separator: T(.pistePlus))
     }
 }

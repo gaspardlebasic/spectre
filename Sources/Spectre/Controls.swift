@@ -2,6 +2,7 @@ import AppKit
 import SpectreCore
 import SpectreModele
 import SpectreMac
+import SpectreTextes
 import SwiftUI
 
 // Les commandes, posées sur l'image plutôt que sous elle.
@@ -43,7 +44,7 @@ struct ControlOverlay: View {
                             VStack(spacing: 1) {
                                 Image(systemName: "slider.horizontal.3")
                                     .font(.system(size: 14))
-                                Text("Réglages").font(.system(size: 8, weight: .medium))
+                                Text(T(.panneauReglages)).font(.system(size: 8, weight: .medium))
                             }
                             // Même largeur que le sélecteur : deux objets alignés
                             // l'un sous l'autre et de largeurs voisines mais
@@ -55,7 +56,7 @@ struct ControlOverlay: View {
                         .glassEffect(.clear.interactive(), in: .capsule)
                         .glassEffectID("reglages", in: glass)
                         .onHover { model.pointerOverControls = $0 }
-                        .help("Lecture, boucle, tempo, affichage — ⌘⌥R")
+                        .help(T(.panneauOuvrirAide))
                     }
                     StemColumn(model: model)
                 }
@@ -156,7 +157,7 @@ struct StemColumn: View {
         .buttonStyle(.plain)
         .disabled(locked)
         .opacity(locked && !on ? 0.5 : 1)
-        .help(stem.help + "\nDécocher retire cette piste ; ce qui reste est joué ensemble.")
+        .help(stem.help + T(.pisteDecocherAide))
     }
 }
 
@@ -219,28 +220,13 @@ struct ControlPanel: View {
                 // un morceau, et une estimation fausse d'un facteur deux se corrige
                 // ici en un chiffre.
                 VStack(alignment: .leading, spacing: 16) {
-                    group("Détection du tempo",
-                          "Estimée à l'ouverture d'après les attaques. Elle commande "
-                          + "les barres de mesure, l'aimantation et le relevé des "
-                          + "accords.") { tempo }
-                    group("Lecture",
-                          "Ce qui se joue, et comment. Cliquer dans l'image déplace "
-                          + "la tête de lecture et fait sonner la raie désignée.") { playback }
-                    group("Image",
-                          "Ce que le spectrogramme montre : jusqu'où descendre dans "
-                          + "le fond, et sur combien d'octaves l'étaler.") { image }
-                    group("Affichage",
-                          "Ce qui se pose autour de l'image : la ligne de batterie, "
-                          + "les noms d'accords, l'écriture des touches noires.") { display }
-                    group("Boucle",
-                          "Tracer une boucle : glisser dans la réglette du haut, ou "
-                          + "⇧ + glisser dans l'image. Glisser la zone jaune la "
-                          + "déplace, ses bords l'étendent ; les bornes se posent sur "
-                          + "la grille, et ⌘ pendant le geste les libère.") { loop }
+                    group(T(.groupeTempo), T(.groupeTempoAide)) { tempo }
+                    group(T(.groupeLecture), T(.groupeLectureAide)) { playback }
+                    group(T(.groupeImage), T(.groupeImageAide)) { image }
+                    group(T(.groupeAffichage), T(.groupeAffichageAide)) { display }
+                    group(T(.groupeBoucle), T(.groupeBoucleAide)) { loop }
                     if model.isSeparated || model.separating != nil {
-                        group("Pistes",
-                              "Les quatre pistes séparées, celles que la colonne de "
-                              + "droite fait entendre.") { stems }
+                        group(T(.groupePistes), T(.groupePistesAide)) { stems }
                     }
                 }
                 .padding(14)
@@ -267,7 +253,7 @@ struct ControlPanel: View {
 
     private var header: some View {
         HStack {
-            Text("Réglages").font(.system(size: 13, weight: .semibold))
+            Text(T(.panneauReglages)).font(.system(size: 13, weight: .semibold))
             Spacer()
             Button(action: close) {
                 Image(systemName: "xmark").font(.system(size: 11, weight: .medium))
@@ -275,7 +261,7 @@ struct ControlPanel: View {
                     .contentShape(.circle)
             }
             .buttonStyle(.plain)
-            .help("Replier le panneau — ⌘⌥R")
+            .help(T(.panneauReplierAide))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -313,7 +299,7 @@ struct ControlPanel: View {
                     // assurée.
                     if let t = model.tempo, t.confidence > 0, t.confidence < 2.2 {
                         Text("≈").font(.system(size: 11)).foregroundStyle(.orange)
-                            .help("L'estimation n'est pas franche sur ce morceau : la grille est à vérifier.")
+                            .help(T(.tempoEstimationFloue))
                     }
                     // Le tempo se tape. L'estimation se trompe le plus souvent d'un
                     // facteur deux, et l'écrire est alors plus direct que de
@@ -324,32 +310,29 @@ struct ControlPanel: View {
                         .font(.system(size: 11, design: .monospaced))
                         .multilineTextAlignment(.trailing)
                         .frame(width: 44)
-                        .help("Cliquer sur le chiffre pour le saisir : l'estimation "
-                              + "se trompe surtout d'un facteur deux, qu'on corrige "
-                              + "d'un chiffre.")
-                    Text("BPM").font(.system(size: 10)).foregroundStyle(.secondary)
+                        .help(T(.tempoChampAide))
+                    Text(T(.tempoBPM)).font(.system(size: 10)).foregroundStyle(.secondary)
                     Stepper("") { model.nudgeTempo(by: 0.1) } onDecrement: { model.nudgeTempo(by: -0.1) }
                         .labelsHidden()
-                        .help("Ajuster de 0,1 BPM — de quoi rattraper une grille qui dérive sur la longueur.")
+                        .help(T(.tempoPasAide))
                     Picker("", selection: Binding(get: { model.beatsPerBar },
                                                   set: { model.beatsPerBar = $0 })) {
                         ForEach([2, 3, 4, 5, 6, 7], id: \.self) { Text("\($0)/4").tag($0) }
                     }
                     .labelsHidden()
                     .frame(width: 62)
-                    .help("Temps par mesure. Change l'espacement des barres, et le repère du premier temps.")
-                    Button("1 ici") { model.setDownbeatAtPlayhead() }
-                        .help("Poser le premier temps de la mesure à la tête de lecture (1)")
+                    .help(T(.tempoSignatureAide))
+                    Button(T(.tempoUnIci)) { model.setDownbeatAtPlayhead() }
+                        .help(T(.tempoUnIciAide))
                     Button { model.recomputeTempo() } label: { Image(systemName: "arrow.clockwise") }
-                        .help("Relancer l'estimation, avec la signature choisie.")
+                        .help(T(.tempoRelancerAide))
                     Spacer(minLength: 0)
                 }
             } else {
                 HStack(spacing: 8) {
-                    Text("tempo indéterminé").font(.system(size: 10)).foregroundStyle(.tertiary)
+                    Text(T(.tempoIndetermine)).font(.system(size: 10)).foregroundStyle(.tertiary)
                     Button { model.recomputeTempo() } label: { Image(systemName: "arrow.clockwise") }
-                        .help("Chercher une grille dans ce morceau. Sans elle, ni "
-                              + "barres de mesure ni relevé d'accords.")
+                        .help(T(.tempoChercherAide))
                         .disabled(model.spectrogram.columnCount == 0)
                     Spacer()
                 }
@@ -366,93 +349,68 @@ struct ControlPanel: View {
                         .frame(width: 18)
                 }
                 .disabled(model.duration == 0)
-                .help("""
-                      Lire ou mettre en pause (espace).
-                      Cliquer dans l'image déplace la tête de lecture, et fait sonner la raie désignée.
-                      """)
+                .help(T(.lectureLireAide))
                 PlayheadClock(model: model)
                 Spacer()
             }
             // En pourcentage et non en « × » : c'est ainsi que se disent les
             // ralentis partout ailleurs — 75 % se compare tout de suite à 100 %,
             // là où ×0,75 demande un instant.
-            slider("Vitesse", value: $model.player.speed, range: 0.25...1.5,
+            slider(T(.lectureVitesse), value: $model.player.speed, range: 0.25...1.5,
                    reset: 1, format: { String(format: "%.0f %%", $0 * 100) },
-                   help: """
-                   Ralentit ou accélère sans toucher à la hauteur.
-                   Un cran ramène exactement à 100 %, où le traitement est retiré du chemin du son.
-                   Double-clic sur le texte pour y revenir.
-                   """)
-            slider("Transposition", value: $model.player.transpose, range: -12...12,
+                   help: T(.lectureVitesseAide))
+            slider(T(.lectureTransposition), value: $model.player.transpose, range: -12...12,
                    reset: 0, format: {
                        // Un demi-ton entier s'écrit sans décimale ; une valeur
                        // intermédiaire, elle, doit se voir.
-                       String(format: abs($0 - $0.rounded()) < 0.005 ? "%+.0f dt" : "%+.1f dt", $0)
+                       String(format: abs($0 - $0.rounded()) < 0.005 ? "%+.0f " : "%+.1f ", $0)
+                           + T(.uniteDemiTons)
                    },
-                   help: """
-                   Transpose sans toucher à la vitesse, en demi-tons.
-                   Les valeurs intermédiaires recalent un enregistrement désaccordé.
-                   Double-clic sur le texte pour revenir à +0.
-                   """)
+                   help: T(.lectureTranspositionAide))
         }
     }
 
     private var image: some View {
         VStack(alignment: .leading, spacing: 8) {
-            slider("Contraste", value: $model.display.floorDb, range: -120...(-40),
+            slider(T(.imageContraste), value: $model.display.floorDb, range: -120...(-40),
                    format: { String(format: "%.0f dB", $0) },
-                   help: """
-                   Niveau rendu noir. Le monter nettoie le fond,
-                   et retire du même coup ce bruit de l'aimant du curseur.
-                   """)
+                   help: T(.imageContrasteAide))
             // « Global » et « local » disent la seule chose qui les sépare : sur
             // quoi le réglage est mesuré. L'un relit le morceau entier, l'autre ce
             // que la fenêtre montre en ce moment.
             HStack(spacing: 8) {
-                Button("Auto global") { model.restoreOpeningContrast() }
+                Button(T(.imageAutoGlobal)) { model.restoreOpeningContrast() }
                     .disabled(model.spectrogram.columnCount == 0)
-                    .help("Revenir au contraste mesuré sur le morceau entier à son "
-                          + "ouverture — le repère d'où l'on est parti. K")
-                Button("Auto local") { model.applyAutoContrast() }
+                    .help(T(.imageAutoGlobalAide))
+                Button(T(.imageAutoLocal)) { model.applyAutoContrast() }
                     .disabled(model.spectrogram.columnCount == 0)
-                    .help("Régler noir, clair et pente d'après ce qui est à l'écran. ⇧K")
+                    .help(T(.imageAutoLocalAide))
                 Spacer()
             }
             .controlSize(.small)
-            slider("Zoom vertical", value: Binding(get: { log2(model.verticalZoom) },
+            slider(T(.imageZoomVertical), value: Binding(get: { log2(model.verticalZoom) },
                                                    set: { model.verticalZoom = pow(2, $0) }),
                    // 16× au maximum : au-delà, la vue butterait sur sa propre
                    // limite et le curseur continuerait de bouger sans effet.
                    range: 0...4, reset: 0,
-                   format: { _ in String(format: "%.1f oct", model.visibleOctaves) },
-                   help: """
-                   Étale l'axe des fréquences ; la valeur donne le nombre d'octaves visibles.
-                   Au trackpad : ⇧ + pincement, ou ⇧ + molette — ancré sous le curseur.
-                   La lecture est filtrée sur la bande visible.
-                   """)
+                   format: { _ in String(format: "%.1f ", model.visibleOctaves)
+                                 + T(.uniteOctaves) },
+                   help: T(.imageZoomVerticalAide))
         }
     }
 
     private var display: some View {
         HStack(spacing: 8) {
             Toggle(isOn: $model.showDrumLane) {
-                Label("Batterie", systemImage: "circle.grid.cross")
+                Label(T(.affichageBatterie), systemImage: "circle.grid.cross")
             }
             .toggleStyle(.button)
-            .help("""
-                  Relevé de la batterie, sous l'image : un trait par coup, une ligne par voie.
-                  Le spectrogramme dit la hauteur, qu'une percussion n'a pas ; ces trois lignes disent quand, quoi et combien fort.
-                  Elles valent surtout sur la piste de batterie isolée.
-                  """)
+            .help(T(.affichageBatterieAide))
             Toggle(isOn: $model.showChords) {
-                Label("Accords", systemImage: "textformat.abc")
+                Label(T(.affichageAccords), systemImage: "textformat.abc")
             }
             .toggleStyle(.button)
-            .help("""
-                  Noms d'accords, au pied de la grille : un par temps, par mesure ou par phrase selon le zoom.
-                  Devinés sur la basse et l'accompagnement séparés — il faut donc que les quatre pistes soient calculées, et qu'une grille métrique existe.
-                  Les survoler les fait entendre et entoure leurs notes dans le spectre ; la pâleur d'un nom dit l'incertitude du relevé.
-                  """)
+            .help(T(.affichageAccordsAide))
             Picker("", selection: $model.display.useFlats) {
                 Text("♭").tag(true)
                 Text("♯").tag(false)
@@ -460,7 +418,7 @@ struct ControlPanel: View {
             .labelsHidden()
             .pickerStyle(.segmented)
             .frame(width: 58)
-            .help("L'écriture des touches noires : Mi♭ ou Ré♯.")
+            .help(T(.affichageTouchesNoiresAide))
             Spacer()
         }
         .controlSize(.small)
@@ -472,16 +430,13 @@ struct ControlPanel: View {
                 Toggle(isOn: $model.loopEnabled) { Image(systemName: "repeat") }
                     .toggleStyle(.button)
                     .disabled(model.loop == nil)
-                    .help("""
-                          Jouer le passage en boucle, sans trou à la reprise (L).
-                          [ et ] posent le début et la fin à la tête de lecture.
-                          """)
+                    .help(T(.boucleJouerAide))
                 if model.loop != nil {
-                    Button("Mesures") { model.snapLoopToBars() }
+                    Button(T(.boucleMesures)) { model.snapLoopToBars() }
                         .disabled(model.tempo == nil)
-                        .help("Étendre la boucle aux mesures qui l'encadrent (B)")
+                        .help(T(.boucleAuxMesuresAide))
                     Button { model.loop = nil } label: { Image(systemName: "xmark") }
-                        .help("Effacer la boucle (échap)")
+                        .help(T(.boucleEffacerAide))
                 }
                 Spacer()
             }
@@ -498,13 +453,13 @@ struct ControlPanel: View {
         HStack(spacing: 8) {
             if model.separating == nil, model.isSeparated {
                 Button { model.forgetStems() } label: {
-                    Label("Effacer les pistes", systemImage: "trash")
+                    Label(T(.pistesEffacerLesPistes), systemImage: "trash")
                 }
                 .controlSize(.small)
-                .help("Repartir du mixage. Les pistes se recalculent en une "
-                      + "demi-minute si vous y revenez.")
+                .help(T(.pistesEffacerAide))
             } else if model.separating != nil {
-                Text("séparation en cours").font(.system(size: 10)).foregroundStyle(.tertiary)
+                Text(T(.pistesSeparationEnCours)).font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
             }
             Spacer()
         }

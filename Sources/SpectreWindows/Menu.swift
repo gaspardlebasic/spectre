@@ -1,5 +1,6 @@
 import Foundation
 import SpectreCore
+import SpectreTextes
 import SpectreModele
 import SpectreWin
 import WinSDK
@@ -45,7 +46,7 @@ struct MenuContextuel {
         guard let menu = CreatePopupMenu() else { return }
         defer { _ = DestroyMenu(menu) }
 
-        ajouter(menu, CommandeDuMenu.ouvrir, "Ouvrir un fichier…\tCtrl+O")
+        ajouter(menu, CommandeDuMenu.ouvrir, T(.winMenuOuvrir))
 
         if !recents.isEmpty, let sousMenu = CreatePopupMenu() {
             for (i, url) in recents.enumerated() {
@@ -55,10 +56,10 @@ struct MenuContextuel {
                         url.lastPathComponent)
             }
             separateur(sousMenu)
-            ajouter(sousMenu, CommandeDuMenu.viderLesRecents, "Vider la liste")
+            ajouter(sousMenu, CommandeDuMenu.viderLesRecents, T(.winMenuViderLaListe))
             // Détruire le menu parent détruit ses sous-menus : le `defer` ci-dessus
             // suffit, et libérer celui-ci à part le libérerait deux fois.
-            "Ouvrir récemment".withUTF16Pointer { texte in
+            T(.winMenuOuvrirRecemment).withUTF16Pointer { texte in
                 _ = AppendMenuW(menu, UINT(MF_POPUP),
                                 UINT_PTR(UInt(bitPattern: UnsafeRawPointer(sousMenu))),
                                 texte)
@@ -67,9 +68,9 @@ struct MenuContextuel {
 
         separateur(menu)
         ajouter(menu, CommandeDuMenu.reglages,
-                panneauOuvert ? "Masquer les réglages\tR" : "Réglages…\tR")
+                panneauOuvert ? T(.winMenuMasquerReglages) : T(.winMenuReglages))
         separateur(menu)
-        ajouter(menu, CommandeDuMenu.quitter, "Quitter\tAlt+F4")
+        ajouter(menu, CommandeDuMenu.quitter, T(.winMenuQuitter))
 
         // Sans cela, le menu ne se referme pas quand on clique ailleurs : Windows
         // l'exige depuis toujours, et l'oubli laisse un menu fantôme à l'écran.

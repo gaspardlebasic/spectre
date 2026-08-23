@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SpectreCore
+import SpectreTextes
 
 /// Marge, en fraction de la largeur, que la tête de lecture ne doit pas franchir.
 private let margeDuTournePage = 0.1
@@ -265,7 +266,7 @@ private let dureeDuTournePage = 0.32
         RecentFiles.note(url)
         récentsDuSystème.noter(url)
         recentFiles = RecentFiles.all()
-        status = "Lecture du fichier…"
+        status = T(.statutLectureDuFichier)
         progress = 0
         player.stop()
         playhead = 0
@@ -375,9 +376,9 @@ private let dureeDuTournePage = 0.32
         staleSince = nil
 
         let ratio = source.duration / max(elapsed, 0.001)
-        status = String(format: "%@ — %@, analysé en %.1f s (×%.0f temps réel)%@",
-                        source.name, Self.format(source.duration), elapsed, ratio,
-                        saved != nil ? " · réglages retrouvés" : "")
+        status = T(.statutAnalyseFaite, source.name, Self.format(source.duration),
+                   String(format: "%.1f", elapsed), String(format: "%.0f", ratio),
+                   saved != nil ? T(.statutReglagesRetrouves) : "")
 
         // Les pistes de ce morceau existent peut-être déjà, d'une séance
         // précédente : la batterie sort alors de l'image et va nourrir sa ligne,
@@ -822,7 +823,7 @@ private let dureeDuTournePage = 0.32
         // touche pas à la sélection — la déplacer vers des pistes qu'on ne peut pas
         // montrer serait mentir sur l'état des choses.
         guard pistes.modeleDisponible else {
-            separationError = "Modèle absent de l'application : lancer ./modele.sh puis ./build.sh."
+            separationError = T(.statutModeleAbsentApplication)
             status = separationError
             return
         }
@@ -838,7 +839,7 @@ private let dureeDuTournePage = 0.32
         guard pistes.modeleDisponible else { return }
         job?.cancel()
         separating = 0
-        etape("Préparation du morceau…")
+        etape(T(.statutPreparation))
         tranchesDepuis = nil
         battre()
         // Le travail se compare à `job` avant chaque effet : un calcul annulé peut
@@ -882,7 +883,7 @@ private let dureeDuTournePage = 0.32
                 // pour ce qu'il change vraiment — un échec, qui obligera à recalculer
                 // la prochaine fois.
                 if let error {
-                    self.status = "Pistes non enregistrées : \(error.localizedDescription)"
+                    self.status = T(.statutPistesNonEnregistrees, error.localizedDescription)
                 }
             })
         job = work
@@ -918,23 +919,23 @@ private let dureeDuTournePage = 0.32
     private var messageDeSeparation: String? {
         _ = horlogeDeSeparation                 // le message compte les secondes
         if chargementDesPistes {
-            return "Lecture des pistes déjà séparées…"
+            return T(.statutLectureDesPistes)
         }
         guard let separating else { return nil }
         if separating > 0 {
             let pourcent = Int((separating * 100).rounded())
             guard let depuis = tranchesDepuis else {
-                return "Séparation des pistes : \(pourcent) %"
+                return T(.statutSeparationPourcent, "\(pourcent)")
             }
             let écoulé = Horloge.maintenant() - depuis
             guard separating > 0.05, écoulé > 2 else {
-                return "Séparation des pistes : \(pourcent) %"
+                return T(.statutSeparationPourcent, "\(pourcent)")
             }
             let restant = écoulé * (1 - separating) / separating
-            return "Séparation des pistes : \(pourcent) % — encore \(Self.duree(restant))"
+            return T(.statutSeparationRestant, "\(pourcent)", Self.duree(restant))
         }
         let écoulé = Horloge.maintenant() - etapeDepuis
-        let quoi = etapeDeSeparation.isEmpty ? "Séparation des pistes…" : etapeDeSeparation
+        let quoi = etapeDeSeparation.isEmpty ? T(.statutSeparationEnCours) : etapeDeSeparation
         // Sous deux secondes, le compteur clignoterait pour rien.
         return écoulé < 2 ? quoi : "\(quoi) \(Self.duree(écoulé))"
     }
@@ -942,9 +943,9 @@ private let dureeDuTournePage = 0.32
     /// Une durée en toutes lettres, sans décimale : personne ne lit « 43,7 s ».
     private static func duree(_ secondes: Double) -> String {
         let s = Int(secondes.rounded())
-        if s < 60 { return "\(max(s, 1)) s" }
+        if s < 60 { return T(.dureeSecondes, "\(max(s, 1))") }
         let m = s / 60, r = s % 60
-        return r == 0 ? "\(m) min" : "\(m) min \(r) s"
+        return r == 0 ? T(.dureeMinutes, "\(m)") : T(.dureeMinutesSecondes, "\(m)", "\(r)")
     }
 
     /// Monte en mémoire les pistes déjà rangées, puis montre ce qu'on attendait.
@@ -961,7 +962,7 @@ private let dureeDuTournePage = 0.32
                 // sur une promesse, on revient au mixage et on le dit.
                 self.enAttenteDeBanque = nil
                 self.selection = Self.everything
-                self.separationError = "Pistes illisibles ; le mixage est resté."
+                self.separationError = T(.statutPistesIllisibles)
                 self.status = self.separationError
                 self.show(Self.everything)
                 return
@@ -1049,7 +1050,7 @@ private let dureeDuTournePage = 0.32
         adopt(spectrogram: spectrogram, ecoutant: écoute, gardantLImage: true)
 
         let name = Stem.label(for: wanted)
-        status = "Analyse de « \(Stem.label(for: visible)) »…"
+        status = T(.statutAnalyseDe, Stem.label(for: visible))
         let settings = analysis
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             // La somme des pistes à voir est fabriquée ici, puis gardée : y revenir
@@ -1132,10 +1133,10 @@ private let dureeDuTournePage = 0.32
     /// pour une panne. Voir `messageDeSeparation`.
     public var drumLaneNotice: String? {
         if let message = messageDeSeparation { return message }
-        if percussionPending { return "Relevé de la batterie…" }
+        if percussionPending { return T(.statutReleveBatterie) }
         guard percussion.hits.isEmpty else { return nil }
-        if isSeparated, !selection.contains(.drums) { return "Batterie retirée" }
-        return spectrogram.columnCount > 0 ? "Aucun coup relevé" : nil
+        if isSeparated, !selection.contains(.drums) { return T(.statutBatterieRetiree) }
+        return spectrogram.columnCount > 0 ? T(.statutAucunCoup) : nil
     }
 
     /// Prépare en fond les images qu'un seul clic peut demander.
@@ -1326,10 +1327,10 @@ private let dureeDuTournePage = 0.32
     /// Pourquoi la ligne d'accords est vide, quand elle l'est.
     public var chordNotice: String? {
         guard showChords, spectrogram.columnCount > 0 else { return nil }
-        if chordsPending { return "Relevé des accords…" }
+        if chordsPending { return T(.statutReleveAccords) }
         guard chords.isEmpty else { return nil }
-        if tempo == nil || (tempo?.bpm ?? 0) <= 0 { return "Accords : chercher la grille d'abord" }
-        return "Accords : rien de tenu à l'écran — éclaircir l'image"
+        if tempo == nil || (tempo?.bpm ?? 0) <= 0 { return T(.statutAccordsGrilleDabord) }
+        return T(.statutAccordsRienDeTenu)
     }
 
     /// Relève la carte des notes de la matrice affichée, puis les accords.
@@ -1554,7 +1555,7 @@ private let dureeDuTournePage = 0.32
         pistes.oublierLesPistes(empreinte: fingerprint)
         selection = Self.everything
         show(Self.everything)
-        status = "Pistes effacées."
+        status = T(.statutPistesEffacees)
     }
 
     // MARK: Actions

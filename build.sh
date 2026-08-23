@@ -45,6 +45,22 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 # L'icône est versionnée telle quelle ; `./logo.sh` la refabrique au besoin.
 cp Resources/Spectre.icns "$APP/Contents/Resources/Spectre.icns"
 
+# Les cinq dossiers de langue, vides et pourtant nécessaires.
+#
+# Les textes de Spectre ne sont pas dedans — ils sont compilés dans l'exécutable,
+# parce qu'un catalogue qui se cherche à l'exécution ne survit pas au portage. Mais
+# macOS ne regarde pas l'exécutable : il compte les .lproj du paquet pour décider si
+# l'application est traduite. Sans eux, les menus qu'AppKit fournit lui-même — « À
+# propos de Spectre », « Masquer », « Quitter », « Édition », « Fenêtre » — sortent
+# en anglais sur un Mac réglé en français, ce qui donne une fenêtre à moitié
+# traduite. `InfoPlist.strings` y porte le nom affiché : il est le même partout,
+# mais un .lproj entièrement vide est ignoré par certaines versions du système.
+for LANGUE in fr en es de pl; do
+  mkdir -p "$APP/Contents/Resources/$LANGUE.lproj"
+  printf '"CFBundleName" = "Spectre";\n"CFBundleDisplayName" = "Spectre";\n' \
+    > "$APP/Contents/Resources/$LANGUE.lproj/InfoPlist.strings"
+done
+
 # Le modèle de séparation voyage dans le paquet, mais pas dans le dépôt : les poids
 # de Demucs ne sont pas couverts par la licence MIT du code, et `./modele.sh` les
 # refabrique sur place. Son absence n'empêche pas de construire — tout le reste de
