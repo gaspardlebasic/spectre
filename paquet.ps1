@@ -1,8 +1,13 @@
 ﻿# Fabrique l'installeur Windows de Spectre.
 #
 #     .\paquet.ps1                    l'installeur de cette machine
-#     .\paquet.ps1 -Version 1.1.0     un autre numéro de version
+#     .\paquet.ps1 -Version 0.3       le numéro que porte la livraison
 #     .\paquet.ps1 -Force             en réinstallant le compilateur
+#
+# Produit deux fichiers, sous le même numéro : l'installeur, et l'archive du dossier
+# pour qui préfère ne rien inscrire dans la base de registres. Le script refait
+# l'icône et l'assemblage à chaque fois — c'est l'ordre qui compte, la ressource
+# posant le numéro de version dans l'exécutable avant qu'il ne soit construit.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # CE QUE CE SCRIPT AJOUTE À `build.ps1`
@@ -51,6 +56,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 $racine = $PSScriptRoot
+# L'atelier, parce que `logo.ps1` est appelé d'ici et qu'il lui faut `rc.exe`.
+# `build.ps1` le pose aussi, mais il passe **après** : sans cette ligne, la
+# ressource de version échoue sur « rc.exe n'est pas reconnu », et le message
+# désigne l'icône alors que la cause est l'ordre des appels.
+. (Join-Path $racine "atelier.ps1")
 $build = Join-Path $racine "build"
 $assemble = Join-Path $build "Spectre"
 $outils = Join-Path $build "innosetup"
@@ -66,11 +76,13 @@ function Etape($titre) { Write-Host "`n=== $titre ===" }
 # aucune bibliothèque.
 
 Etape "Le dossier à empaqueter"
-if (-not (Test-Path (Join-Path $assemble "Spectre.exe"))) {
-    Write-Host "  build\Spectre est absent — on l'assemble."
-    & (Join-Path $racine "build.ps1")
-    if ($LASTEXITCODE -ne 0) { throw "L'assemblage a échoué." }
-}
+# La ressource d'abord, avec **ce** numéro de version : c'est elle qui le pose dans
+# l'exécutable. Puis l'assemblage, sans condition — l'ordre est le point, et sauter
+# la construction parce qu'un dossier existe déjà livrerait un exécutable qui
+# annonce dans ses propriétés une version que l'installeur dément.
+& (Join-Path $racine "logo.ps1") -Version $Version | Out-Null
+& (Join-Path $racine "build.ps1")
+if ($LASTEXITCODE -ne 0) { throw "L'assemblage a échoué." }
 $poids = (Get-ChildItem $assemble -Recurse -File | Measure-Object Length -Sum).Sum
 Write-Host ("  {0} ({1:N1} Mo)" -f $assemble, ($poids / 1MB))
 
@@ -156,7 +168,14 @@ foreach ($ext in $formats) {
     $lignes += ""
 }
 $engendre = Join-Path $build "formats.iss"
-Set-Content -Path $engendre -Value $lignes -Encoding utf8
+# La marque d'ordre est écrite à la main, et ce n'est pas de la coquetterie : Inno
+# Setup ne tient un fichier pour de l'UTF-8 que s'il la porte, et sans elle les
+# accents des commentaires ci-dessus le font échouer. `Set-Content -Encoding utf8`
+# la pose sous Windows PowerShell et **ne la pose pas** sous PowerShell 7 : un
+# coureur d'intégration continue qui appelle `pwsh` casserait donc la compilation,
+# pour une différence qu'aucun message n'annonce.
+[IO.File]::WriteAllText($engendre, ($lignes -join "`r`n") + "`r`n",
+                        (New-Object Text.UTF8Encoding($true)))
 Write-Host "  → $engendre"
 
 # ── La compilation ───────────────────────────────────────────────────────────
@@ -176,7 +195,20 @@ $installeur = Join-Path $build "Spectre-$Version-$architecture-installeur.exe"
 if (-not (Test-Path $installeur)) { throw "$installeur n'a pas été produit." }
 Write-Host ("  → {0} ({1:N1} Mo)" -f $installeur, ((Get-Item $installeur).Length / 1MB))
 
+# ── Et l'archive, pour qui ne veut rien inscrire ─────────────────────────────
+#
+# Le même dossier, sans installeur : il se suffit à lui-même, et c'est ce qu'on
+# donne à qui veut essayer sans que rien ne s'inscrive dans la base de registres.
+# Livrée à côté de l'installeur, sous le même numéro de version, pour qu'on ne
+# puisse pas se tromper sur ce qu'on télécharge.
+
+Etape "L'archive"
+$archiveZip = Join-Path $build "Spectre-$Version-$architecture.zip"
+Remove-Item $archiveZip -ErrorAction SilentlyContinue
+Compress-Archive -Path $assemble -DestinationPath $archiveZip
+Write-Host ("  → {0} ({1:N1} Mo)" -f $archiveZip, ((Get-Item $archiveZip).Length / 1MB))
+
 Write-Host ""
-Write-Host "L'installeur est dans build\."
+Write-Host "L'installeur et l'archive sont dans build\."
 Write-Host "Il n'est signé par personne : Windows SmartScreen le dira au premier"
 Write-Host "lancement, et il faut passer par « Informations complémentaires »."

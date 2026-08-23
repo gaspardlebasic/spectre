@@ -1,9 +1,15 @@
 ﻿# Fabrique l'icône Windows — le pendant de `logo.sh`.
 #
 #     .\logo.ps1
+#     .\logo.ps1 -Version 0.3     le numéro que l'exécutable portera
 #
 # Produit `Resources\Spectre.ico`, versionné comme l'est `Resources\Spectre.icns`,
 # puis `build\spectre.res` que `Package.swift` lie à l'exécutable quand il le trouve.
+#
+# Le numéro de version voyage jusqu'ici plutôt que d'être écrit en dur, parce que
+# c'est ce fichier-là qui le pose dans l'exécutable : `paquet.ps1` lui passe celui de
+# la livraison, faute de quoi les propriétés du fichier annonceraient une version et
+# l'installeur une autre.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # L'ICÔNE VIENT DU .ICNS, ET NON DU SVG
@@ -25,9 +31,20 @@
 # dessins pour la même application serait pire que d'avoir une marge.
 # ─────────────────────────────────────────────────────────────────────────────
 
+param(
+    [string]$Version = "1.0.0"
+)
+
 $ErrorActionPreference = "Stop"
 $racine = $PSScriptRoot
 Add-Type -AssemblyName System.Drawing
+
+# Windows compte les versions par quatre nombres, et `rc.exe` les veut séparés par
+# des virgules. « 0.3 » devient donc « 0,3,0,0 ».
+$quatre = @($Version -split '\.' | ForEach-Object { [int]($_ -replace '\D', '') })
+while ($quatre.Count -lt 4) { $quatre += 0 }
+$versionPointee = ($quatre[0..3]) -join '.'
+$versionVirgulee = ($quatre[0..3]) -join ','
 
 $icns = Join-Path $racine "Resources\Spectre.icns"
 if (-not (Test-Path $icns)) { throw "Resources\Spectre.icns est introuvable — voir logo.sh." }
@@ -149,8 +166,8 @@ $script = @"
 1 ICON "$($sortie -replace '\\', '\\')"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,0
- PRODUCTVERSION 1,0,0,0
+ FILEVERSION $versionVirgulee
+ PRODUCTVERSION $versionVirgulee
  FILEOS VOS_NT_WINDOWS32
  FILETYPE VFT_APP
 BEGIN
@@ -158,12 +175,12 @@ BEGIN
     BEGIN
         BLOCK "040C04B0"
         BEGIN
-            VALUE "FileDescription", "Spectre — transcrire de la musique a l'oreille"
-            VALUE "FileVersion", "1.0.0.0"
+            VALUE "FileDescription", "Spectre — transcrire de la musique à l'oreille"
+            VALUE "FileVersion", "$versionPointee"
             VALUE "InternalName", "Spectre"
             VALUE "OriginalFilename", "Spectre.exe"
             VALUE "ProductName", "Spectre"
-            VALUE "ProductVersion", "1.0.0.0"
+            VALUE "ProductVersion", "$versionPointee"
         END
     END
     BLOCK "VarFileInfo"
@@ -172,7 +189,12 @@ BEGIN
     END
 END
 "@
-Set-Content -Path $rc -Value $script -Encoding ascii
+# En UTF-16 avec marque d'ordre, que `rc.exe` reconnaît d'office — et non en ASCII,
+# qui remplaçait chaque accent par un point d'interrogation. La description ainsi
+# mutilée est celle que Windows affiche dans les propriétés du fichier et dans le
+# gestionnaire des tâches, et le bloc déclare pourtant la page de codes 1200,
+# c'est-à-dire de l'UTF-16.
+Set-Content -Path $rc -Value $script -Encoding Unicode
 
 $res = Join-Path $build "spectre.res"
 & rc.exe /nologo /fo $res $rc

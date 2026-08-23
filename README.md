@@ -46,8 +46,18 @@ xattr -d com.apple.quarantine ~/Downloads/*.wav
 
 ### Sur Windows
 
-**Windows 10 ou plus récent**, en x64 ou en ARM64 — chaque architecture a son
-installeur, et refuse l'autre. Rien à installer à côté : la bibliothèque standard
+Les installeurs sont dans les [releases](../../releases), un par architecture :
+
+| à télécharger | pour |
+|---|---|
+| `Spectre-…-x64-installeur.exe` | les PC Intel et AMD, c'est-à-dire presque tous |
+| `Spectre-…-arm64-installeur.exe` | les PC ARM — Snapdragon X, Surface Pro |
+
+En cas de doute : Paramètres → Système → Informations système, ligne « Type du
+système ». **Chaque installeur refuse l'autre architecture** plutôt que de poser
+une application qui ne s'ouvrira pas.
+
+**Windows 10 ou plus récent.** Rien à installer à côté : la bibliothèque standard
 de Swift et le runtime de Visual Studio voyagent avec l'application, et Media
 Foundation, qui décode le son, est dans le système depuis toujours — FLAC et ALAC
 compris.
@@ -73,8 +83,14 @@ ni fichier, ni clé, et les associations reviennent à ce qu'elles étaient. Les
 sessions et les réglages, eux, restent : ce sont des heures de calcul, et qui
 réinstalle veut les retrouver.
 
-Qui préfère ne rien inscrire nulle part peut prendre l'archive : le dossier se
-suffit à lui-même, et `Spectre.exe` s'y lance tel quel.
+Qui préfère ne rien inscrire nulle part peut prendre l'archive `.zip` publiée à
+côté : le dossier se suffit à lui-même, et `Spectre.exe` s'y lance tel quel.
+
+**La séparation des pistes n'est pas dans les livraisons Windows.** Les poids de
+Demucs pèsent 166 Mo, ne sont pas dans le dépôt et ne se refabriquent qu'avec
+PyTorch — voir `modele.sh` et [NOTICE.md](NOTICE.md) — si bien qu'aucune machine
+d'intégration continue ne peut les produire. Tout le reste est là : l'analyse, le
+relevé d'accords, la batterie, la lecture, les réglages.
 
 ## Construire soi-même
 

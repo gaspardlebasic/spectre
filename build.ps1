@@ -69,6 +69,28 @@ if (Test-Path (Join-Path $racine "build\spectre.res")) {
 Etape "Construction"
 Push-Location $racine
 try {
+    # ── La ressource ne fait pas relier ────────────────────────────────────────
+    #
+    # SwiftPM ne connaît le `.res` que comme un drapeau passé à l'éditeur de liens :
+    # il ne le compte pas parmi les entrées de la cible, et ne voit donc pas qu'il a
+    # changé. Une icône refaite, ou un numéro de version neuf, restent alors sans
+    # effet sur un exécutable que rien n'oblige à être relié — et l'on livre un
+    # fichier dont les propriétés annoncent la version précédente.
+    #
+    # Effacer l'exécutable est ce qui force la seule étape qui manque. Cela coûte une
+    # édition de liens, quelques secondes, et seulement quand la ressource est la
+    # plus fraîche des deux.
+    $res = Join-Path $racine "build\spectre.res"
+    $binAvant = (swift build -c release --show-bin-path 2>$null | Select-Object -Last 1)
+    if ($binAvant) {
+        $exe = Join-Path $binAvant.Trim() "SpectreWindows.exe"
+        if ((Test-Path $res) -and (Test-Path $exe) -and
+            ((Get-Item $res).LastWriteTime -gt (Get-Item $exe).LastWriteTime)) {
+            Remove-Item $exe -Force
+            Write-Host "  (la ressource a changé — on relie)"
+        }
+    }
+
     $journal = swift build -c release 2>&1 | ForEach-Object { "$_" }
     $construit = $LASTEXITCODE -eq 0
     $journal | Where-Object { $_ -match ': error' } | ForEach-Object { Write-Host "  $_" }

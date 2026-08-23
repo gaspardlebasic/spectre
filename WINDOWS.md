@@ -1386,6 +1386,53 @@ papier :
 - la désinstallation ne laisse ni fichier, ni raccourci, ni clé, et `.wav` et `.mp3`
   retournent au lecteur du système.
 
+### La livraison ne se fait plus à la main
+
+`.github/workflows/livraison.yml` construit les deux architectures sur une étiquette
+poussée, et attache à la release les quatre fichiers — deux installeurs, deux
+archives. **Deux coureurs, un par architecture**, et pas une compilation croisée :
+`build.ps1` finit par lancer l'application dans un dossier propre, et ce contrôle-là
+— le seul qui dise que le paquet s'ouvre chez quelqu'un d'autre — ne peut se faire
+que sur la machine visée.
+
+Quatre pièges, dont trois se paient en silence :
+
+- **`build_arch` n'est pas facultatif.** L'action qui pose Swift vaut « amd64 » par
+  défaut : l'oublier sur le coureur ARM installerait la chaîne x64, la compilation
+  passerait — l'émulation est transparente — et l'on livrerait sous le nom
+  « arm64 » un installeur qui ne porte que du x64.
+- **`shell: powershell` et non `pwsh`.** GitHub prend PowerShell 7 par défaut, et
+  `Set-Content -Encoding utf8` y **cesse** de poser la marque d'ordre dont Inno
+  Setup a besoin pour lire un fichier en UTF-8. Le fichier engendré est désormais
+  écrit avec sa marque à la main, ce qui rend la question sans objet ; le choix reste
+  explicite parce que le dépôt en dépend ailleurs.
+- **Une marque d'ordre dans `GITHUB_ENV` mange le nom qui suit.** `Out-File
+  -Encoding utf8` en pose une sous Windows PowerShell : la variable s'appelle alors
+  « ﻿VERSION » et reste introuvable, sans un mot d'erreur.
+- **`atelier.ps1` ne connaissait que deux éditions de Visual Studio.** Les coureurs
+  de GitHub portent Enterprise, et le script échouait sur « VsDevCmd.bat
+  introuvable » — un message qui désigne l'atelier plutôt que la cause. Il passe
+  maintenant par `vswhere`, et retrouve les bibliothèques d'exécution de Swift en
+  cherchant qui, sur le `PATH`, porte `swiftCore.dll` : une chaîne posée autrement
+  range ses exécutions ailleurs, et une liste de DLL bâtie sur un dossier vide
+  produit un paquet qui s'assemble, qui s'archive, et qui refuse de s'ouvrir sur
+  `0xC0000135` chez le premier qui le télécharge.
+
+### Le numéro de version n'arrivait pas jusqu'à l'exécutable
+
+`logo.ps1` prend désormais le numéro de la livraison et le pose dans la ressource ;
+mais la reposer ne suffisait pas. **SwiftPM ne connaît le `.res` que comme un
+drapeau passé à l'éditeur de liens** : il ne le compte pas parmi les entrées de la
+cible, ne voit pas qu'il a changé, et ne relie donc pas. L'installeur annonçait 0.3
+et les propriétés du fichier 1.0.0.0.
+
+`build.ps1` efface l'exécutable quand la ressource est la plus fraîche des deux.
+C'est une édition de liens de plus, quelques secondes, et seulement quand il le faut.
+
+Au passage, la description que Windows affiche dans les propriétés du fichier était
+écrite en ASCII alors que le bloc déclare la page de codes 1200 : chaque accent y
+était devenu un point d'interrogation. Le `.rc` s'écrit maintenant en UTF-16.
+
 ## Le panneau rejoint celui du Mac
 
 Le panneau macOS a changé de forme après l'étape 10, et celui-ci l'a suivi. Ce sont

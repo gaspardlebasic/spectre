@@ -20,22 +20,53 @@
 # environnement. On le fait donc s'imprimer, et on relit ce qu'il a dit.
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ── 1 et 2. Swift, là où l'installeur le pose ────────────────────────────────
+#
+# Sur une machine de développement, c'est ce chemin-là et pas un autre. Sur un
+# coureur d'intégration continue, la chaîne est posée par une action qui a déjà
+# rempli le `PATH` et `SDKROOT` : on ne touche alors à rien, et le repli plus bas
+# retrouvera les bibliothèques d'exécution en les cherchant.
 $swift = "$env:LOCALAPPDATA\Programs\Swift"
-$versionDeSwift = (Get-ChildItem "$swift\Toolchains" -Directory | Sort-Object Name |
-                   Select-Object -Last 1).Name
-# Le dossier des exécutions porte la version sans son suffixe : « 6.3.3 » là où la
-# chaîne s'appelle « 6.3.3+Asserts ».
-$versionCourte = $versionDeSwift -replace '\+.*$', ''
-$executions = "$swift\Runtimes\$versionCourte\usr\bin"
+$devant = ""
+if (Test-Path "$swift\Toolchains") {
+    $versionDeSwift = (Get-ChildItem "$swift\Toolchains" -Directory | Sort-Object Name |
+                       Select-Object -Last 1).Name
+    # Le dossier des exécutions porte la version sans son suffixe : « 6.3.3 » là où
+    # la chaîne s'appelle « 6.3.3+Asserts ».
+    $versionCourte = $versionDeSwift -replace '\+.*$', ''
+    $executions = "$swift\Runtimes\$versionCourte\usr\bin"
+    $devant = "$executions;$swift\Toolchains\$versionDeSwift\usr\bin"
 
-$env:SDKROOT = "$swift\Platforms\$versionCourte\Windows.platform\Developer\SDKs\Windows.sdk"
-$env:PATH = "$executions;$swift\Toolchains\$versionDeSwift\usr\bin;$env:PATH"
-
-$vsdev = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat"
-if (-not (Test-Path $vsdev)) {
-    $vsdev = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat"
+    $env:SDKROOT = "$swift\Platforms\$versionCourte\Windows.platform\Developer\SDKs\Windows.sdk"
+    $env:PATH = "$devant;$env:PATH"
 }
-if (-not (Test-Path $vsdev)) { throw "VsDevCmd.bat introuvable — Visual Studio Build Tools 2022 est nécessaire." }
+
+# ── L'environnement de MSVC ──────────────────────────────────────────────────
+#
+# `vswhere` plutôt que deux chemins écrits à la main : il est livré avec le
+# programme d'installation de Visual Studio, il est toujours au même endroit, et il
+# connaît les éditions qu'on n'a pas ici — Enterprise, notamment, qui est celle des
+# coureurs de GitHub. Deux chemins codés en dur faisaient échouer l'intégration
+# continue sur « VsDevCmd.bat introuvable », ce qui désigne l'atelier plutôt que la
+# cause.
+$vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+$vsdev = $null
+if (Test-Path $vswhere) {
+    $ou = & $vswhere -latest -products * `
+                     -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+                     -property installationPath 2>$null | Select-Object -First 1
+    if ($ou) { $vsdev = Join-Path $ou "Common7\Tools\VsDevCmd.bat" }
+}
+if (-not $vsdev -or -not (Test-Path $vsdev)) {
+    foreach ($essai in @(
+        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat",
+        "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat")) {
+        if (Test-Path $essai) { $vsdev = $essai; break }
+    }
+}
+if (-not $vsdev -or -not (Test-Path $vsdev)) {
+    throw "VsDevCmd.bat introuvable — Visual Studio Build Tools 2022 est nécessaire."
+}
 
 $architecture = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
 cmd /c "call `"$vsdev`" -arch=$architecture -host_arch=$architecture >nul 2>nul && set" | ForEach-Object {
@@ -48,7 +79,27 @@ cmd /c "call `"$vsdev`" -arch=$architecture -host_arch=$architecture >nul 2>nul 
     }
 }
 # `set` ci-dessus a écrasé le PATH avec celui de MSVC : on remet Swift devant.
-$env:PATH = "$executions;$swift\Toolchains\$versionDeSwift\usr\bin;$env:PATH"
+if ($devant) { $env:PATH = "$devant;$env:PATH" }
+
+# ── 3. Le chemin des bibliothèques d'exécution ───────────────────────────────
+#
+# `build.ps1` en a besoin : c'est là qu'il prend les seize DLL qui voyagent avec
+# l'application. Il se déduit de la disposition de l'installeur quand c'est elle
+# qu'on a ; sinon on le **cherche**, en demandant au `PATH` qui porte `swiftCore.dll`.
+#
+# Cette recherche n'est pas un raffinement : une chaîne posée autrement — par une
+# action d'intégration continue, par exemple — range ses exécutions ailleurs, et une
+# liste de DLL bâtie sur un dossier vide ne se voit pas. Elle produit un paquet qui
+# s'assemble, qui s'archive, et qui refuse de s'ouvrir sur `0xC0000135` chez le
+# premier qui le télécharge.
+if (-not $executions -or -not (Test-Path (Join-Path $executions "swiftCore.dll"))) {
+    $executions = ($env:PATH -split ';' | Where-Object {
+        $_ -and (Test-Path (Join-Path $_ "swiftCore.dll"))
+    } | Select-Object -First 1)
+}
+if (-not $executions) {
+    throw "Les bibliothèques d'exécution de Swift sont introuvables — swiftCore.dll n'est nulle part sur le PATH."
+}
 
 # ── Lancer l'application, et attendre qu'elle ait fini ────────────────────────
 #

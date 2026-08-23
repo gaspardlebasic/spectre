@@ -53,7 +53,7 @@ reste, et les pièges déjà payés.
 | `.\essai.ps1` | La même épreuve, sous Windows : quatorze harnais, la fenêtre, et un relevé de fluidité. |
 | `./modele.sh` | Refabrique `Resources/htdemucs.onnx` (les poids de Demucs, ~166 Mo, hors dépôt). |
 | `.\build.ps1` | Assemble `build\Spectre` sous Windows — l'exécutable et ce qu'il lui faut — et l'éprouve dans un dossier propre. |
-| `.\paquet.ps1` | Fabrique l'installeur Windows à partir de `build\Spectre` — menu Démarrer, désinstallation, associations de fichiers. |
+| `.\paquet.ps1` | Refait l'icône, assemble, et fabrique l'installeur Windows et son archive — menu Démarrer, désinstallation, associations de fichiers. |
 | `.\onnx.ps1` | Installe ONNX Runtime pour Windows, hors dépôt lui aussi. Sans lui, la séparation est compilée absente. |
 | `.\logo.ps1` | Refabrique `Resources\Spectre.ico` à partir du `.icns`, et la ressource que l'exécutable porte. |
 | `./logo.sh` | Refabrique l'icône. |
@@ -63,6 +63,18 @@ reste, et les pièges déjà payés.
 Xcode n'est pas nécessaire ; SwiftPM suffit. Il faut **macOS 26 ou plus récent** :
 l'interface est bâtie sur Liquid Glass, qui n'existe pas avant, et le SDK 26 est
 exigé pour compiler.
+
+**Livrer sous Windows ne se fait pas à la main.** Une étiquette poussée suffit :
+
+```bash
+git tag v0.3 && git push origin v0.3
+```
+
+`.github/workflows/livraison.yml` construit alors les deux architectures sur deux
+coureurs — x64 et ARM64, chacun sur sa propre machine, parce que l'épreuve du
+dossier propre ne veut rien dire ailleurs — et attache les quatre fichiers à la
+release. `workflow_dispatch` fait la même chose sans rien publier, ce par quoi on
+éprouve le flux.
 
 ## Éprouver l'application sans un seul fichier privé
 
@@ -175,6 +187,15 @@ chemin numérique portable.
   double-clic — et PowerShell rend alors la main en dix millisecondes, sans rien
   capturer et avec un `$LASTEXITCODE` qui ne veut rien dire. Tout script qui la
   lance passe par `Lancer` (dans `atelier.ps1`), jamais par `&`.
+- **SwiftPM ne voit pas changer `build\spectre.res`.** La ressource n'est pour lui
+  qu'un drapeau passé à l'éditeur de liens : une icône refaite ou un numéro de
+  version neuf restent sans effet sur un exécutable que rien n'oblige à être relié.
+  `build.ps1` efface donc `SpectreWindows.exe` quand la ressource est la plus
+  fraîche des deux.
+- **`swift build` réécrit `Package.resolved` sous Windows**, en retirant la broche
+  d'ONNX Runtime qui n'est tirée que sur macOS. Le rendre (`git checkout --`) avant
+  de commettre : le commettre ferait résoudre au Mac autre chose que ce qui a été
+  éprouvé.
 
 ## Ce qui reste ouvert
 
