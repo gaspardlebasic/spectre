@@ -19,6 +19,10 @@ les trois plateformes ; c'est ce que mesure `verification.yml`. Qui touche à
 systèmes, pas pour un — [WINDOWS.md](WINDOWS.md) tient l'état du chantier, ce qui
 reste, et les pièges déjà payés.
 
+**Le chantier d'après est écrit, et n'est pas commencé** : Spectre enverra un
+rapport tout seul quand il tombera chez quelqu'un — [docs/RAPPORTS.md](docs/RAPPORTS.md)
+en tient le plan, les décisions déjà prises et les pièges qu'on peut nommer d'avance.
+
 ## Les règles de la maison
 
 1. **Tout est en français** : le code, les commentaires, la documentation, les
