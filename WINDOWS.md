@@ -62,11 +62,14 @@ d'attente, qui est le mécanisme qui garde l'image collée au doigt.
 
 **HLSL est plus proche de Metal que ne l'était GLSL.** `SV_Position` a son origine
 en haut à gauche, exactement comme Metal : le retournement que la version GLSL
-devait *retirer* est donc **conservé** en HLSL. `Resources/spectrogramme.glsl`
-porte un long avertissement sur ce piège ; le HLSL — qui vit en toutes lettres dans
-`SpectreWin/Rendu.swift`, comme le MSL vit dans `SpectreMac/Renderer.swift` — porte
-l'avertissement inverse, faute de quoi le prochain lecteur retournerait l'image à
-force de prudence.
+devait *retirer* est donc **conservé** en HLSL. Les deux fichiers ont longtemps
+porté des avertissements écrits à l'envers l'un de l'autre, faute de quoi le
+prochain lecteur retournait l'image à force de prudence.
+
+*Depuis le portage Linux, ce n'est plus vrai* : le GLSL déclare `origin_upper_left`
+et reprend la convention des deux autres. Voir l'étape 2 de [LINUX.md](LINUX.md), et
+la raison — la fenêtre de vue du spectrogramme n'occupe pas toute la fenêtre, et
+OpenGL la place par son coin bas-gauche.
 
 Trois écritures d'une même formule, avec `SpectrogramImage` sur le processeur pour
 arbitre commun : c'est la discipline que le dépôt applique déjà.
@@ -327,9 +330,10 @@ que l'un des deux endroits où l'image peut aller.
 ### Le nuanceur, et l'avertissement écrit à l'envers
 
 Le HLSL vit **en toutes lettres dans `Rendu.swift`**, comme le MSL vit en toutes
-lettres dans `SpectreMac/Renderer.swift` : le pilote le compile au démarrage, il
-n'y a donc pas de fichier à trouver ni à distribuer. `Resources/spectrogramme.glsl`
-reste pour Linux.
+lettres dans `SpectreMac/Renderer.swift` et le GLSL dans `SpectreLin/Rendu.swift` :
+le pilote le compile au démarrage, il n'y a donc pas de fichier à trouver ni à
+distribuer. `Resources/spectrogramme.glsl` portait la version GLSL en attendant
+Linux ; Linux est arrivé, et l'a prise.
 
 `SV_Position` a son origine en haut à gauche, exactement comme la `[[position]]` de
 Metal : le retournement de l'axe vertical que la version GLSL devait **retirer** est

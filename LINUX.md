@@ -180,7 +180,7 @@ paquet et un fournisseur choisi à la compilation ; elle n'est pas dans ce plan.
 |---|---|---|
 | 0. La machine, et le noyau qui traverse | Une Ubuntu 24.04 ARM64 dans Parallels, et 407 contrôles qui y passent. | **faite** |
 | 1. Le verre partagé | Rien de neuf à l'écran : Windows tourne à l'identique, et le dessin de l'interface devient commun. | **faite** |
-| 2. Une fenêtre, et l'image dedans | Le spectrogramme s'affiche, et un harnais compare l'image du GPU au rendu processeur. | à faire |
+| 2. Une fenêtre, et l'image dedans | Le spectrogramme s'affiche, et le même harnais que Windows le mesure sur une troisième carte. | **faite** |
 | 3. Le dessin | La frise, les accords, la batterie, le panneau apparaissent d'un coup — le dividende de l'étape 1. | à faire |
 | 4. Le son qui entre | On ouvre un MP3 et on voit sa décomposition. | à faire |
 | 5. Le son qui sort | On l'entend, on le ralentit, on le transpose. | à faire |
@@ -387,17 +387,107 @@ API publique qui n'a rien à voir avec le dessin. Les deux en gardent maintenant
 chez eux, et chacun reste interne : quatre lignes écrites deux fois valent mieux
 qu'une frontière qui ne veut rien dire.
 
+## Étape 2 — une fenêtre, et l'image dedans
+
+**Faite.** Le spectrogramme s'affiche dans une fenêtre SDL3 sur le bureau Linux, et
+`RenduCheck` — **le harnais de Windows, sans une ligne de plus** — y passe ses sept
+contrôles sur le GPU du Mac vu à travers virgl.
+
+### Ce que ça mesure
+
+| | Windows | Linux |
+|---|---|---|
+| `RenduCheck` | 7 contrôles | **7 contrôles**, mêmes scènes |
+| `ImageCheck` contre le rendu processeur, profils de lignes | 0,954 | **0,9535** |
+| `ImageCheck` contre le rendu processeur, profils de colonnes | 0,933 | **0,9333** |
+
+Trois décimales. Les trois écritures du nuanceur — MSL, HLSL, GLSL — disent la même
+chose, et l'arbitre est le même : `SpectreCore/SpectrogramImage`, sur le processeur.
+
+### Le piège annoncé n'a pas eu lieu, parce qu'il a été supprimé
+
+Le plan prévoyait de recopier l'avertissement du GLSL : `gl_FragCoord` compte depuis
+le bas, `SV_Position` et la `[[position]]` de Metal depuis le haut, donc le
+retournement de l'axe vertical que les deux autres *conservent*, GLSL doit le
+*retirer*.
+
+**C'était juste, et c'est devenu faux.** Le spectrogramme n'occupe pas toute la
+fenêtre — la ligne de batterie prend la bande du bas — donc la fenêtre de vue est
+posée en haut, et OpenGL la place par son coin **bas**-gauche. Retirer le
+retournement ne suffisait plus : il aurait fallu retrancher dans le nuanceur
+l'ordonnée de ce coin, c'est-à-dire y porter une notion que les deux autres n'ont
+pas.
+
+Une ligne règle tout : `layout(origin_upper_left) in vec4 gl_FragCoord;`, dans GLSL
+depuis la 1.50 donc acquise en 3.30. `gl_FragCoord` compte alors depuis le haut, et
+**les trois nuanceurs redeviennent la même formule**, au vocabulaire près. Le long
+avertissement écrit à l'envers de celui du HLSL n'a plus lieu d'être ; les deux
+fichiers portent maintenant la même note.
+
+### Ce que Linux a hérité sans l'écrire
+
+En regardant `SpectreWin/Rendu.swift` de près, la même surprise qu'à l'étape 1 : sur
+ses quatre cent cinquante lignes, deux cent vingt sont du nuanceur HLSL et le reste
+ne connaît pas Direct3D. Le découpage en tuiles, la conversion en demi-flottants, le
+calcul des uniformes, la table des notes renvoyée quand elle change — tout cela
+passe par les treize fonctions du pont, que `d3d11.c` et `gl.c` exportent sous les
+mêmes noms.
+
+La classe est donc dans `SpectreToile` sous le nom de `RenduSpectre`, et chaque
+plateforme lui donne deux choses par l'initialiseur : **son nuanceur** et **son
+journal**. `SpectreLin` fait cent trente lignes en tout, nuanceur GLSL compris.
+
+### Les choix de l'étape 2
+
+**SDL crée la fenêtre, le pont crée le contexte.** Il aurait été plus simple de tout
+faire du côté Swift, mais `spectre_rendu_presenter` n'aurait alors pas pu échanger
+les tampons, et le contrat aurait cessé d'être celui que Windows remplit — où la
+présentation est affaire de la chaîne d'échange, sans que l'appelant s'en mêle. Le
+pont reçoit donc le `SDL_Window *` comme il reçoit un `HWND`.
+
+**Un seul texte de nuanceur, compilé deux fois.** OpenGL compile chaque étage
+séparément, là où HLSL et MSL prennent un texte à deux points d'entrée. Deux chaînes
+Swift auraient dérivé l'une de l'autre ; c'est donc la même, avec `SPECTRE_SOMMETS`
+ou `SPECTRE_FRAGMENTS` posé devant par `gl.c`.
+
+**libepoxy plutôt qu'un chargeur écrit à la main.** OpenGL n'expose au lien que sa
+version 1.x sous Linux ; tout le reste se réclame à l'exécution, un pointeur de
+fonction à la fois. Ce dépôt écrit plutôt que d'ajouter des dépendances — la FFT, les
+demi-flottants, l'étireur — mais une table de pointeurs n'est pas un rouage qu'on
+écrirait mieux. `epoxy/gl.h` est sur toutes les distributions ; GNOME en dépend.
+
+**Une fenêtre cachée plutôt qu'un contexte EGL sans surface**, pour le rendu hors
+écran. Quarante lignes de moins, le même résultat, et surtout **le même chemin** que
+la fenêtre visible : un harnais qui éprouverait une autre pile ne dirait rien de
+celle qui sert.
+
+### Les deux pièges de l'étape 2
+
+**`spectre_rendu_attendre` n'a pas d'équivalent, et c'est une image de latence.**
+Sous Windows, la chaîne d'échange donne un objet d'attente : on dort *avant* de
+dessiner, si bien que l'image montrée porte l'état le plus frais possible. OpenGL
+met l'attente dans l'échange des tampons, donc *après*. La fonction est vide côté
+Linux, et le dit. Corriger ce qu'on n'a pas mesuré étant le meilleur moyen de le
+rendre pire, cela attend l'étape 6.
+
+**Comparer deux images suppose la même analyse.** La première confrontation avec le
+rendu processeur donnait 0,798 en profils de lignes au lieu de 0,954, et j'ai cherché
+un décalage géométrique qui n'existait pas — la corrélation était plate à un, deux et
+quatre pixels par ligne, ce qui excluait l'échantillonnage. La cause était que
+`AnalysisSettings.reassignment` vaut **`true`** par défaut, et que `SpectreCLI` le
+laisse à faux sauf si on lui passe `--reattribution`. Les deux programmes
+n'analysaient pas le même signal. `essai.ps1` passe ce drapeau depuis toujours, et
+dit pourquoi en commentaire ; c'était écrit, et je ne l'avais pas lu.
+
 ## Les pièges prévus
 
 Ceux-ci sont annoncés, pas encore payés. Ils seront corrigés — ou démentis — au
 fur et à mesure.
 
-- **Le GLSL est écrit à l'envers du HLSL, et c'est voulu.**
-  `Resources/spectrogramme.glsl` porte un long avertissement : `gl_FragCoord` a son
-  origine **en bas** à gauche, là où `SV_Position` et la `[[position]]` de Metal
-  l'ont en haut. Le retournement de l'axe vertical que HLSL et MSL *conservent* est
-  donc celui que GLSL doit **retirer**. Qui vient de lire le HLSL le remettrait par
-  prudence, et l'image resterait plausible — graves en haut.
+- ~~**Le GLSL est écrit à l'envers du HLSL, et c'est voulu.**~~ **Payé à l'étape 2,
+  et supprimé plutôt que documenté** — voir plus bas. `gl_FragCoord` compte depuis le
+  bas, mais `origin_upper_left` le fait compter depuis le haut comme les deux autres,
+  et les trois nuanceurs redeviennent la même formule.
 - **Wayland et la mise à l'échelle fractionnaire.** SDL3 choisit son dos tout seul,
   mais un facteur de 1,25 ou 1,5 sous Wayland est le genre de détail qui ne se voit
   qu'à l'usage, et qui décolle une zone sensible de la zone dessinée.

@@ -42,6 +42,12 @@ let surWindows = true
 let surWindows = false
 #endif
 
+#if os(Linux)
+let surLinux = true
+#else
+let surLinux = false
+#endif
+
 // ONNX Runtime, s'il a été installé — c'est-à-dire si `.\onnx.ps1` a tourné.
 //
 // Seize mégaoctets de moteur d'inférence n'ont pas leur place dans un dépôt, et
@@ -264,8 +270,72 @@ if surMac {
     ]
 }
 
+// Ce que les deux portages partagent, et qui n'est d'aucune plateforme. Déclaré
+// ici plutôt que deux fois : ce sont les mêmes fichiers, avec les mêmes
+// dépendances, et une divergence entre les deux déclarations produirait deux
+// modules qui se ressemblent — exactement ce que ces modules existent pour éviter.
+// Ce que les deux portages partagent, et qui n'est d'aucune plateforme. Déclaré ici
+// plutôt que deux fois : ce sont les mêmes fichiers, avec les mêmes dépendances, et
+// une divergence entre les deux déclarations produirait deux modules qui se
+// ressemblent — exactement ce que ces modules existent pour éviter.
+//
+// `avecLeDessin` est faux tant qu'une plateforme n'a pas de dos pour `Pinceau`.
+// C'est le cas de Linux jusqu'à l'étape 3 : le spectrogramme s'y affiche — c'est
+// l'étape 2 — mais rien ne se dessine encore par-dessus, et lier un pinceau sans
+// Cairo derrière ne rendrait qu'une liste de symboles manquants.
+func modulesPartages(avecLeDessin: Bool) -> [Target] {
+    var liste: [Target] = [
+        // Le rendu du spectrogramme, et le vocabulaire de dessin — `remplir`,
+        // `tracer`, `texte`, `arrondi`. Aucun `#if` : la bascule d'une plateforme à
+        // l'autre se fait dans `CPont`, où deux fichiers C exportent les mêmes
+        // fonctions sous les mêmes noms.
+        .target(
+            name: "SpectreToile",
+            // `SpectreDSP` pour les demi-flottants : la matrice part sur la carte en
+            // seize bits, où le pas vaut 0,06 dB — très en dessous du visible — et
+            // la mémoire occupée est divisée par deux.
+            dependencies: ["CPont", "SpectreCore", "SpectreDSP", "SpectreModele"],
+            path: "Sources/SpectreToile",
+            exclude: avecLeDessin ? [] : ["Pinceau.swift"],
+            swiftSettings: reglagesRelease
+        ),
+    ]
+    guard avecLeDessin else { return liste }
+    liste += [
+        // **L'interface dessinée, une seule fois pour toutes les plateformes** : la
+        // frise, le panneau de réglages, la batterie, la barre d'état, les
+        // commandes, la colonne des pistes, les infobulles, les icônes.
+        //
+        // Ces fichiers vivaient dans `SpectreWindows`, et n'importaient déjà `WinSDK`
+        // nulle part : de toute la couche Windows ils n'utilisaient que `Pinceau`.
+        // Les y laisser aurait obligé Linux à redessiner la frise une troisième fois
+        // — la faute exacte qui a tué le premier portage, un étage plus bas.
+        //
+        // Ce qui reste dans l'exécutable de chaque plateforme, c'est ce qui touche au
+        // système : la fenêtre, la souris, le menu, la mesure de fluidité.
+        .target(
+            name: "SpectreDessin",
+            dependencies: ["SpectreCore", "SpectreTextes", "SpectreModele",
+                           "SpectreToile"],
+            path: "Sources/SpectreDessin",
+            swiftSettings: reglagesRelease
+        ),
+    ]
+    return liste
+}
+
+func produitsPartages(avecLeDessin: Bool) -> [Product] {
+    var liste: [Product] = [
+        .library(name: "SpectreToile", type: .static, targets: ["SpectreToile"]),
+    ]
+    if avecLeDessin {
+        liste += [.library(name: "SpectreDessin", type: .static, targets: ["SpectreDessin"])]
+    }
+    return liste
+}
+
 if surWindows {
-    cibles += [
+    cibles += modulesPartages(avecLeDessin: true) + [
         // Le vocabulaire COM de Direct3D 11, tenu du côté C. Swift n'importe pas
         // les macros d'un en-tête, et toute l'API de Direct3D en est faite : sans
         // ce pont, chaque appel s'écrirait comme un déréférencement de table
@@ -273,6 +343,8 @@ if surWindows {
         .target(
             name: "CPont",
             path: "Sources/CPont",
+            // Le pont OpenGL est le jumeau de `d3d11.c`, et n'a rien à faire ici.
+            exclude: ["gl.c"],
             cSettings: avecOnnx
                 ? [.define("SPECTRE_ONNX"),
                    // `unsafeFlags` plutôt que `headerSearchPath` : les en-têtes sont
@@ -304,35 +376,6 @@ if surWindows {
                 .linkedLibrary("d2d1"),
                 .linkedLibrary("dwrite"),
             ]
-        ),
-        // Le vocabulaire de dessin — `remplir`, `tracer`, `texte`, `arrondi` — et
-        // rien d'autre. Il ne porte aucun `#if` : la bascule d'une plateforme à
-        // l'autre se fait dans `CPont`, où deux fichiers C exportent les mêmes
-        // fonctions. Voir l'en-tête de `Sources/SpectreToile/Pinceau.swift`.
-        .target(
-            name: "SpectreToile",
-            dependencies: ["CPont"],
-            path: "Sources/SpectreToile",
-            swiftSettings: reglagesRelease
-        ),
-        // **L'interface dessinée, une seule fois pour toutes les plateformes** : la
-        // frise, le panneau de réglages, la batterie, la barre d'état, les
-        // commandes, la colonne des pistes, les infobulles, les icônes.
-        //
-        // Ces fichiers vivaient dans `SpectreWindows`, et n'importaient déjà
-        // `WinSDK` nulle part : de toute la couche Windows ils n'utilisaient que
-        // `Pinceau`. Les y laisser aurait obligé Linux à redessiner la frise une
-        // troisième fois — la faute exacte qui a tué le premier portage, un étage
-        // plus bas.
-        //
-        // Ce qui reste dans l'exécutable de chaque plateforme, c'est ce qui touche
-        // au système : la fenêtre, la souris, le menu, la mesure de fluidité.
-        .target(
-            name: "SpectreDessin",
-            dependencies: ["SpectreCore", "SpectreTextes", "SpectreModele",
-                           "SpectreToile"],
-            path: "Sources/SpectreDessin",
-            swiftSettings: reglagesRelease
         ),
         // Ce que Windows répond aux protocoles du modèle — le pendant exact de
         // `SpectreMac`. Une bibliothèque plutôt qu'un morceau de l'exécutable,
@@ -412,15 +455,81 @@ if surWindows {
             path: "Tools/PistesCheck"
         ),
     ]
-    produits += [
-        .library(name: "SpectreToile", type: .static, targets: ["SpectreToile"]),
-        .library(name: "SpectreDessin", type: .static, targets: ["SpectreDessin"]),
+    produits += produitsPartages(avecLeDessin: true) + [
         .library(name: "SpectreWin", type: .static, targets: ["SpectreWin"]),
         .executable(name: "SpectreWindows", targets: ["SpectreWindows"]),
         .executable(name: "RenduCheck", targets: ["RenduCheck"]),
         .executable(name: "DecodeCheck", targets: ["DecodeCheck"]),
         .executable(name: "SortieCheck", targets: ["SortieCheck"]),
         .executable(name: "PistesCheck", targets: ["PistesCheck"]),
+    ]
+}
+
+if surLinux {
+    cibles += modulesPartages(avecLeDessin: false) + [
+        // Le pont vers OpenGL. Le jumeau de la déclaration Windows, en beaucoup plus
+        // court : il n'y a ni vocabulaire COM à tenir, ni moteur d'inférence à
+        // trouver, et `epoxy` remplace le chargeur de pointeurs de fonctions.
+        //
+        // `sources` n'énumère que `gl.c` : le reste du dossier est du Direct3D, du
+        // Media Foundation et du WASAPI, que ce système ne saurait pas lire.
+        .target(
+            name: "CPont",
+            path: "Sources/CPont",
+            sources: ["gl.c"],
+            cSettings: [
+                // SDL3 est construite depuis les sources — la 24.04 ne livre que la
+                // 2 — et s'installe donc sous `/usr/local`. Voir `machine.sh`.
+                .unsafeFlags(["-I/usr/local/include"]),
+            ],
+            linkerSettings: [
+                .unsafeFlags(["-L/usr/local/lib"]),
+                .linkedLibrary("SDL3"),
+                .linkedLibrary("epoxy"),
+            ]
+        ),
+        // SDL3, vue de Swift. `pkgConfig` la trouve où `machine.sh` l'a posée ;
+        // `providers` dit quoi installer là où elle manque — sur une distribution
+        // plus récente que la 24.04, qui la livrera elle-même.
+        .systemLibrary(
+            name: "CSDL",
+            path: "Sources/CSDL",
+            pkgConfig: "sdl3",
+            providers: [.apt(["libsdl3-dev"])]
+        ),
+        // Ce que Linux répond aux protocoles du modèle — le pendant de `SpectreWin`
+        // et de `SpectreMac`. Pour l'instant : le nuanceur GLSL et le journal, le
+        // rendu lui-même étant partagé.
+        .target(
+            name: "SpectreLin",
+            dependencies: ["SpectreCore", "SpectreDSP", "SpectreModele", "CPont",
+                           "SpectreToile"],
+            path: "Sources/SpectreLin",
+            swiftSettings: reglagesRelease
+        ),
+        // La fenêtre, et rien d'autre — le pendant de `SpectreWindows`. À l'étape 2
+        // elle ne fait qu'ouvrir un WAV et montrer sa décomposition : le décodage
+        // est l'étape 4, les gestes la 6, et le dessin par-dessus la 3.
+        .executableTarget(
+            name: "SpectreLinux",
+            dependencies: ["SpectreCore", "SpectreDSP", "SpectreModele",
+                           "SpectreLin", "SpectreToile", "CSDL"],
+            path: "Sources/SpectreLinux",
+            swiftSettings: reglagesRelease
+        ),
+        // Le même harnais que sous Windows, sur une troisième carte graphique : la
+        // vraie chaîne — téléversement, nuanceur, relecture — mais hors écran, donc
+        // mesurable là où personne ne peut regarder.
+        .executableTarget(
+            name: "RenduCheck",
+            dependencies: ["SpectreCore", "SpectreLin"],
+            path: "Tools/RenduCheck"
+        ),
+    ]
+    produits += produitsPartages(avecLeDessin: false) + [
+        .library(name: "SpectreLin", type: .static, targets: ["SpectreLin"]),
+        .executable(name: "SpectreLinux", targets: ["SpectreLinux"]),
+        .executable(name: "RenduCheck", targets: ["RenduCheck"]),
     ]
 }
 
