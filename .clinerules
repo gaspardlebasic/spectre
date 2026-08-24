@@ -1,0 +1,29 @@
+# Les règles de la maison, pour Cline
+
+Lis [AGENTS.md](AGENTS.md) avant de toucher à quoi que ce soit : il dit ce
+qu'est Spectre, ce qui se lance, et pourquoi le dépôt est écrit ainsi. Le
+[README](README.md) tient le détail.
+
+Ce qui ne se négocie pas :
+
+1. **Tout est en français** — le code, les commentaires, la documentation, les
+   messages de commit. Un identifiant anglais déjà là se laisse tranquille ; du
+   neuf s'écrit en français.
+2. **Aucun texte visible en clair dans une vue.** Il prend une clé dans
+   `SpectreTextes`, et les cinq catalogues la portent — sinon `LangueCheck`
+   échoue.
+3. **L'auteur ne lit pas le code.** Il donne des instructions et juge sur le
+   comportement de l'application. Ne pas lui montrer d'extrait, ne pas lui
+   demander d'arbitrer un choix d'implémentation : décider, l'assumer, et
+   expliquer *ce que ça change à l'usage*.
+4. **Vérifier avant d'annoncer.** Rien n'est « fait » tant que `./essai.sh`
+   n'est pas passé. Une compilation réussie ne prouve rien de ce que la fenêtre
+   montre. `./check.sh` pour les harnais seuls, `./build.sh` pour assembler
+   `build/Spectre.app`.
+5. **Les commentaires disent pourquoi, pas quoi.** Un commentaire qui
+   paraphrase la ligne d'en dessous n'a pas sa place.
+6. **Supprimer ce qui ne sert plus** plutôt que de l'entourer de précautions.
+
+`SpectreDSP`, `SpectreCore` et `SpectreModele` compilent pour macOS, Windows et
+Linux : y toucher, c'est travailler pour trois systèmes. Voir
+[WINDOWS.md](WINDOWS.md) et [LINUX.md](LINUX.md).

@@ -1,0 +1,10 @@
+# Ce que Cline n'a aucune raison de lire — c'est fabriqué, ou c'est du binaire.
+.build/
+build/
+.git/
+Resources/*.onnx
+Resources/*.bin
+Resources/*.icns
+Resources/*.ico
+*.ppm
+Package.resolved
