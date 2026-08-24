@@ -44,12 +44,15 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # LES POIDS DE DEMUCS N'Y SONT PAS, ET C'EST DIT
 #
-# `htdemucs.onnx` pèse 166 Mo, n'est pas dans le dépôt, et ne se refabrique qu'avec
-# PyTorch — voir `modele.sh` et `NOTICE.md`. Un coureur ne peut donc pas le produire.
-# Le flux le cherche là où il pourrait être : parmi les fichiers déjà attachés à la
-# release qu'on construit. S'il l'y trouve, la séparation des pistes part avec
-# l'application ; sinon elle en est absente, et les notes de version le disent au
-# lieu de laisser le découvrir.
+# `htdemucs.onnx` pèse 166 Mo, n'est pas dans le dépôt — GitHub refuse tout fichier
+# de plus de 100 Mo — et ne se refabrique qu'avec PyTorch, voir `modele.sh` et
+# `NOTICE.md`. Un coureur ne peut donc pas le produire.
+#
+# Il est attaché à une release qui ne sert qu'à cela, `modele-htdemucs-v4`, et que
+# le flux va chercher. L'étiquette qu'on construit peut porter ses propres poids —
+# c'est ce qui permettra un jour d'en livrer d'autres — et ceux-là passent d'abord.
+# Si rien n'est trouvé, la séparation est simplement absente et les notes de version
+# le disent, au lieu de laisser le découvrir.
 
 name: Livraison
 
@@ -150,15 +153,25 @@ jobs:
           $ErrorActionPreference = "Continue"
           $cible = "Resources\htdemucs.onnx"
           $trouve = $false
+          # D'abord l'etiquette qu'on construit : y attacher ses propres poids reste
+          # possible, et c'est ce qui permettra un jour d'en livrer d'autres.
           if ("${{ github.ref_type }}" -eq "tag") {
             gh release download "${{ github.ref_name }}" --pattern htdemucs.onnx `
+               --output $cible --clobber 2>$null
+            $trouve = $LASTEXITCODE -eq 0 -and (Test-Path $cible)
+          }
+          # Sinon la release qui ne sert qu'a cela. Elle ne bouge pas, elle n'est pas
+          # une version de Spectre, et c'est la reponse a une contrainte de GitHub :
+          # 166 Mo ne peuvent pas etre pousses dans un depot, la limite etant de 100.
+          if (-not $trouve) {
+            gh release download "modele-htdemucs-v4" --pattern htdemucs.onnx `
                --output $cible --clobber 2>$null
             $trouve = $LASTEXITCODE -eq 0 -and (Test-Path $cible)
           }
           if ($trouve) {
             Write-Host ("  htdemucs.onnx - {0:N0} Mo" -f ((Get-Item $cible).Length / 1MB))
           } else {
-            Write-Host "  (aucun poids attache a la release : la separation sera absente)"
+            Write-Host "  (aucun poids trouve : la separation sera absente)"
           }
           # Le coureur termine chaque etape par `exit $LASTEXITCODE`, qui porte encore
           # le 1 du `gh` ci-dessus. Sans cette ligne, l'etape echoue apres avoir dit
@@ -280,9 +293,11 @@ jobs:
           Les archives \`.zip\` portent la même application sans rien inscrire dans la
           base de registres : le dossier se suffit à lui-même.
 
-          La séparation des pistes n'est pas dans cette livraison — les poids de Demucs
-          ne peuvent pas être fabriqués par un coureur, et \`modele.sh\` permet de les
-          obtenir directement depuis les serveurs de Meta. Tout le reste est là.
+          La séparation des pistes est dans cette livraison : les poids de Demucs v4 y
+          sont embarqués. **Ils ne sont pas sous GPL et ne sont pas licenciés par
+          l'auteur de Spectre** — leur auteur les réserve à un usage scientifique, voir
+          [NOTICE.md](https://github.com/gaspardlebasic/spectre/blob/main/NOTICE.md).
+          \`modele.sh\` permet de les obtenir directement depuis les serveurs de Meta.
           NOTES
 
           # `--clobber` remplace un fichier de même nom : ce flux doit pouvoir être

@@ -22,6 +22,12 @@ l'usage à la recherche. Les poids sont ici embarqués par commodité ; `./model
 permet de les obtenir directement depuis les serveurs de Meta et de les convertir
 sur place, sans passer par cette redistribution.
 
+Le fichier est aussi attaché, seul, à la release [`modele-htdemucs-v4`][modele] :
+c'est de là que le flux de livraison le prend, un dépôt Git ne pouvant pas porter
+166 Mo. Les mêmes restrictions valent pour ce fichier-là.
+
+[modele]: https://github.com/gaspardlebasic/spectre/releases/tag/modele-htdemucs-v4
+
 Rien dans la licence de Spectre n'accorde de droit sur ces poids.
 
 ## Le correctif dérivé de Demucs
