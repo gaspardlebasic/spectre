@@ -7,6 +7,13 @@ seule chose qu'une relecture du code ne redonnerait pas.
 
 Il est tenu à jour étape par étape, et non à la fin.
 
+**Le portage vit sur la branche `linux-portage`**, qui sera fusionnée dans `main`
+quand il tiendra debout. `verification.yml` ne se déclenchant que sur `main`, rien
+ne se compile automatiquement d'ici là : c'est aux épreuves locales de tenir
+l'intervalle — `./essai.sh` sur le Mac, `.\essai.ps1` sur la machine Windows — et à
+`gh workflow run "Vérification" --ref linux-portage` quand on veut la réponse des
+trois plateformes avant l'heure. Voir la section « Les branches » d'AGENTS.md.
+
 ## Ce qui est déjà là
 
 Le portage commence dans une situation que le portage Windows n'a pas connue :
