@@ -29,6 +29,8 @@
 // deux.
 #include <epoxy/gl.h>
 #include <SDL3/SDL.h>
+#include <cairo/cairo.h>
+#include <pango/pangocairo.h>
 
 #endif
 
@@ -149,6 +151,26 @@ struct SpectreRendu {
     GLint u_log2FminSur1k, u_lignesParOctave, u_demiTonLigne0;
     GLint u_teteDeLecture, u_boucleDebut, u_boucleFin;
     GLint u_tuiles, u_tableDesNotes;
+
+    // La surimpression, en Cairo. Nulle tant que `spectre_surimpression_preparer`
+    // n'a pas été appelé, et refaite quand la fenêtre change de taille.
+    //
+    // Direct2D écrit dans le tampon de la chaîne d'échange ; Cairo dessine sur le
+    // processeur, dans une surface qu'on téléverse ensuite et qu'on fond par-dessus
+    // le spectrogramme. D'où la texture et le petit nuanceur qui vont avec.
+    cairo_surface_t *surface;
+    cairo_t *pinceau;
+    PangoLayout *miseEnPage;
+    int surfaceLargeur, surfaceHauteur;
+    GLuint texteTexture;
+    GLuint programmeComposition;
+    GLuint tableauComposition;
+    GLint u_composition;
+
+    float echelle;
+    int dessinEnCours;
+    /// Combien de découpes sont empilées, pour n'en dépiler que ce qui a été posé.
+    int decoupes;
 };
 
 #endif
@@ -157,15 +179,18 @@ struct SpectreRendu {
 
 /// Défait la surface Direct2D avant que la chaîne se redimensionne, et la refait
 /// après. Appelé par `d3d11.c`, écrit dans `direct2d.c`.
+///
+/// Sans pendant sous Linux : OpenGL n'a pas de chaîne d'échange à recréer, et la
+/// surface Cairo se refait toute seule quand la taille a changé.
 void spectre_surimpression_lacher(SpectreRendu *rendu);
 void spectre_surimpression_reprendre(SpectreRendu *rendu);
 
-/// Libère ce que la surimpression garde en propre. Appelé depuis `d3d11.c`, qui
-/// n'a pas le droit de toucher aux interfaces DirectWrite — il ne les voit que
-/// déclarées.
-void spectre_surimpression_detruire(SpectreRendu *rendu);
-
 #endif
+
+/// Libère ce que la surimpression garde en propre. Appelé depuis le rendu, qui n'a
+/// pas le droit de toucher aux interfaces de la bibliothèque de dessin — il ne les
+/// voit que déclarées.
+void spectre_surimpression_detruire(SpectreRendu *rendu);
 
 #ifdef __cplusplus
 }

@@ -153,6 +153,9 @@ static void liberer(SpectreRendu *r) {
     if (!r) { return; }
     if (r->contexte) {
         SDL_GL_MakeCurrent(r->fenetre, r->contexte);
+        // La surimpression garde une surface, une mise en page et une texture : elle
+        // les rend ici, tant que le contexte est encore courant.
+        spectre_surimpression_detruire(r);
         if (r->tuiles) { glDeleteTextures(1, &r->tuiles); }
         if (r->tableDesNotes) { glDeleteTextures(1, &r->tableDesNotes); }
         if (r->cibleTexture) { glDeleteTextures(1, &r->cibleTexture); }

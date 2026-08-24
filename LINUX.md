@@ -181,7 +181,7 @@ paquet et un fournisseur choisi à la compilation ; elle n'est pas dans ce plan.
 | 0. La machine, et le noyau qui traverse | Une Ubuntu 24.04 ARM64 dans Parallels, et 407 contrôles qui y passent. | **faite** |
 | 1. Le verre partagé | Rien de neuf à l'écran : Windows tourne à l'identique, et le dessin de l'interface devient commun. | **faite** |
 | 2. Une fenêtre, et l'image dedans | Le spectrogramme s'affiche, et le même harnais que Windows le mesure sur une troisième carte. | **faite** |
-| 3. Le dessin | La frise, les accords, la batterie, le panneau apparaissent d'un coup — le dividende de l'étape 1. | à faire |
+| 3. Le dessin | La frise, les accords, la batterie, le panneau, d'un coup — et sans une ligne de dessin écrite. | **faite** |
 | 4. Le son qui entre | On ouvre un MP3 et on voit sa décomposition. | à faire |
 | 5. Le son qui sort | On l'entend, on le ralentit, on le transpose. | à faire |
 | 6. Les gestes, et la fluidité | Molette, boucle, aimantation ; et un relevé qui chiffre la fluidité. | à faire |
@@ -478,6 +478,90 @@ quatre pixels par ligne, ce qui excluait l'échantillonnage. La cause était que
 laisse à faux sauf si on lui passe `--reattribution`. Les deux programmes
 n'analysaient pas le même signal. `essai.ps1` passe ce drapeau depuis toujours, et
 dit pourquoi en commentaire ; c'était écrit, et je ne l'avais pas lu.
+
+## Étape 3 — le dessin
+
+**Faite, et c'est l'étape la plus courte du plan** : la frise, la réglette, les noms
+d'octaves, la grille métrique, la rangée d'accords, les trois lignes de batterie, la
+colonne des pistes, la barre d'état et le panneau de réglages entier sont apparus
+**sans qu'une seule ligne de dessin soit écrite**. C'est le dividende de l'étape 1,
+et il est arrivé exactement comme prévu.
+
+Ce qu'il a fallu écrire : `Sources/CPont/cairo.c`, les quatorze fonctions que
+`direct2d.cpp` exporte, et `SpectreLin/Surimpression.swift`, quarante lignes qui
+attachent le pinceau — le jumeau exact de son pendant Windows.
+
+### La correspondance, verbe pour verbe
+
+| `Pinceau` | Direct2D | Cairo |
+|---|---|---|
+| `remplir`, `tracer`, `cercle` | `FillRectangle`, `DrawLine`, `DrawEllipse` | `cairo_rectangle`, `cairo_line_to`, `cairo_arc` |
+| `aire` | `ID2D1PathGeometry` | `cairo_move_to` + `cairo_line_to` + `cairo_fill` |
+| `arrondi` | `FillRoundedRectangle` | quatre arcs, Cairo n'en a pas de primitive |
+| `texte`, `paragraphe`, `largeur` | DirectWrite | Pango |
+| `decoupe` | `PushAxisAlignedClip` | `cairo_save` + `cairo_clip` |
+
+Deux détails qui auraient donné une image plausible et fausse : Direct2D compte ses
+tirets en **multiples de l'épaisseur du trait**, Cairo en unités du dessin — le motif
+`{2, 3}` de là-bas s'écrit donc `{2×épaisseur, 3×épaisseur}` ici. Et la police se
+pose en taille **absolue**, sans quoi Pango la multiplierait par la résolution
+supposée de l'écran et un onze deviendrait un quinze.
+
+### Ce que Cairo coûte, et où ça se paiera
+
+Direct2D écrit dans le tampon de la chaîne d'échange ; **Cairo dessine sur le
+processeur**. L'image de la surimpression est donc composée dans une surface ARGB,
+téléversée en texture, et fondue par-dessus le spectrogramme — qui, lui, reste sur
+la carte et ne repasse jamais par là.
+
+À la taille d'une fenêtre, cela fait quelques mégaoctets par image. C'est le premier
+suspect si la fluidité manque, et c'est l'étape 6 qui le dira. Le remède, le jour
+venu, est de ne téléverser que ce qui a changé — mais mesurer d'abord.
+
+### Les trois pièges de l'étape 3
+
+**La file principale ne se vide pas toute seule.** Le modèle rend ses réponses sur le
+fil principal — l'analyse, le tempo, les accords, la batterie arrivent chacun par
+`DispatchQueue.main.async`. macOS et Windows ont une boucle d'évènements du système
+qui vide cette file ; SDL, non. La première fenêtre est restée sur « Lecture du
+fichier… » pour toujours, et l'on cherche alors du côté du décodeur une panne qui est
+celle de la boucle. Un `RunLoop.main.run(mode:before:)` par tour règle tout.
+
+**Cairo range ses pixels en ARGB dans l'ordre du processeur**, ce qui donne BGRA en
+mémoire sur une machine petit-boutienne — d'où `GL_BGRA` au téléversement. Et ils sont
+**prémultipliés**, d'où le mélange en `ONE, ONE_MINUS_SRC_ALPHA` et non le
+`SRC_ALPHA` habituel. Se tromper sur l'un ou l'autre donne une interface aux couleurs
+inversées ou aux bords sales, deux choses qu'on met du temps à ne plus trouver
+normales.
+
+**La surface de Cairo compte ses rangées depuis le haut, une texture depuis le bas.**
+Le retournement est dans le nuanceur de composition, sur une ligne, et nulle part
+ailleurs — c'est le même piège que celui du spectrogramme, à un étage de là.
+
+### Ce qui reste en attente, et le dit
+
+`SpectreLin/Plateforme.swift` remplit les protocoles du modèle, et chacun porte son
+étape :
+
+| | état |
+|---|---|
+| le rendu, le décodage du WAV, les réglages, la langue du système | fait |
+| le décodage de tout le reste | étape 4 |
+| le son qui sort | étape 5 |
+| la souris, le clavier, le sélecteur de fichiers | étape 6 |
+| les réglages écrits, les documents récents du système | étape 7 |
+| la séparation | étape 8 |
+
+**Ce qui attend ne ment pas.** Un lecteur muet est muet, une séparation absente
+s'annonce absente : le modèle et l'interface savent déjà traiter ces deux cas — c'est
+ce qui arrive sur une machine sans carte son ou sans les poids — et les faire passer
+par ce chemin-là plutôt que par un `fatalError` est ce qui permet à la fenêtre de
+s'ouvrir et de se juger dès maintenant.
+
+Une conséquence visible : **les lignes de grosse caisse et de claire sont pleines**
+là où le charleston montre ses coups un par un. Le relevé travaille sur le mélange,
+faute de séparation ; il verra les trois voies séparément à l'étape 8. Le dessin,
+lui, est juste — c'est la même `aire` qui trace le charleston correctement.
 
 ## Les pièges prévus
 

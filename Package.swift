@@ -60,6 +60,31 @@ let surLinux = false
 // par `LoadLibraryW` — voir la note en tête de `Sources/CPont/onnx.c` : rien n'est
 // lié, si bien qu'une application compilée avec la séparation s'ouvre quand même là
 // où la DLL n'est pas.
+/// Les chemins d'en-têtes que `pkg-config` donne pour une liste de modules.
+///
+/// **Le manifeste est du code, exécuté sur la machine qui construit** : on peut donc
+/// lui demander ce que la distribution a plutôt que d'écrire des chemins qui seront
+/// faux ailleurs. Cairo vit sous `/usr/include/cairo` sur Ubuntu et sous
+/// `/usr/include` sur d'autres ; aucune liste écrite à la main ne tient.
+func cheminsDe(_ modules: String) -> [String] {
+    #if os(Linux)
+    let processus = Process()
+    processus.executableURL = URL(fileURLWithPath: "/usr/bin/pkg-config")
+    processus.arguments = ["--cflags-only-I"] + modules.split(separator: " ").map(String.init)
+    let tuyau = Pipe()
+    processus.standardOutput = tuyau
+    guard (try? processus.run()) != nil else { return [] }
+    let donnees = tuyau.fileHandleForReading.readDataToEndOfFile()
+    processus.waitUntilExit()
+    guard processus.terminationStatus == 0,
+          let sortie = String(data: donnees, encoding: .utf8) else { return [] }
+    return sortie.split(separator: " ").map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { $0.hasPrefix("-I") }
+    #else
+    return []
+    #endif
+}
+
 let racineDuPaquet = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 let onnxInclude = racineDuPaquet
     .appendingPathComponent("build/onnxruntime/include", isDirectory: true)
@@ -343,8 +368,9 @@ if surWindows {
         .target(
             name: "CPont",
             path: "Sources/CPont",
-            // Le pont OpenGL est le jumeau de `d3d11.c`, et n'a rien à faire ici.
-            exclude: ["gl.c"],
+            // Les deux ponts de Linux — OpenGL et Cairo — sont les jumeaux de
+            // `d3d11.c` et `direct2d.cpp`, et n'ont rien à faire ici.
+            exclude: ["gl.c", "cairo.c"],
             cSettings: avecOnnx
                 ? [.define("SPECTRE_ONNX"),
                    // `unsafeFlags` plutôt que `headerSearchPath` : les en-têtes sont
@@ -466,7 +492,7 @@ if surWindows {
 }
 
 if surLinux {
-    cibles += modulesPartages(avecLeDessin: false) + [
+    cibles += modulesPartages(avecLeDessin: true) + [
         // Le pont vers OpenGL. Le jumeau de la déclaration Windows, en beaucoup plus
         // court : il n'y a ni vocabulaire COM à tenir, ni moteur d'inférence à
         // trouver, et `epoxy` remplace le chargeur de pointeurs de fonctions.
@@ -476,16 +502,26 @@ if surLinux {
         .target(
             name: "CPont",
             path: "Sources/CPont",
-            sources: ["gl.c"],
+            sources: ["gl.c", "cairo.c"],
             cSettings: [
                 // SDL3 est construite depuis les sources — la 24.04 ne livre que la
                 // 2 — et s'installe donc sous `/usr/local`. Voir `machine.sh`.
-                .unsafeFlags(["-I/usr/local/include"]),
+                //
+                // Cairo, Pango et leurs dépendances sont, elles, dans la
+                // distribution : `pkg-config` en donne les chemins, et les recopier
+                // à la main ici les ferait diverger à la première mise à jour.
+                .unsafeFlags(["-I/usr/local/include"]
+                             + cheminsDe("cairo pango pangocairo glib-2.0")),
             ],
             linkerSettings: [
                 .unsafeFlags(["-L/usr/local/lib"]),
                 .linkedLibrary("SDL3"),
                 .linkedLibrary("epoxy"),
+                .linkedLibrary("cairo"),
+                .linkedLibrary("pango-1.0"),
+                .linkedLibrary("pangocairo-1.0"),
+                .linkedLibrary("gobject-2.0"),
+                .linkedLibrary("glib-2.0"),
             ]
         ),
         // SDL3, vue de Swift. `pkgConfig` la trouve où `machine.sh` l'a posée ;
@@ -502,8 +538,8 @@ if surLinux {
         // rendu lui-même étant partagé.
         .target(
             name: "SpectreLin",
-            dependencies: ["SpectreCore", "SpectreDSP", "SpectreModele", "CPont",
-                           "SpectreToile"],
+            dependencies: ["SpectreCore", "SpectreDSP", "SpectreTextes",
+                           "SpectreModele", "CPont", "SpectreToile"],
             path: "Sources/SpectreLin",
             swiftSettings: reglagesRelease
         ),
@@ -512,8 +548,9 @@ if surLinux {
         // est l'étape 4, les gestes la 6, et le dessin par-dessus la 3.
         .executableTarget(
             name: "SpectreLinux",
-            dependencies: ["SpectreCore", "SpectreDSP", "SpectreModele",
-                           "SpectreLin", "SpectreToile", "CSDL"],
+            dependencies: ["SpectreCore", "SpectreDSP", "SpectreTextes",
+                           "SpectreModele", "SpectreLin", "SpectreToile",
+                           "SpectreDessin", "CSDL"],
             path: "Sources/SpectreLinux",
             swiftSettings: reglagesRelease
         ),
@@ -526,7 +563,7 @@ if surLinux {
             path: "Tools/RenduCheck"
         ),
     ]
-    produits += produitsPartages(avecLeDessin: false) + [
+    produits += produitsPartages(avecLeDessin: true) + [
         .library(name: "SpectreLin", type: .static, targets: ["SpectreLin"]),
         .executable(name: "SpectreLinux", targets: ["SpectreLinux"]),
         .executable(name: "RenduCheck", targets: ["RenduCheck"]),

@@ -1,8 +1,10 @@
 import CSDL
 import Foundation
 import SpectreCore
+import SpectreDessin
 import SpectreLin
 import SpectreModele
+import SpectreTextes
 import SpectreToile
 
 // Spectre sous Linux — la fenêtre.
@@ -11,23 +13,54 @@ import SpectreToile
 //     SpectreLinux morceau.wav --photo image.ppm      ouvre, photographie, et sort
 //     SpectreLinux morceau.wav --taille 1700x343      la taille de l'image
 //     SpectreLinux morceau.wav --gris                 sans la palette des notes
+//     SpectreLinux morceau.wav --sans-habillage       ni réglette, ni batterie, ni barre
+//     SpectreLinux morceau.wav --reglages             le panneau ouvert dès le départ
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // CE QUE CE FICHIER EST, ET CE QU'IL N'EST PAS ENCORE
 //
-// À l'étape 2 du portage, il ouvre un WAV, l'analyse et montre sa décomposition.
-// Rien d'autre : pas de son, pas de gestes, rien de dessiné par-dessus. C'est
-// délibéré — chaque étape se juge seule, et une fenêtre qui montre le
-// spectrogramme est exactement ce qu'il fallait prouver.
+// L'application est assemblée ici, et nulle part ailleurs : le comportement vit
+// dans `SpectreModele`, le dessin dans `SpectreDessin`, les pièces de Linux dans
+// `SpectreLin`, et ce fichier ne fait que les brancher les unes aux autres, puis
+// tourner.
 //
-// **Le WAV et rien d'autre**, parce que `WAVFile` est dans le noyau et ne dépend
-// d'aucun décodeur du système. Ouvrir un MP3 est l'étape 4, et la faire ici
-// mélangerait deux questions : « le nuanceur affiche-t-il juste ? » et « le
-// décodeur rend-il le bon signal ? ».
+// À l'étape 3, il n'y a **pas de gestes** : la souris et le clavier sont l'étape 6.
+// La fenêtre montre le morceau entier, avec toute son interface, et se ferme par
+// Échap. Ce qui manque au reste — le son, la séparation, le décodage d'autre chose
+// qu'un WAV — est dit dans `SpectreLin/Plateforme.swift`, étape par étape.
 //
-// Le pendant Windows de ce fichier fait mille lignes. Celui-ci en fait deux cents,
-// et l'écart n'est pas une avance : c'est tout ce qui reste à écrire.
+// Le pendant Windows de ce fichier fait mille lignes. Celui-ci en fait deux cent
+// cinquante, et l'écart est précisément ce que les étapes 4 à 8 vont combler.
 // ─────────────────────────────────────────────────────────────────────────────
+
+// MARK: - Le modèle, muni de ce que Linux lui fournit
+
+/// Le `typealias` fait que tout ce qui écrit `AppModel` continue de l'écrire. Le
+/// modèle est générique sur son lecteur — parce que l'interface observe
+/// `model.player.speed` et qu'un protocole existentiel romprait ce suivi — mais rien
+/// d'autre n'a de raison de porter ce détail.
+typealias AppModel = SpectreModele.AppModel<LecteurLinux>
+
+// Et le même rebouclage pour ce qui dessine. Ces quatre types sont partagés avec
+// Windows et portent donc le lecteur en paramètre ; les rattacher ici une fois fait
+// que pas un appel de ce fichier ne montre la généricité.
+typealias Frise = SpectreDessin.Frise<LecteurLinux>
+typealias Batterie = SpectreDessin.Batterie<LecteurLinux>
+typealias Barre = SpectreDessin.Barre<LecteurLinux>
+typealias Commandes = SpectreDessin.Commandes<LecteurLinux>
+
+extension SpectreModele.AppModel where Lecteur == LecteurLinux {
+    /// L'assemblage Linux : à chaque protocole du modèle, sa mise en œuvre.
+    convenience init() {
+        self.init(lecteur: LecteurLinux(),
+                  décodeur: DecodeurLinux(),
+                  sinusoide: SinusoideLinux(),
+                  pistes: RangementLinux(),
+                  dialogue: DialogueLinux(),
+                  récentsDuSystème: RecentsLinux(),
+                  préférences: PreferencesLinux.partagees)
+    }
+}
 
 // MARK: - Les arguments
 
@@ -36,12 +69,9 @@ func valeur(_ nom: String) -> String? {
     guard let i = arguments.firstIndex(of: nom), i + 1 < arguments.count else { return nil }
     return arguments[i + 1]
 }
-let positionnels = arguments.filter { !$0.hasPrefix("--") }
-    .filter { argument in
-        // Ce qui suit une option n'est pas un fichier.
-        guard let i = arguments.firstIndex(of: argument), i > 0 else { return true }
-        return !arguments[i - 1].hasPrefix("--")
-    }
+let positionnels = arguments.enumerated().filter { i, mot in
+    !mot.hasPrefix("--") && (i == 0 || !arguments[i - 1].hasPrefix("--"))
+}.map(\.element)
 
 guard let premier = positionnels.first else {
     Journal.erreur("usage : SpectreLinux morceau.wav [--photo image.ppm]")
@@ -60,27 +90,13 @@ let tailleVoulue: (largeur: Int32, hauteur: Int32)? = valeur("--taille").flatMap
     return (l, h)
 }
 
-// MARK: - L'analyse
-
-let contenu: WAVFile.Contents
-do {
-    contenu = try WAVFile.read(at: entree)
-} catch {
-    Journal.erreur("\(error)")
-    exit(1)
-}
-
-var reglages = AnalysisSettings()
-let spectrogramme = OfflineAnalysis.run(samples: contenu.mono,
-                                        sampleRate: contenu.sampleRate,
-                                        settings: reglages)
-guard spectrogramme.columnCount > 0 else {
-    Journal.erreur("Le morceau est trop court pour être analysé.")
-    exit(1)
-}
-Journal.note(String(format: "%@ — %.1f s, %d colonnes × %d lignes",
-                    entree.lastPathComponent, contenu.duration,
-                    spectrogramme.columnCount, spectrogramme.binCount))
+/// Faux avec `--sans-habillage` : ni réglette, ni grille, ni batterie, ni barre.
+///
+/// Ce n'est pas un mode d'usage, c'est un instrument. La surimpression couvre une
+/// partie de l'image, si bien qu'une photographie habillée ne se compare plus au
+/// rendu du processeur : `ImageCheck` trouverait un désaccord partout où passe un
+/// trait de grille.
+let habille = !arguments.contains("--sans-habillage")
 
 // MARK: - La fenêtre
 
@@ -96,28 +112,52 @@ SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3)
 SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3)
 SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, Int32(SDL_GL_CONTEXT_PROFILE_CORE))
 
-let largeurDepart = tailleVoulue?.largeur ?? 1200
-let hauteurDepart = tailleVoulue?.hauteur ?? 700
 // `HIGH_PIXEL_DENSITY` : sans lui, SDL rend une fenêtre en points et le
-// spectrogramme sortirait flou sur un écran dense — ce que la version Mac ne fait
-// pas, et ce qui se remarque immédiatement sur les raies.
+// spectrogramme sortirait flou sur un écran dense — ce qui se remarque immédiatement
+// sur les raies.
 let drapeaux = SpectreFenetreOpenGL | SpectreFenetreRedimensionnable | SpectreFenetreDense
 guard let fenetre = SDL_CreateWindow(entree.lastPathComponent,
-                                     largeurDepart, hauteurDepart, drapeaux) else {
-    Journal.erreur("fenêtre : \(String(cString: SDL_GetError()))")
+                                     tailleVoulue?.largeur ?? 1200,
+                                     tailleVoulue?.hauteur ?? 700, drapeaux) else {
+    Journal.erreur("SDL a refusé d'ouvrir une fenêtre : \(String(cString: SDL_GetError()))")
     exit(1)
 }
 defer { SDL_DestroyWindow(fenetre) }
 
 guard let rendu = RenduGL(fenetreSDL: UnsafeMutableRawPointer(fenetre)) else {
+    Journal.erreur("OpenGL 3.3 n'a pas démarré : pas de carte graphique utilisable, "
+                   + "ou un pilote trop ancien.")
     exit(1)
 }
 Journal.note("Carte : \(rendu.nomDeLaCarte)")
 
+// La surimpression n'est pas indispensable au spectrogramme : si Cairo manque,
+// l'image reste et l'on perd la réglette. Mieux vaut une application amputée qu'une
+// application qui refuse de s'ouvrir.
+let avecSurimpression = habille && rendu.preparerLaSurimpression()
+
 // MARK: - Ce qu'on montre
 
-rendu.layout = spectrogramme.layout
-rendu.upload(spectrogramme)
+// La langue avant tout le reste : ce qui s'affiche est traduit, et le catalogue doit
+// être posé avant que la première image soit dessinée.
+Textes.demarrer(choix: nil, notes: nil,
+                etiquettesDuSysteme: PreferencesLinux.languesDuSysteme)
+
+let modele = AppModel()
+modele.renderer = rendu
+rendu.origineDesTeintes = PreferencesLinux.partagees.hueOrigin
+modele.open(entree)
+
+let panneau = Panneau()
+if arguments.contains("--reglages") { panneau.ouvert = true }
+/// Ce qui ne se replie jamais : les quatre pistes et la porte des réglages.
+let flottant = Flottant()
+/// Ce que dit la commande qu'on survole. Partagée par le panneau et la colonne : il
+/// n'y a qu'une souris, donc qu'une bulle à l'écran.
+let infobulle = Infobulle()
+let commandes = Commandes(modele: modele, preferences: PreferencesLinux.partagees)
+
+if arguments.contains("--gris") { modele.display.colorMap = .gray }
 
 /// Le rapport entre pixels et points, tel que le compositeur le donne.
 ///
@@ -128,57 +168,134 @@ func echelleDeLaFenetre() -> Double {
     Double(SDL_GetWindowPixelDensity(fenetre))
 }
 
-/// Cadre le morceau entier dans la fenêtre.
-///
-/// Le même cadrage que celui d'un fichier qu'on vient d'ouvrir sur le Mac : tout le
-/// morceau de bout en bout, et toute la hauteur de l'axe des fréquences.
-func cadrerEntier() {
+func taillePoints() -> (largeur: Double, hauteur: Double) {
     var l: Int32 = 0, h: Int32 = 0
     SDL_GetWindowSizeInPixels(fenetre, &l, &h)
     let echelle = echelleDeLaFenetre()
-    let largeurPoints = Double(l) / echelle
-    let hauteurPoints = Double(h) / echelle
-    guard largeurPoints > 0, hauteurPoints > 0 else { return }
-
-    var vue = Viewport()
-    vue.startColumn = 0
-    vue.columnsPerPoint = Double(spectrogramme.columnCount) / largeurPoints
-    vue.bottomBin = 0
-    vue.binsPerPoint = Double(spectrogramme.binCount) / hauteurPoints
-    rendu.viewport = vue
+    return (Double(l) / echelle, Double(h) / echelle)
 }
-cadrerEntier()
 
-var affichage = DisplaySettings()
-// `--gris` retire la palette des notes. C'est un instrument, pas un mode d'usage :
-// il sépare deux questions que la couleur mêle — « les niveaux sont-ils justes ? »
-// et « la classe de hauteur est-elle la bonne ? ».
-if arguments.contains("--gris") { affichage.colorMap = .gray }
-// Le même réglage automatique que dans l'application : sans lui, l'image d'un
-// morceau réel est soit blanche soit noire, et ne dit rien.
-if let regle = AutoContrast.settings(basedOn: affichage, in: spectrogramme) {
-    affichage = regle
+/// Hauteur de la zone du spectrogramme, en points : la fenêtre moins la ligne de
+/// batterie et la barre d'état.
+///
+/// C'est **cette hauteur-là** que le modèle reçoit, et non celle de la fenêtre : tout
+/// ce qu'il calcule — la bande passante du filtre, l'aimantation, le contraste
+/// automatique — porte sur ce qu'on voit du spectre, pas sur ce que la fenêtre mesure.
+func hauteurDeLImage(_ hauteurTotale: Double) -> Double {
+    guard habille else { return hauteurTotale }
+    return max(hauteurTotale - hauteurDeLaBatterie - hauteurDeLaBarre, 60)
 }
-rendu.display = affichage
 
-// MARK: - La boucle
+/// Le nuanceur raisonne en colonnes : la conversion se fait ici, une fois.
+func colonne(deLInstant t: Double) -> Double? {
+    let matrice = modele.spectrogram
+    guard matrice.columnCount > 0, matrice.secondsPerColumn > 0 else { return nil }
+    return matrice.column(atTime: t)
+}
 
-func dessinerUneImage() {
+// MARK: - Une image
+
+/// Vide la file principale, et c'est indispensable.
+///
+/// Le modèle rend ses réponses **sur le fil principal** — l'analyse, le tempo, les
+/// accords, la batterie arrivent chacun quand ils sont prêts, par
+/// `DispatchQueue.main.async`. Sur macOS et sous Windows, la boucle d'évènements du
+/// système vide cette file toute seule ; SDL, non. Sans cet appel, la fenêtre reste
+/// à « Lecture du fichier… » pour toujours, et l'on cherche du côté du décodeur une
+/// panne qui est celle de la boucle.
+func viderLaFilePrincipale() {
+    _ = RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.001))
+}
+
+func uneImage() {
     var l: Int32 = 0, h: Int32 = 0
     SDL_GetWindowSizeInPixels(fenetre, &l, &h)
     rendu.redimensionner(largeur: Int(l), hauteur: Int(h))
-    rendu.dessiner(echelle: echelleDeLaFenetre())
+
+    let echelle = echelleDeLaFenetre()
+    let points = taillePoints()
+    let hauteurImage = hauteurDeLImage(points.hauteur)
+    modele.tick(viewSize: CGSize(width: points.largeur, height: hauteurImage))
+
+    rendu.viewport = modele.viewport
+    rendu.display = modele.display
+    rendu.teteDeLecture = colonne(deLInstant: modele.playhead)
+    rendu.boucle = modele.loop.flatMap { plage in
+        guard let debut = colonne(deLInstant: plage.lowerBound),
+              let fin = colonne(deLInstant: plage.upperBound), fin > debut
+        else { return nil }
+        return debut...fin
+    }
+    // Sans habillage, le spectrogramme prend toute la fenêtre : c'est ce qui rend la
+    // photographie comparable au rendu du processeur, qui n'a ni réglette ni ligne de
+    // batterie.
+    let zone = habille ? hauteurImage : points.hauteur
+    rendu.zone(largeur: points.largeur, hauteur: zone, echelle: echelle)
+    rendu.dessiner(echelle: echelle)
+    guard avecSurimpression else { return }
+
+    // Et par-dessus, tout ce qui est du texte et des traits. Une seule présentation
+    // part : Cairo écrit dans une surface que le nuanceur de composition pose sur
+    // l'image que la carte vient de remplir.
+    rendu.surimprimer(echelle: echelle) { pinceau in
+        Frise(modele: modele, pinceau: pinceau,
+              largeur: points.largeur, hauteur: hauteurImage).dessiner()
+        Batterie(modele: modele, pinceau: pinceau, largeur: points.largeur,
+                 haut: hauteurImage, hauteur: hauteurDeLaBatterie).dessiner()
+        // Le panneau vient après la frise et avant la barre : il flotte sur l'image,
+        // et la barre d'état reste lisible par-dessus tout.
+        panneau.dessiner(pinceau: pinceau, infobulle: infobulle,
+                         largeurFenetre: points.largeur,
+                         hauteurUtile: points.hauteur - hauteurDeLaBarre) {
+            commandes.dessiner(dans: $0)
+        }
+        // La colonne par-dessus le panneau, et non l'inverse : elle est ce qui ne se
+        // replie jamais, et le panneau vient se ranger à sa gauche.
+        flottant.dessiner(pinceau: pinceau, infobulle: infobulle,
+                          largeurFenetre: points.largeur,
+                          modele: modele, panneauOuvert: panneau.ouvert) {
+            panneau.ouvert.toggle()
+        }
+        Barre(modele: modele, pinceau: pinceau, largeur: points.largeur,
+              haut: points.hauteur - hauteurDeLaBarre,
+              hauteur: hauteurDeLaBarre).dessiner()
+        // L'infobulle en dernier, et hors de toute découpe : elle se pose à gauche de
+        // la commande survolée, donc en dehors du panneau qui la couperait net.
+        infobulle.dessiner(pinceau, largeurFenetre: points.largeur,
+                           hauteurFenetre: points.hauteur)
+    }
 }
 
+// MARK: - La photographie, et la boucle
+
 // La photographie sort **avant** la boucle d'évènements : c'est ce qui permet de
-// juger l'image depuis une machine sans écran, et de la comparer au rendu
-// processeur par `ImageCheck`. Voir l'usage en tête de fichier.
+// juger l'image depuis une machine sans écran, et de la comparer au rendu processeur
+// par `ImageCheck`.
 if let photo {
-    dessinerUneImage()
+    // Quelques tours : l'ouverture est asynchrone — analyse, tempo, accords, batterie
+    // arrivent chacun quand ils sont prêts — et photographier la première image
+    // rendrait une fenêtre vide.
+    // `status` est ce que la barre d'état montre : il porte l'analyse, puis le
+    // relevé de la batterie, puis celui des accords, et retombe à rien quand tout est
+    // là. Photographier avant, c'est photographier une application à moitié chargée
+    // et croire ensuite que la ligne de batterie est cassée.
+    var repos = 0
+    for _ in 0..<900 {
+        viderLaFilePrincipale()
+        uneImage()
+        if modele.spectrogram.columnCount > 0, modele.status == nil {
+            repos += 1
+            if repos > 20 { break }
+        } else {
+            repos = 0
+        }
+        usleep(10_000)
+    }
+    uneImage()
     if let pixels = rendu.relire() {
-        var entete = Data("P6\n\(rendu.largeur) \(rendu.hauteur)\n255\n".utf8)
-        entete.append(contentsOf: pixels)
-        try? entete.write(to: URL(fileURLWithPath: photo))
+        var image = Data("P6\n\(rendu.largeur) \(rendu.hauteur)\n255\n".utf8)
+        image.append(contentsOf: pixels)
+        try? image.write(to: URL(fileURLWithPath: photo))
         Journal.note("→ \(photo)")
     } else {
         Journal.erreur("la relecture de l'image a échoué")
@@ -194,18 +311,20 @@ while tourne {
         switch SDL_EventType(rawValue: evenement.type) {
         case SDL_EVENT_QUIT:
             tourne = false
-        case SDL_EVENT_WINDOW_RESIZED, SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-            // Le cadrage suit la fenêtre : ce qu'on voyait de bout en bout le reste
-            // quand on l'élargit. Le tourne-page et le zoom sont l'étape 6.
-            cadrerEntier()
         case SDL_EVENT_KEY_DOWN:
-            if evenement.key.key == SDLK_ESCAPE || evenement.key.key == SDLK_Q {
-                tourne = false
+            // Les gestes sont l'étape 6 ; il n'y a ici que de quoi fermer, et de quoi
+            // ouvrir le panneau pour pouvoir le regarder.
+            switch evenement.key.key {
+            case SDLK_ESCAPE, SDLK_Q: tourne = false
+            case SDLK_R: panneau.ouvert.toggle()
+            default: break
             }
         default:
             break
         }
     }
-    dessinerUneImage()
+    viderLaFilePrincipale()
+    uneImage()
     rendu.presenter()
 }
+modele.applicationVaSeFermer()
