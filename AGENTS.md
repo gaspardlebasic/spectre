@@ -230,6 +230,77 @@ chemin numérique portable.
 - `## Ce qui n'est pas encore là`, à la fin du README, tient la liste des manques
   assumés.
 
+## Les skills
+
+`.claude/skills/` et `.claude/agents/` sont **dans le dépôt**, et non dans
+`~/.claude` : tout agent qui ouvre ce dossier les voit, sans rien installer. Ce
+sont des **copies figées** — pas des sous-modules —, donc elles ne bougent que
+lorsqu'on les retélécharge exprès.
+
+| Skill | Ce qu'elle donne | Déclenchement |
+|-------|------------------|---------------|
+| `thermos` | Lance en parallèle les deux revues ci-dessous et fond leurs verdicts en un seul. | à la main |
+| `thermo-nuclear-review` | Audit d'une branche : bugs, ruptures, sécurité, régressions d'usage. | à la main |
+| `thermo-nuclear-code-quality-review` | Audit de maintenabilité : fichiers qui enflent, abstractions creuses, conditions en plat de nouilles. | à la main |
+| `improve-codebase-architecture` | Cherche les modules trop plats, en fait un rapport HTML hors dépôt, puis passe au gril celui qu'on choisit. | à la main |
+| `codebase-design` | Le vocabulaire de conception — module, interface, profondeur, couture, adaptateur — dont les autres dépendent. | à la demande du modèle |
+| `grilling` | L'interrogatoire par tours : questions numérotées, chacune avec sa réponse recommandée. | à la demande du modèle |
+| `domain-modeling` | Tenir le vocabulaire du domaine et écrire les décisions prises. | à la demande du modèle |
+| `tdd` | Rouge → vert : ce qu'est un test qui survit à une réécriture, et où il se pose. | à la demande du modèle |
+| `diagnosing-bugs` | La discipline des bugs durs : d'abord construire une boucle qui vire au rouge sur *ce* bug-là. | à la demande du modèle |
+
+« À la main » veut dire que la skill porte `disable-model-invocation: true` : elle
+ne part que si on la nomme (`/thermos`, `/improve-codebase-architecture`). Les
+cinq autres, un agent peut les ouvrir de lui-même quand le sujet s'y prête.
+
+**Rien de tout cela n'est optionnel.** `improve-codebase-architecture` appelle
+`codebase-design`, `grilling` et `domain-modeling` par leur nom et s'arrête sans
+elles ; `thermos` appelle ses deux sous-agents de `.claude/agents/` par le leur.
+Le nom du dossier doit rester égal au champ `name:` du `SKILL.md` qu'il contient,
+sinon la skill n'est simplement pas découverte.
+
+**D'où elles viennent.** `thermos`, les deux `thermo-nuclear-*` et les deux
+sous-agents : `cursor/plugins`, dossier `thermos/`, commit
+`46125561306434d8a1d7745d540d8932ab0cd2a2`. Les cinq autres :
+`mattpocock/skills`, `main` au 24 août 2026, soit
+`6654f6b60cd9d5be8b54c6fafe44346dabeb3b76`. Mettre à jour, c'est retélécharger à
+un commit choisi et le commettre en corrigeant ces deux numéros ici. Le
+`code-review` de mattpocock n'est **pas** installé : le `/code-review` de Claude
+Code fait déjà ce travail, et deux revues qui se contredisent ne valent pas mieux
+qu'une.
+
+**Ce qu'il faut leur retrancher, ici.** Elles sont écrites en anglais et pour des
+dépôts qui ne sont pas celui-ci :
+
+- Ce qui atterrit dans le dépôt reste **en français**, quoi qu'en dise une skill —
+  règle 1 de la maison. La conversation, elle, peut se tenir dans leur langue.
+- Elles supposent un `CONTEXT.md` à la racine et des ADR dans `docs/adr/` : il n'y
+  en a **ni l'un ni l'autre**. Le vocabulaire du domaine, ce sont le README et les
+  six étages plus haut ; les décisions déjà prises sont dans ce fichier et dans
+  [docs/RAPPORTS.md](docs/RAPPORTS.md). C'est là qu'il faut lire, et là qu'il faut
+  écrire — un second glossaire qui divergerait du README coûterait plus qu'il ne
+  rapporte.
+- `grilling` interroge l'auteur : ses questions portent sur le **comportement de
+  l'application**, jamais sur un choix d'implémentation à arbitrer (règle 2). Le
+  reste se tranche seul.
+- **Les conventions d'épreuve du dépôt priment sur les conseils génériques de
+  `tdd`.** Il n'y a pas de framework de test ici : l'épreuve, ce sont les harnais
+  de `Tools/` que `check.sh` enchaîne, `./essai.sh` qui y ajoute l'application, et
+  `build/essai/fenetre.png` qu'on regarde. Un contrôle neuf s'ajoute donc à un
+  harnais existant, ou en devient un dans `Tools/`, et se branche dans `check.sh`
+  ou `essai.sh` — sinon personne ne le repassera. Les coutures, elles, sont déjà
+  posées : ce sont les six étages et les protocoles de
+  `Sources/SpectreModele/Plateforme.swift` ; les rouvrir à chaque cycle, comme
+  `tdd` le demande, n'a pas de sens. Et le « code-review skill » qu'il cite est
+  ici `/code-review`.
+- `diagnosing-bugs` insiste pour construire une boucle de retour avant de
+  chercher : elle existe déjà, c'est le morceau témoin, identique à l'octet près
+  d'une exécution à l'autre. Commencer par lui plutôt que par un harnais jetable.
+
+**Elles n'apparaissent qu'au démarrage suivant** : la liste des skills est lue une
+fois, à l'ouverture de la session. En ajouter une pendant qu'on travaille ne la
+rend pas visible ; il faut relancer.
+
 ## Les commits
 
 Une phrase en français, à l'indicatif, qui dit ce que le dépôt sait faire de plus
