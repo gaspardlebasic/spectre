@@ -1,4 +1,6 @@
 import Foundation
+import SpectreDessin
+import SpectreToile
 import SpectreCore
 import SpectreModele
 import SpectreWin
@@ -30,10 +32,6 @@ import WinSDK
 // conflit avec rien : la molette et le glisser sont deux gestes différents.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Hauteur de la réglette du haut, en points. La même valeur que dans la vue
-/// macOS : c'est elle qui décide où un glisser trace une boucle plutôt que de
-/// déplacer la tête.
-let hauteurDeLaReglette = 20.0
 /// À quelle distance d'un bord de boucle on l'attrape.
 let priseDuBord = 7.0
 

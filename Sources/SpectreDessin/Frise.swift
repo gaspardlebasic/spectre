@@ -2,7 +2,7 @@ import Foundation
 import SpectreCore
 import SpectreTextes
 import SpectreModele
-import SpectreWin
+import SpectreToile
 
 // Les repères dessinés par-dessus le spectrogramme.
 //
@@ -24,20 +24,34 @@ import SpectreWin
 /// `drumLaneHeight` — où elle est une vue à part sous le spectrogramme. Trois
 /// rangées de dix-sept points, plus les écarts : soixante-deux exactement, et pas
 /// une de plus, sinon la bande garde une lisière noire qui a l'air d'un oubli.
-let hauteurDeLaBatterie = 62.0
+public let hauteurDeLaBatterie = 62.0
 /// Hauteur de la barre d'état, tout en bas.
-let hauteurDeLaBarre = 30.0
+public let hauteurDeLaBarre = 30.0
+/// Hauteur de la réglette du haut, en points. La même valeur que dans la vue
+/// macOS. Elle est ici, avec les deux autres, parce qu'elle décide à la fois de ce
+/// qui se dessine et de l'endroit où un glisser trace une boucle plutôt que de
+/// déplacer la tête : les deux doivent lire le même nombre, sinon la zone sensible
+/// se décolle de la zone dessinée.
+public let hauteurDeLaReglette = 20.0
 
-struct Frise {
-    let modele: AppModel
+public struct Frise<Lecteur: LecteurAudio> {
+    let modele: AppModel<Lecteur>
     let pinceau: Pinceau
     /// Taille de la zone du spectrogramme, en points — barre et batterie exclues.
     let largeur: Double
     let hauteur: Double
 
+    public init(modele: AppModel<Lecteur>, pinceau: Pinceau,
+                largeur: Double, hauteur: Double) {
+        self.modele = modele
+        self.pinceau = pinceau
+        self.largeur = largeur
+        self.hauteur = hauteur
+    }
+
     var bandeDesAccords: Double { Reglages.chordBandHeight }
 
-    func dessiner() {
+    public func dessiner() {
         guard modele.spectrogram.columnCount > 0 else {
             attente()
             return
@@ -265,7 +279,7 @@ struct Frise {
         NotePalette.color(pitchClass: ((classe % 12) + 12) % 12,
                           intensity: 0.9,
                           saturation: modele.display.noteSaturation,
-                          origin: PreferencesWindows.partagees.hueOrigin)
+                          origin: modele.préférences.hueOrigin)
     }
 
     private func teinte(_ c: (r: Double, g: Double, b: Double), _ opacite: Double) -> UInt32 {
@@ -296,7 +310,7 @@ struct Frise {
                         Pinceau.jaune(active ? 0.3 : 0.12))
 
         // Longueur du passage, en secondes et — si la grille est là — en mesures.
-        var nom = AppModel.format(plage.upperBound - plage.lowerBound)
+        var nom = AppModel<Lecteur>.format(plage.upperBound - plage.lowerBound)
         if let tempo = modele.tempo, tempo.barSeconds > 0 {
             let mesures = (plage.upperBound - plage.lowerBound) / tempo.barSeconds
             nom += String(format: "  ·  %.2g ", mesures) + T(.uniteMesures)
@@ -321,7 +335,7 @@ struct Frise {
             guard t >= 0 else { continue }
             let x = modele.point(ofTime: t)
             pinceau.vertical(x: x, de: 0, a: hauteurDeLaReglette, Pinceau.blanc(0.3))
-            pinceau.texte(AppModel.format(t), x: x + 4, y: hauteurDeLaReglette / 2,
+            pinceau.texte(AppModel<Lecteur>.format(t), x: x + 4, y: hauteurDeLaReglette / 2,
                           largeur: 60, taille: 9, Pinceau.blanc(0.6), police: .chiffres)
         }
     }
@@ -362,14 +376,14 @@ struct Frise {
                                           referenceA: modele.display.referenceA,
                                           flats: modele.display.useFlats,
                                           withOctave: false),
-                           accroche.frequency, AppModel.format(accroche.time))
+                           accroche.frequency, AppModel<Lecteur>.format(accroche.time))
         } else {
             // Rien d'assez clair alentour : on retombe sur la lecture brute.
             let frequence = modele.frequency(atPoint: survol.y)
             ancre = survol
             pinceau.tracer(0, survol.y, largeur, survol.y, Pinceau.blanc(0.18))
             texte = String(format: "%.1f Hz   %@", frequence,
-                           AppModel.format(modele.time(atPoint: survol.x)))
+                           AppModel<Lecteur>.format(modele.time(atPoint: survol.x)))
         }
 
         let l = pinceau.largeur(texte, taille: 11)

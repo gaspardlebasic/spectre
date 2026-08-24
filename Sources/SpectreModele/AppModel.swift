@@ -34,7 +34,10 @@ private let dureeDuTournePage = 0.32
     @ObservationIgnored private let pistes: ServiceDeSeparation
     @ObservationIgnored private let dialogue: DialogueFichier
     @ObservationIgnored private let récentsDuSystème: DocumentsRecents
-    @ObservationIgnored private let préférences: PreferencesGlobales
+    /// Lisibles de l'extérieur, et en lecture seule : le dessin y prend l'origine
+    /// des teintes, qui décide de la couleur des noms de notes. Les *écrire* est le
+    /// métier du panneau, qui tient sa propre référence — voir `ReglagesModifiables`.
+    @ObservationIgnored public let préférences: PreferencesGlobales
 
     public private(set) var source: AudioSource?
     public private(set) var spectrogram = Spectrogram.empty
@@ -785,6 +788,12 @@ private let dureeDuTournePage = 0.32
     }
 
     public var hasModel: Bool { pistes.modeleDisponible }
+    /// Les poids seuls — pour que le panneau dise lequel des deux manque.
+    public var poidsPresents: Bool { pistes.poidsPresents }
+    /// Ce que les pistes séparées occupent, et de quoi tout jeter. Le panneau les
+    /// montre ; c'est le rangement qui sait.
+    public func tailleDuCache() -> Int { pistes.tailleDuCache() }
+    public func viderLeCache() { pistes.viderLeCache() }
 
     /// Garde ou retire une piste.
     ///

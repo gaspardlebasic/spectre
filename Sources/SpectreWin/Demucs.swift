@@ -208,3 +208,16 @@ public struct SeparateurWindows: StemSeparator {
         return sortie
     }
 }
+
+private extension String {
+    /// Le chemin en UTF-16 terminé par un zéro, ce que `LoadLibraryW` attend.
+    ///
+    /// Le dessin a le même convertisseur, dans `SpectreToile`, et les deux restent
+    /// chez eux : rien ne justifie qu'un module de dessin publie de quoi convertir
+    /// des chaînes pour que le chargeur de bibliothèques s'en serve.
+    func withUTF16Terminé<T>(_ corps: (UnsafePointer<UInt16>) -> T) -> T {
+        var unites = Array(utf16)
+        unites.append(0)
+        return unites.withUnsafeBufferPointer { corps($0.baseAddress!) }
+    }
+}

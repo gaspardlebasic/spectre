@@ -2,7 +2,7 @@ import Foundation
 import SpectreCore
 import SpectreTextes
 import SpectreModele
-import SpectreWin
+import SpectreToile
 
 // La barre du bas : où l'on en est, et ce qui se passe.
 //
@@ -21,22 +21,31 @@ import SpectreWin
 // cache ses raccourcis n'en a pas.
 // ─────────────────────────────────────────────────────────────────────────────
 
-struct Barre {
-    let modele: AppModel
+public struct Barre<Lecteur: LecteurAudio> {
+    let modele: AppModel<Lecteur>
     let pinceau: Pinceau
     let largeur: Double
     let haut: Double
     let hauteur: Double
 
-    func dessiner() {
+    public init(modele: AppModel<Lecteur>, pinceau: Pinceau,
+                largeur: Double, haut: Double, hauteur: Double) {
+        self.modele = modele
+        self.pinceau = pinceau
+        self.largeur = largeur
+        self.haut = haut
+        self.hauteur = hauteur
+    }
+
+    public func dessiner() {
         pinceau.remplir(0, haut, largeur, hauteur, Pinceau.gris(0.09, 1))
         pinceau.tracer(0, haut + 0.25, largeur, haut + 0.25, Pinceau.blanc(0.10))
         let milieu = haut + hauteur / 2
 
         // ── À gauche : le temps, en chasse fixe pour qu'il ne tremble pas ──────
         var x = 12.0
-        let position = AppModel.format(modele.playhead)
-        let duree = AppModel.format(modele.duration)
+        let position = AppModel<Lecteur>.format(modele.playhead)
+        let duree = AppModel<Lecteur>.format(modele.duration)
         pinceau.texte(modele.player.isPlaying ? "▶" : "❚❚", x: x, y: milieu,
                       largeur: 16, taille: 10, Pinceau.blanc(0.75))
         x += 22

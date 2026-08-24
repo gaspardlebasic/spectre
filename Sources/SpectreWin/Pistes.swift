@@ -305,6 +305,9 @@ public final class RangementWindows: ServiceDeSeparation {
     public init() {}
 
     public var modeleDisponible: Bool { Reseau.disponible }
+    public var poidsPresents: Bool { Reseau.fichier != nil }
+    public func tailleDuCache() -> Int { RangementDesPistes.taille() }
+    public func viderLeCache() { RangementDesPistes.vider() }
 
     public func estSepare(_ empreinte: String) -> Bool {
         RangementDesPistes.estSepare(empreinte)

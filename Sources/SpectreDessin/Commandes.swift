@@ -2,7 +2,7 @@ import Foundation
 import SpectreCore
 import SpectreTextes
 import SpectreModele
-import SpectreWin
+import SpectreToile
 
 // Ce que le panneau montre — le pendant de `Sources/Spectre/Controls.swift`.
 //
@@ -28,16 +28,19 @@ import SpectreWin
 // qu'ils changent sur plusieurs morceaux. Les valeurs d'origine sont celles qui
 // ont gagné cet accord ; les exposer ne servait qu'à les défaire.
 //
-// Elles vivent maintenant dans `ChordSettings()` et dans `PreferencesWindows`, en
+// Elles vivent maintenant dans `ChordSettings()` et dans les réglages de la plateforme, en
 // constantes — voir la note qui y est écrite.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Une classe et non une structure : le panneau est décrit à chaque image, et deux
 /// ou trois choses ne peuvent pas se relever aussi souvent — la taille du cache des
 /// pistes demande de parcourir un dossier de plusieurs gigaoctets.
-final class Commandes {
-    let modele: AppModel
-    let preferences: PreferencesWindows
+public final class Commandes<Lecteur: LecteurAudio> {
+    let modele: AppModel<Lecteur>
+    /// Ce que le panneau **écrit**, par opposition à ce que le modèle lit. Le
+    /// dessin étant partagé, il ne peut pas nommer la classe de réglages d'un
+    /// système en particulier — voir `ReglagesModifiables`.
+    let preferences: any ReglagesModifiables
 
     /// Ce que le dossier des pistes occupe, relevé de loin en loin.
     ///
@@ -46,7 +49,7 @@ final class Commandes {
     private var tailleDuCache = 0
     private var relevéLe = -1.0
 
-    init(modele: AppModel, preferences: PreferencesWindows) {
+    public init(modele: AppModel<Lecteur>, preferences: any ReglagesModifiables) {
         self.modele = modele
         self.preferences = preferences
     }
@@ -58,7 +61,7 @@ final class Commandes {
     /// vient en premier parce que **tout le reste en dépend** — sans grille, pas de
     /// barres de mesure, pas d'accords, pas de boucle calée. C'est le premier
     /// réglage qu'on vérifie en ouvrant un morceau.
-    func dessiner(dans panneau: Panneau) {
+    public func dessiner(dans panneau: Panneau) {
         tempo(panneau)
         lecture(panneau)
         image(panneau)
@@ -168,7 +171,7 @@ final class Commandes {
             .bouton(modele.player.isPlaying ? T(.lecturePause) : T(.lectureLire),
                     aide: T(.lectureLireAideWin),
                     actif: modele.duration > 0),
-            .valeur(AppModel.format(modele.playhead)),
+            .valeur(AppModel<Lecteur>.format(modele.playhead)),
             .bouton(T(.lectureNeutre),
                     aide: T(.lectureNeutreAide),
                     actif: !modele.player.isNeutral)
@@ -272,9 +275,9 @@ final class Commandes {
             modele.loopEnabled = boucler
         }
         if let plage = modele.loop {
-            p.note(T(.boucleDuAu, AppModel.format(plage.lowerBound),
-                     AppModel.format(plage.upperBound)),
-                   valeur: AppModel.format(plage.upperBound - plage.lowerBound))
+            p.note(T(.boucleDuAu, AppModel<Lecteur>.format(plage.lowerBound),
+                     AppModel<Lecteur>.format(plage.upperBound)),
+                   valeur: AppModel<Lecteur>.format(plage.upperBound - plage.lowerBound))
         } else {
             p.note(T(.boucleAucunPassage))
         }
@@ -303,8 +306,8 @@ final class Commandes {
         p.titre(T(.groupePistes), aide: T(.groupePistesAide))
 
         guard modele.hasModel else {
-            p.explication(Reseau.fichier == nil ? T(.pistesPoidsAbsentsWin)
-                                               : T(.pistesOnnxAbsent))
+            p.explication(modele.poidsPresents ? T(.pistesOnnxAbsent)
+                                               : T(.pistesPoidsAbsentsWin))
             return
         }
 
@@ -332,7 +335,7 @@ final class Commandes {
 
         p.air()
         p.note(T(.pistesCache), valeur: Self.enOctets(occupe()))
-        let paliers = PreferencesWindows.paliersDeCache
+        let paliers = Reglages.paliersDeCache
         if let choisi = p.segments(T(.pistesPlafond), paliers.map(Self.enOctets),
                                    paliers.firstIndex(of: preferences.cacheLimit) ?? 1,
                                    aide: T(.pistesPlafondAide)) {
@@ -342,7 +345,7 @@ final class Commandes {
         if p.boutons([T(.pistesViderLeCache)],
                      aides: [T(.pistesViderLeCacheAide)],
                      inactifs: occupe() == 0 ? [0] : []) == 0 {
-            RangementDesPistes.vider()
+            modele.viderLeCache()
             relevéLe = -1
         }
     }
@@ -351,7 +354,7 @@ final class Commandes {
     private func occupe() -> Int {
         let maintenant = Horloge.maintenant()
         if relevéLe < 0 || maintenant - relevéLe > 2 {
-            tailleDuCache = RangementDesPistes.taille()
+            tailleDuCache = modele.tailleDuCache()
             relevéLe = maintenant
         }
         return tailleDuCache

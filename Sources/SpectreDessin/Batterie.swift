@@ -1,7 +1,7 @@
 import Foundation
 import SpectreCore
 import SpectreModele
-import SpectreWin
+import SpectreToile
 
 // La ligne de batterie, sous le spectrogramme.
 //
@@ -10,8 +10,8 @@ import SpectreWin
 // près : zoomer, défiler et poser une boucle continuent donc de valoir pour elle,
 // et un coup se lit à l'aplomb de ce qui l'a produit dans l'image.
 
-struct Batterie {
-    let modele: AppModel
+public struct Batterie<Lecteur: LecteurAudio> {
+    let modele: AppModel<Lecteur>
     let pinceau: Pinceau
     let largeur: Double
     /// Ordonnée du haut de la bande, dans la fenêtre.
@@ -25,7 +25,16 @@ struct Batterie {
     /// Largeur du couloir des intitulés, à gauche.
     private let couloir = 26.0
 
-    func dessiner() {
+    public init(modele: AppModel<Lecteur>, pinceau: Pinceau,
+                largeur: Double, haut: Double, hauteur: Double) {
+        self.modele = modele
+        self.pinceau = pinceau
+        self.largeur = largeur
+        self.haut = haut
+        self.hauteur = hauteur
+    }
+
+    public func dessiner() {
         pinceau.remplir(0, haut, largeur, hauteur, Pinceau.noir(0.92))
         pinceau.tracer(0, haut + 0.25, largeur, haut + 0.25, Pinceau.blanc(0.16))
         guard modele.spectrogram.columnCount > 0 else { return }

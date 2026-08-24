@@ -130,7 +130,7 @@ public struct RecentsWindows: DocumentsRecents {
 /// exactement ce que fait `AppModel.autosave` pour les sessions, et pour la même
 /// raison. `enregistrerMaintenant` court-circuite l'attente à la fermeture.
 /// ─────────────────────────────────────────────────────────────────────────────
-public final class PreferencesWindows: PreferencesGlobales {
+public final class PreferencesWindows: ReglagesModifiables {
     public static let partagees = PreferencesWindows()
 
     /// La réattribution spectrale — voir `AnalysisSettings.reassignment`.
@@ -238,12 +238,6 @@ public final class PreferencesWindows: PreferencesGlobales {
             }
         }
     }
-
-    /// Les paliers proposés. Un morceau de sept minutes coûte environ 300 Mo de
-    /// pistes en vingt-quatre bits, d'où des paliers qui se comptent en morceaux
-    /// plutôt qu'en puissances de deux.
-    public static let paliersDeCache = [500_000_000, 1_000_000_000, 2_000_000_000,
-                                        5_000_000_000, 10_000_000_000]
 
     /// Depuis quand un réglage a changé sans avoir été écrit. `nil` : rien à écrire.
     private var enAttenteDepuis: Double?

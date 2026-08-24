@@ -1,4 +1,6 @@
 import Foundation
+import SpectreDessin
+import SpectreToile
 import SpectreCore
 import SpectreTextes
 import SpectreModele

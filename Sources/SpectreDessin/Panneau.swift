@@ -1,7 +1,7 @@
 import Foundation
 import SpectreCore
 import SpectreModele
-import SpectreWin
+import SpectreToile
 
 // De quoi poser des commandes sur l'image, en Direct2D.
 //
@@ -38,14 +38,16 @@ import SpectreWin
 /// paraît maintenant en infobulle quand on la survole — voir `Infobulle.swift`.
 /// Elle n'est pas facultative. Une commande dont personne ne sait dire ce qu'elle
 /// change n'a rien à faire dans un panneau.
-final class Panneau {
+public final class Panneau {
     /// Largeur du panneau, en points. Assez pour qu'un intitulé et sa valeur
     /// tiennent sur une ligne, assez peu pour laisser voir l'image dessous.
     static let largeur = 330.0
     private static let marge = 15.0
     private static let ecart = 10.0
 
-    var ouvert = false
+    public init() {}
+
+    public var ouvert = false
 
     // MARK: L'état d'une image à l'autre
 
@@ -96,7 +98,7 @@ final class Panneau {
 
     /// Vrai si ce point tombe dans le panneau ouvert. La fenêtre s'en sert pour ne
     /// pas envoyer au spectrogramme un clic qui visait un curseur.
-    func contient(_ p: CGPoint, largeurFenetre: Double, hauteurUtile: Double) -> Bool {
+    public func contient(_ p: CGPoint, largeurFenetre: Double, hauteurUtile: Double) -> Bool {
         guard ouvert else { return false }
         let r = cadre(largeurFenetre: largeurFenetre, hauteurUtile: hauteurUtile)
         return p.x >= r.x && p.x <= r.x + r.largeur
@@ -105,19 +107,19 @@ final class Panneau {
 
     /// Vrai tant qu'un curseur est tenu. Le geste continue alors même quand la
     /// souris sort du panneau — sans quoi tirer un curseur un peu vite le lâcherait.
-    var glisseEnCours: Bool { actif != nil }
+    public var glisseEnCours: Bool { actif != nil }
 
-    func sourisA(_ p: CGPoint) { souris = p }
-    func appuiA(_ p: CGPoint) { souris = p; appuiEnAttente = p }
-    func relache() { actif = nil }
-    func defiler(_ points: Double) { molette += points }
+    public func sourisA(_ p: CGPoint) { souris = p }
+    public func appuiA(_ p: CGPoint) { souris = p; appuiEnAttente = p }
+    public func relache() { actif = nil }
+    public func defiler(_ points: Double) { molette += points }
     /// La souris a quitté la fenêtre : plus rien n'est survolé.
-    func sourisPartie() { souris = CGPoint(x: -1000, y: -1000) }
+    public func sourisPartie() { souris = CGPoint(x: -1000, y: -1000) }
 
     // MARK: - Le tour de dessin
 
     /// Dessine le cadre, puis le contenu que `corps` décrit commande par commande.
-    func dessiner(pinceau p: Pinceau, infobulle bulle: Infobulle,
+    public func dessiner(pinceau p: Pinceau, infobulle bulle: Infobulle,
                   largeurFenetre: Double, hauteurUtile: Double,
                   _ corps: (Panneau) -> Void) {
         guard ouvert else { appuiEnAttente = nil; molette = 0; return }

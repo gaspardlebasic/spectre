@@ -1,6 +1,6 @@
 import Foundation
 import SpectreCore
-import SpectreWin
+import SpectreToile
 
 // Les icônes de la colonne flottante, dessinées au trait.
 //

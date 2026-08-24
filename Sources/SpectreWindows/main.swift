@@ -1,6 +1,8 @@
 import Foundation
 import SpectreCore
+import SpectreDessin
 import SpectreModele
+import SpectreToile
 import SpectreWin
 import WinSDK
 
@@ -37,6 +39,14 @@ rattacherLaConsole()
 /// `model.player.speed` et qu'un protocole existentiel romprait ce suivi — mais
 /// rien d'autre n'a de raison de porter ce détail.
 typealias AppModel = SpectreModele.AppModel<LecteurWindows>
+
+// Et le même rebouclage pour ce qui dessine. Ces quatre types sont partagés avec
+// Linux et portent donc le lecteur en paramètre ; les rattacher ici une fois fait
+// que pas un appel de ce fichier n'a changé quand ils ont déménagé.
+typealias Frise = SpectreDessin.Frise<LecteurWindows>
+typealias Batterie = SpectreDessin.Batterie<LecteurWindows>
+typealias Barre = SpectreDessin.Barre<LecteurWindows>
+typealias Commandes = SpectreDessin.Commandes<LecteurWindows>
 
 extension SpectreModele.AppModel where Lecteur == LecteurWindows {
     /// L'assemblage Windows : à chaque protocole du modèle, sa mise en œuvre.

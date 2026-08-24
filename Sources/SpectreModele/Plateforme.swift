@@ -1,5 +1,6 @@
 import Foundation
 import SpectreCore
+import SpectreTextes
 
 // Ce que le modèle d'application demande au système, et rien de plus.
 //
@@ -30,6 +31,15 @@ public enum Reglages {
     /// dessin et par la désignation à la souris — sans quoi la zone sensible et la
     /// zone dessinée finiraient par se décoller.
     public static let chordBandHeight = 18.0
+
+    /// Les paliers de plafond du cache de pistes que le panneau propose.
+    ///
+    /// Un morceau de sept minutes coûte environ 300 Mo de pistes en vingt-quatre
+    /// bits, d'où des paliers qui se comptent en morceaux plutôt qu'en puissances de
+    /// deux. Ils sont ici, et non dans la couche d'une plateforme, parce que c'est le
+    /// panneau qui les offre et que le panneau est le même partout.
+    public static let paliersDeCache = [500_000_000, 1_000_000_000, 2_000_000_000,
+                                        5_000_000_000, 10_000_000_000]
 }
 
 // MARK: - L'horloge
@@ -115,6 +125,26 @@ public protocol PreferencesGlobales: AnyObject {
     var hueOrigin: Int { get }
 }
 
+/// Ce que le **panneau de réglages** écrit, par opposition à ce que le modèle lit.
+///
+/// La distinction n'est pas une précaution : `PreferencesGlobales` est ce dont
+/// `AppModel` a besoin pour analyser, et il ne doit rien pouvoir y changer. Le
+/// panneau, lui, est une vue — il tourne des boutons, et c'est son métier.
+///
+/// Ce protocole existe parce que le panneau est **dessiné une seule fois pour
+/// toutes les plateformes**. Sans lui, le dessin partagé devrait nommer la classe
+/// de réglages d'un système en particulier, et il cesserait aussitôt d'être
+/// partagé. Où les valeurs sont rangées — un fichier JSON, la base de registres,
+/// `UserDefaults` — ne le regarde toujours pas.
+public protocol ReglagesModifiables: PreferencesGlobales {
+    /// La langue choisie à la main. `nil` la fait suivre le système.
+    var langue: Langue? { get set }
+    /// Le système de noms de notes choisi à la main. `nil` le fait suivre la langue.
+    var systemeDeNotes: SystemeDeNotes? { get set }
+    /// Plafond du dossier des pistes séparées, en octets.
+    var cacheLimit: Int { get set }
+}
+
 // MARK: - L'image
 
 /// Le rendu du spectrogramme, vu du modèle : il lui envoie une matrice et la
@@ -174,6 +204,23 @@ public protocol ServiceDeSeparation: AnyObject {
     /// Faux quand les poids ne sont pas là : la séparation est alors annoncée
     /// absente plutôt que tentée puis échouée.
     var modeleDisponible: Bool { get }
+
+    /// Les **poids** sont-ils là, indépendamment du moteur qui les fait tourner ?
+    ///
+    /// Distinct de `modeleDisponible`, qui exige les deux. Le panneau doit pouvoir
+    /// dire *lequel des deux* manque : sous Windows la séparation demande aussi ONNX
+    /// Runtime, et « poids absents » envoie chercher au mauvais endroit quand c'est
+    /// la bibliothèque qui n'est pas là. Sur macOS le moteur est dans le système, et
+    /// les deux réponses se confondent.
+    var poidsPresents: Bool { get }
+
+    /// Ce que le dossier des pistes occupe, en octets — ce que le panneau affiche à
+    /// côté du plafond.
+    func tailleDuCache() -> Int
+
+    /// Jette tout le dossier des pistes. Ce qui part se recalcule ; c'est quelques
+    /// minutes, pas une perte.
+    func viderLeCache()
 
     func estSepare(_ empreinte: String) -> Bool
     /// L'emplacement d'une piste isolée, si elle a déjà été produite.

@@ -305,12 +305,42 @@ if surWindows {
                 .linkedLibrary("dwrite"),
             ]
         ),
+        // Le vocabulaire de dessin — `remplir`, `tracer`, `texte`, `arrondi` — et
+        // rien d'autre. Il ne porte aucun `#if` : la bascule d'une plateforme à
+        // l'autre se fait dans `CPont`, où deux fichiers C exportent les mêmes
+        // fonctions. Voir l'en-tête de `Sources/SpectreToile/Pinceau.swift`.
+        .target(
+            name: "SpectreToile",
+            dependencies: ["CPont"],
+            path: "Sources/SpectreToile",
+            swiftSettings: reglagesRelease
+        ),
+        // **L'interface dessinée, une seule fois pour toutes les plateformes** : la
+        // frise, le panneau de réglages, la batterie, la barre d'état, les
+        // commandes, la colonne des pistes, les infobulles, les icônes.
+        //
+        // Ces fichiers vivaient dans `SpectreWindows`, et n'importaient déjà
+        // `WinSDK` nulle part : de toute la couche Windows ils n'utilisaient que
+        // `Pinceau`. Les y laisser aurait obligé Linux à redessiner la frise une
+        // troisième fois — la faute exacte qui a tué le premier portage, un étage
+        // plus bas.
+        //
+        // Ce qui reste dans l'exécutable de chaque plateforme, c'est ce qui touche
+        // au système : la fenêtre, la souris, le menu, la mesure de fluidité.
+        .target(
+            name: "SpectreDessin",
+            dependencies: ["SpectreCore", "SpectreTextes", "SpectreModele",
+                           "SpectreToile"],
+            path: "Sources/SpectreDessin",
+            swiftSettings: reglagesRelease
+        ),
         // Ce que Windows répond aux protocoles du modèle — le pendant exact de
         // `SpectreMac`. Une bibliothèque plutôt qu'un morceau de l'exécutable,
         // pour que les vérifications puissent s'y lier.
         .target(
             name: "SpectreWin",
-            dependencies: ["SpectreCore", "SpectreDSP", "SpectreModele", "CPont"],
+            dependencies: ["SpectreCore", "SpectreDSP", "SpectreModele", "CPont",
+                           "SpectreToile"],
             path: "Sources/SpectreWin",
             swiftSettings: reglagesRelease,
             // Posées ici et non sur l'exécutable : les vérifications se lient à
@@ -326,7 +356,8 @@ if surWindows {
         // La fenêtre, et rien d'autre.
         .executableTarget(
             name: "SpectreWindows",
-            dependencies: ["SpectreCore", "SpectreDSP", "SpectreModele", "SpectreWin"],
+            dependencies: ["SpectreCore", "SpectreDSP", "SpectreModele", "SpectreWin",
+                           "SpectreToile", "SpectreDessin"],
             path: "Sources/SpectreWindows",
             swiftSettings: reglagesRelease,
             linkerSettings: [
@@ -382,6 +413,8 @@ if surWindows {
         ),
     ]
     produits += [
+        .library(name: "SpectreToile", type: .static, targets: ["SpectreToile"]),
+        .library(name: "SpectreDessin", type: .static, targets: ["SpectreDessin"]),
         .library(name: "SpectreWin", type: .static, targets: ["SpectreWin"]),
         .executable(name: "SpectreWindows", targets: ["SpectreWindows"]),
         .executable(name: "RenduCheck", targets: ["RenduCheck"]),

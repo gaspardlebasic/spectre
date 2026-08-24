@@ -2,7 +2,7 @@ import Foundation
 import SpectreCore
 import SpectreTextes
 import SpectreModele
-import SpectreWin
+import SpectreToile
 
 // Ce qui reste à l'écran quoi qu'il arrive : les quatre pistes, et la porte des
 // réglages.
@@ -33,7 +33,9 @@ import SpectreWin
 /// Elle est dessinée à chaque image comme le panneau, et pour la même raison :
 /// elle lit et écrit directement dans le modèle, sans état propre à tenir
 /// accordé. Le sien se réduit à ce que la souris a fait depuis l'image d'avant.
-final class Flottant {
+public final class Flottant {
+    public init() {}
+
     /// Les mesures sont celles de `StemColumn` sur le Mac, point pour point.
     ///
     /// Elles ne sont pas un goût. La capsule qui entoure les quatre boutons a des
@@ -45,14 +47,14 @@ final class Flottant {
     ///
     /// Les coins intérieurs, eux, restent francs : deux demi-lunes en vis-à-vis
     /// creuseraient un losange de fond entre deux boutons voisins.
-    static let largeur = 62.0
+    public static let largeur = 62.0
     /// Marge au bord droit de la fenêtre. La même que celle du panneau, qui vient
     /// se ranger à sa gauche.
-    static let marge = 12.0
+    public static let marge = 12.0
     /// Ce que la colonne coûte à la largeur utile : elle-même, sa marge, et l'air
     /// qui la sépare du panneau ouvert.
-    static var encombrement: Double { largeur + marge + ecartAuPanneau }
-    static let ecartAuPanneau = 10.0
+    public static var encombrement: Double { largeur + marge + ecartAuPanneau }
+    public static let ecartAuPanneau = 10.0
 
     private static let interieur = 4.0
     private static let hauteurBouton = 40.0
@@ -74,9 +76,9 @@ final class Flottant {
     private var souris = CGPoint(x: -1000, y: -1000)
     private var appuiEnAttente: CGPoint?
 
-    func sourisA(_ p: CGPoint) { souris = p }
-    func appuiA(_ p: CGPoint) { souris = p; appuiEnAttente = p }
-    func sourisPartie() { souris = CGPoint(x: -1000, y: -1000) }
+    public func sourisA(_ p: CGPoint) { souris = p }
+    public func appuiA(_ p: CGPoint) { souris = p; appuiEnAttente = p }
+    public func sourisPartie() { souris = CGPoint(x: -1000, y: -1000) }
 
     // MARK: La géométrie
 
@@ -95,7 +97,7 @@ final class Flottant {
 
     /// Vrai si ce point tombe sur la colonne. La fenêtre s'en sert pour ne pas
     /// envoyer au spectrogramme un clic qui visait une piste.
-    func contient(_ p: CGPoint, largeurFenetre: Double) -> Bool {
+    public func contient(_ p: CGPoint, largeurFenetre: Double) -> Bool {
         let gauche = x(largeurFenetre: largeurFenetre)
         return p.x >= gauche && p.x <= gauche + Self.largeur
             && p.y >= Self.haut && p.y <= Self.haut + hauteur
@@ -108,9 +110,10 @@ final class Flottant {
     /// `basculerLesReglages` plutôt qu'un drapeau à poser : ouvrir le panneau
     /// remet aussi `pointerOverControls` d'aplomb, et cette logique-là vit dans
     /// `Gestes`. Une seule façon d'ouvrir le panneau, quel que soit le geste.
-    func dessiner(pinceau p: Pinceau, infobulle: Infobulle, largeurFenetre: Double,
-                  modele: AppModel, panneauOuvert: Bool,
-                  basculerLesReglages: () -> Void) {
+    public func dessiner<Lecteur: LecteurAudio>(
+        pinceau p: Pinceau, infobulle: Infobulle, largeurFenetre: Double,
+        modele: AppModel<Lecteur>, panneauOuvert: Bool,
+        basculerLesReglages: () -> Void) {
         defer { appuiEnAttente = nil }
         let gauche = x(largeurFenetre: largeurFenetre)
 

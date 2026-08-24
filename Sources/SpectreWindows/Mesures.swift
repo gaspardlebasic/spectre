@@ -1,4 +1,6 @@
 import Foundation
+import SpectreDessin
+import SpectreToile
 import SpectreModele
 import WinSDK
 

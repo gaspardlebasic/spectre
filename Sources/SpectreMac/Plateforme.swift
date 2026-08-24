@@ -71,6 +71,11 @@ public final class RangementApple: ServiceDeSeparation {
     public init() {}
 
     public var modeleDisponible: Bool { StemStore.hasModel }
+    /// Le moteur d'inférence vient avec le système : rien ne peut manquer d'autre
+    /// que les poids, et les deux réponses se confondent.
+    public var poidsPresents: Bool { StemStore.hasModel }
+    public func tailleDuCache() -> Int { StemStore.cacheSize() }
+    public func viderLeCache() { StemStore.emptyCache() }
 
     public func estSepare(_ empreinte: String) -> Bool {
         StemStore.isSeparated(empreinte)

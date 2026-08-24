@@ -1,7 +1,7 @@
 import Foundation
 import SpectreCore
 import SpectreModele
-import SpectreWin
+import SpectreToile
 
 // Ce que dit une commande qu'on regarde sans y toucher.
 //
@@ -34,7 +34,9 @@ import SpectreWin
 
 /// L'infobulle de l'image en cours : ce qu'une commande survolée a proposé, et le
 /// dessin qui s'ensuit une fois le survol assez long.
-final class Infobulle {
+public final class Infobulle {
+    public init() {}
+
     /// Le temps de survol avant que la bulle paraisse.
     ///
     /// Sans attente, traverser le panneau pour atteindre un curseur ferait clignoter
@@ -61,7 +63,7 @@ final class Infobulle {
     }
 
     /// Trace la bulle, s'il y a lieu. À appeler en dernier, après tout le reste.
-    func dessiner(_ p: Pinceau, largeurFenetre: Double, hauteurFenetre: Double) {
+    public func dessiner(_ p: Pinceau, largeurFenetre: Double, hauteurFenetre: Double) {
         defer { propose = nil }
         guard let propose else { tenu = nil; return }
         // Changer de commande relance le compte. Sans quoi, une fois la première
