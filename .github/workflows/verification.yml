@@ -15,11 +15,46 @@
 
 name: Vérification
 
+# ─────────────────────────────────────────────────────────────────────────────
+# QUAND CELA TOURNE, ET QUAND CELA NE TOURNE PAS
+#
+# Sur `main`, et nulle part ailleurs : **pousser sur une branche ne compile rien.**
+# Le travail se fait donc par branches, qu'on fusionne de temps en temps, et une
+# fusion vaut une compilation — au lieu d'une par commit. Ce que cela coûte est
+# écrit dans AGENTS.md : la seule vérification automatique des trois plateformes
+# arrive tard, et c'est aux épreuves locales de tenir l'intervalle.
+#
+# `workflow_dispatch` reste là pour cela : on peut lancer cette vérification sur une
+# branche, à la demande, avant de fusionner — sans la subir à chaque commit.
+#
+# `paths-ignore` retire les poussées qui ne changent que de la documentation. Elles
+# font près de la moitié des commits de ce dépôt, et ne vérifient rien : compiler
+# trois plateformes pour un paragraphe réécrit est du bruit. Un commit qui touche à
+# la fois un `.md` et du code compile, lui — le filtre ne saute que si *tout* ce qui
+# a changé est de la documentation.
+# ─────────────────────────────────────────────────────────────────────────────
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "Resources/Captures/**"
+      - "LICENSE"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "Resources/Captures/**"
+      - "LICENSE"
   workflow_dispatch:
+
+# Deux fusions coup sur coup lançaient deux vérifications complètes qui se
+# marchaient dessus, alors que seule la seconde dit quelque chose de vrai sur ce que
+# `main` contient. La première est donc annulée.
+concurrency:
+  group: verification-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   macos:

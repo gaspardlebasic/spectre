@@ -12,7 +12,8 @@ ce soit.
 
 **Elle tourne aussi sous Windows**, où le portage couvre désormais tout ce que fait
 la version Mac sauf le verre — la fenêtre, le son, les gestes, les réglages, les
-sessions et la séparation des pistes — et Linux suivra. Le noyau compile et passe sur
+sessions et la séparation des pistes. **Le portage Linux a commencé** :
+[LINUX.md](LINUX.md) en tient le plan et l'état. Le noyau compile et passe sur
 les trois plateformes ; c'est ce que mesure `verification.yml`. Qui touche à
 `SpectreDSP`, à `SpectreCore` ou à `SpectreModele` travaille donc pour trois
 systèmes, pas pour un — [WINDOWS.md](WINDOWS.md) tient l'état du chantier, ce qui
@@ -146,6 +147,24 @@ mêmes protocoles avec Direct3D 11 et Win32 — c'est le jumeau de `SpectreMac`,
 fait la même longueur — tandis que `SpectreWindows` porte la fenêtre. Le pont C vers
 ce que Swift ne peut pas dire lui-même est dans `Sources/CPont`.
 
+Deux modules de plus vivent entre les deux, et **ils ne sont d'aucune plateforme** :
+
+| Étage | Ce qu'il contient | Dépend de |
+|-------|-------------------|-----------|
+| `SpectreToile` | `Pinceau` : le vocabulaire de dessin — `remplir`, `tracer`, `texte`, `arrondi` — calqué sur le `GraphicsContext` de SwiftUI. | `CPont` |
+| `SpectreDessin` | **L'interface dessinée** : la frise, le panneau de réglages, la batterie, la barre d'état, les commandes, la colonne des pistes, les infobulles, les icônes. | `SpectreModele`, `SpectreToile` |
+
+Ils sont sortis de `SpectreWindows`, qui les portait sans jamais y importer
+`WinSDK` : de toute la couche Windows, ces huit fichiers n'utilisaient que
+`Pinceau`. Linux les hérite donc tels quels, et ce qui lui reste à écrire est ce
+qui touche au système. `SpectreToile` ne porte **aucun `#if`** : la bascule se fait
+un étage plus bas, dans `CPont`, où `direct2d.cpp` et son jumeau Cairo exportent les
+mêmes fonctions.
+
+Corollaire, et il est du même ordre que celui de `SpectreModele` : **une commande,
+un repère, un panneau se dessinent dans `SpectreDessin`, pas dans la fenêtre.** Ce
+qui est dessiné à côté est dessiné pour une plateforme seule.
+
 **Les quatre premiers compilent partout où Swift compile.** `SpectreModele` est
 l'étage qui a manqué au premier portage : faute de lui, Windows avait son propre
 modèle, plus fruste, qui divergeait un peu plus chaque semaine. Ce qu'il demande au
@@ -217,3 +236,30 @@ Une phrase en français, à l'indicatif, qui dit ce que le dépôt sait faire de
 
 Le README fait partie du travail : une fonction qui change et une description qui
 ne change pas, c'est un demi-travail.
+
+## Les branches
+
+**Le travail se fait sur une branche, et `main` reçoit des fusions, pas des
+commits.** On fusionne quand quelque chose tient debout — une étape du portage, une
+fonction finie — et non à chaque pas.
+
+La raison est l'intégration continue. `verification.yml` ne se déclenche que sur
+`main` : pousser sur une branche ne compile rien. Une fusion vaut donc une
+vérification des trois plateformes, au lieu d'une par commit — neuf minutes qui
+disent quelque chose, plutôt que dix fois neuf minutes qui répètent la même chose.
+
+**Ce que cela coûte, et comment on le paie.** La seule vérification automatique qui
+confronte macOS, Windows et Linux arrive tard, quand la branche est déjà grosse. Il
+n'y a qu'une façon de tenir l'intervalle, et c'est celle qui est déjà écrite plus
+haut : `./essai.sh` sur le Mac, `.\essai.ps1` sur la machine Windows. L'intégration
+continue confirme ; elle ne surveille pas.
+
+Deux échappatoires quand on veut la réponse avant de fusionner :
+
+- `workflow_dispatch` lance la vérification **sur une branche**, à la demande —
+  depuis l'onglet Actions, ou `gh workflow run "Vérification" --ref ma-branche` ;
+- une *pull request* la lance à chaque poussée, si l'on préfère ce rythme-là pour
+  une branche qui dure.
+
+Une poussée qui ne change que de la documentation ne compile rien non plus : le
+filtre est dans `verification.yml`, avec la raison.
