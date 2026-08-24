@@ -1,8 +1,8 @@
 import Foundation
-import Observation
 import SpectreCore
 import SpectreModele
 import SpectreTextes
+import SpectreSon
 
 // Ce que Linux répond aux protocoles du modèle — le pendant de `SpectreWin` et de
 // `SpectreMac`.
@@ -14,83 +14,26 @@ import SpectreTextes
 // modèle ne sait pas faire seul. Le portage la remplit dans l'ordre du plan, et ce
 // fichier dit à chaque instant où il en est :
 //
-//   fait      le rendu (`RenduSpectre`), le décodage du WAV, les réglages
-//   étape 4   le décodage de tout le reste — libsndfile et libmpg123
-//   étape 5   le son qui sort — ALSA
+//   fait      le rendu, le décodage, la lecture, la sinusoïde, les réglages
+//   étape 6   la souris, le clavier, le sélecteur de fichiers
 //   étape 7   les réglages écrits sur le disque, aux emplacements XDG
 //   étape 8   la séparation — ONNX Runtime
 //
-// **Ce qui attend ne ment pas.** Un lecteur muet dit qu'il est muet, une séparation
-// absente s'annonce absente : le modèle et l'interface savent déjà traiter ces deux
-// cas — c'est ce qui arrive sur une machine sans carte son ou sans les poids — et
-// les faire passer par ce chemin-là plutôt que par un `fatalError` permet à la
-// fenêtre de s'ouvrir et de se juger dès maintenant.
+// **Ce qui attend ne ment pas.** Une séparation absente s'annonce absente : le
+// modèle et l'interface savent déjà traiter ce cas — c'est celui d'une machine sans
+// les poids — et le faire passer par ce chemin-là plutôt que par un `fatalError`
+// permet à la fenêtre de s'ouvrir et de se juger dès maintenant.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// MARK: - Le décodage
+// MARK: - Le son
 
-/// Le décodeur de Linux. À l'étape 3, le WAV et rien d'autre.
-///
-/// Le WAV est lu en Swift, par le noyau, exactement comme sous Windows où il passe
-/// avant Media Foundation : c'est plus rapide, et surtout cela garantit qu'un
-/// fichier non compressé donne le même signal sur les trois plateformes. C'est le
-/// socle des vérifications croisées, et il ne coûte rien.
-public struct DecodeurLinux: Décodeur {
-    public init() {}
-
-    public func charger(_ url: URL) throws -> AudioSource {
-        let contenu = try WAVFile.read(at: url)
-        guard !contenu.mono.isEmpty else { throw AudioSource.Failure.empty(url) }
-        return AudioSource(url: url,
-                           sampleRate: contenu.sampleRate,
-                           frameCount: contenu.frameCount,
-                           mono: contenu.mono,
-                           fingerprint: SessionStore.fingerprint(of: url))
-    }
-}
-
-// MARK: - Le son qui sort
-
-/// Le lecteur de Linux — **muet jusqu'à l'étape 5**.
-///
-/// Il n'y a pas de faux-semblant ici : la position ne bouge pas parce que rien ne
-/// joue. Le modèle traite déjà ce cas, qui est celui d'une machine sans carte son.
-///
-/// La barre d'état ne l'annonce pas encore : le dire demanderait une clé dans les
-/// cinq catalogues, pour un état qui disparaît à l'étape 5. Ce qui se voit d'ici
-/// là, c'est simplement qu'appuyer sur lecture ne fait rien.
-@Observable public final class LecteurLinux: LecteurAudio {
-    public init() {}
-
-    public private(set) var isPlaying = false
-    public var duration = 0.0
-    public var message: String?
-    public var speed = 1.0
-    public var transpose = 0.0
-    public var isNeutral: Bool { speed == 1 && transpose == 0 }
-    public var volume = 1.0
-    public private(set) var currentTime = 0.0
-    public private(set) var loop: ClosedRange<Double>?
-
-    public func load(url: URL) {}
-    public func charger(_ banque: BanqueDePistes, gardant: Set<Stem>) {}
-    public func play(from time: Double?) { if let time { currentTime = time } }
-    public func pause() {}
-    public func stop() { currentTime = 0 }
-    public func toggle(at time: Double) { currentTime = time }
-    public func seek(to time: Double) { currentTime = time }
-    public func setLoop(_ range: ClosedRange<Double>?) { loop = range }
-    public func setBand(_ range: ClosedRange<Double>?) {}
-}
-
-/// La sinusoïde d'écoute — muette elle aussi, et pour la même étape.
-public final class SinusoideLinux: Sinusoide {
-    public init() {}
-    public var voixMaximales: Int { 6 }
-    public func play(_ frequency: Double?) {}
-    public func play(chord frequencies: [Double], waveform: ToneWaveform) {}
-    public func stop() {}
-}
+// Le décodage, la lecture et la sinusoïde d'écoute **ne sont plus ici** : ils sont
+// dans `SpectreSon`, où Windows les partage. Ce qui change d'un système à l'autre
+// est un étage plus bas — `decodage.c` contre `mediafoundation.c`, `alsa.c` contre
+// `wasapi.c` — et les deux exportent les mêmes noms.
+//
+// Les trois types s'appellent `DecodeurSurLePont`, `LecteurSurLePont` et
+// `SinusoideSurLePont`, et c'est ce que `SpectreLinux/main.swift` assemble.
 
 // MARK: - Les fichiers
 

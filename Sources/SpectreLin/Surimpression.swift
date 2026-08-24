@@ -1,6 +1,7 @@
 import CPont
 import Foundation
 import SpectreToile
+import SpectreSocle
 
 // Ce qui attache le pinceau à Cairo. Le pinceau lui-même est dans `SpectreToile`,
 // où Windows le partage — voir l'en-tête qui y est écrit.

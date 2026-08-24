@@ -253,39 +253,39 @@ int spectre_console_rattacher(void);
 // quoi l'analyse ne donnerait pas la même image sur les deux systèmes.
 
 typedef struct {
-    /// Le signal mono. À rendre par `spectre_mf_liberer`. Nul en cas d'échec.
+    /// Le signal mono. À rendre par `spectre_decodage_liberer`. Nul en cas d'échec.
     float *echantillons;
     /// Nombre d'images, c'est-à-dire de valeurs dans `echantillons`.
     long long images;
     double frequence;
     /// Nombre de canaux du fichier, pour information — le signal est déjà mono.
     int canaux;
-    /// 0 si tout va bien. Sinon, un code à passer à `spectre_mf_message`.
+    /// 0 si tout va bien. Sinon, un code à passer à `spectre_decodage_message`.
     int code;
     /// Le `HRESULT` brut, quand il y en a un : de quoi chercher la panne.
     long resultat;
 } SpectreDecodage;
 
 enum {
-    SPECTRE_MF_OK = 0,
-    SPECTRE_MF_DEMARRAGE = 1,      // Media Foundation n'a pas démarré
-    SPECTRE_MF_CHEMIN = 2,         // le chemin n'a pas pu être converti
-    SPECTRE_MF_OUVERTURE = 3,      // format que le système ne sait pas lire
-    SPECTRE_MF_FORMAT = 4,         // pas de piste audio décodable
-    SPECTRE_MF_LECTURE = 5,        // panne en cours de décodage
-    SPECTRE_MF_MEMOIRE = 6,
-    SPECTRE_MF_VIDE = 7,           // décodé, mais aucun échantillon
-    SPECTRE_MF_ABSENT = 8          // le fichier n'est pas là
+    SPECTRE_DECODAGE_OK = 0,
+    SPECTRE_DECODAGE_DEMARRAGE = 1,      // Media Foundation n'a pas démarré
+    SPECTRE_DECODAGE_CHEMIN = 2,         // le chemin n'a pas pu être converti
+    SPECTRE_DECODAGE_OUVERTURE = 3,      // format que le système ne sait pas lire
+    SPECTRE_DECODAGE_FORMAT = 4,         // pas de piste audio décodable
+    SPECTRE_DECODAGE_LECTURE = 5,        // panne en cours de décodage
+    SPECTRE_DECODAGE_MEMOIRE = 6,
+    SPECTRE_DECODAGE_VIDE = 7,           // décodé, mais aucun échantillon
+    SPECTRE_DECODAGE_ABSENT = 8          // le fichier n'est pas là
 };
 
-/// Ce qui sort n'est pas rogné : Media Foundation rend l'amorçage du codeur avec
-/// le reste, et c'est `GaplessTrim` — côté Swift, portable, vérifiable — qui lit
-/// ce que le conteneur en déclare. On a mesuré ici que ni la durée annoncée ni
+/// Ce qui sort n'est pas rogné : le décodeur du système rend l'amorçage du codeur
+/// avec le reste, et c'est `GaplessTrim` — côté Swift, portable, vérifiable — qui
+/// lit ce que le conteneur en déclare. On a mesuré ici que ni la durée annoncée ni
 /// l'horodatage des échantillons ne renseignent sur cet amorçage : le premier
 /// instant est zéro et la durée annoncée compte l'amorçage avec le reste.
 ///
 /// `chemin` est en UTF-8 ; la conversion en UTF-16 se fait de l'autre côté.
-SpectreDecodage spectre_mf_decoder(const char *chemin);
+SpectreDecodage spectre_decodage_decoder(const char *chemin);
 
 /// Le même fichier, **entrelacé à la forme demandée** : Media Foundation insère son
 /// rééchantillonneur et sa matrice de mixage.
@@ -296,13 +296,13 @@ SpectreDecodage spectre_mf_decoder(const char *chemin);
 /// fréquence du fichier — rééchantillonner avant d'analyser perdrait de la matière.
 ///
 /// `images` compte les images ; le tampon en porte donc `images × canaux`.
-SpectreDecodage spectre_mf_decoder_entrelace(const char *chemin, double frequence,
+SpectreDecodage spectre_decodage_decoder_entrelace(const char *chemin, double frequence,
                                              int canaux);
 
-void spectre_mf_liberer(float *echantillons);
+void spectre_decodage_liberer(float *echantillons);
 
 /// Un message en clair pour un code, en français, sans allocation.
-const char *spectre_mf_message(int code);
+const char *spectre_decodage_message(int code);
 
 // ─────────────────────────────────────────────────────────── La sortie audio
 //

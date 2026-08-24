@@ -3,6 +3,7 @@ import SpectreDessin
 import SpectreToile
 import SpectreWin
 import WinSDK
+import SpectreSocle
 
 // La fenêtre, en Win32 sans intermédiaire.
 //

@@ -175,7 +175,7 @@ public struct SeparateurWindows: StemSeparator {
 
     /// Charge le morceau tel que le réseau l'attend : stéréo, 44,1 kHz, flottant.
     ///
-    /// Media Foundation fait la conversion — c'est ce que `spectre_mf_decoder_entrelace`
+    /// Media Foundation fait la conversion — c'est ce que `spectre_decodage_decoder_entrelace`
     /// lui demande. Le rééchantillonnage n'est pas une politesse : le réseau a appris
     /// à cette fréquence-là.
     ///
@@ -185,13 +185,13 @@ public struct SeparateurWindows: StemSeparator {
     /// conversion est ce qu'on vient chercher ici.
     public static func lirePourLeReseau(_ url: URL) throws -> [[Float]] {
         let resultat = url.path.withCString {
-            spectre_mf_decoder_entrelace($0, Demucs.sampleRate, Int32(Demucs.channels))
+            spectre_decodage_decoder_entrelace($0, Demucs.sampleRate, Int32(Demucs.channels))
         }
         guard resultat.code == 0, let bloc = resultat.echantillons else {
-            let message = String(cString: spectre_mf_message(resultat.code))
+            let message = String(cString: spectre_decodage_message(resultat.code))
             throw SeparationFailure.engine("« \(url.lastPathComponent) » : \(message)")
         }
-        defer { spectre_mf_liberer(bloc) }
+        defer { spectre_decodage_liberer(bloc) }
 
         let images = Int(resultat.images)
         let canaux = Int(resultat.canaux)

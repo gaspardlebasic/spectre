@@ -3,6 +3,7 @@ import SpectreCore
 import SpectreTextes
 import SpectreModele
 import WinSDK
+import SpectreSon
 
 // Ce que Windows répond aux protocoles du modèle.
 //
@@ -13,7 +14,7 @@ import WinSDK
 
 // MARK: - Les fichiers
 
-extension DecodeurWindows {
+extension DecodeurSurLePont {
     /// Les extensions que ce décodeur ouvre.
     ///
     /// Elles vivent à côté du décodeur plutôt que dans le dialogue : c'est ce qui
@@ -48,7 +49,7 @@ public struct DialogueWindows: DialogueFichier {
         // Le filtre est fait de paires terminées par un zéro, la liste entière
         // fermée par un zéro de plus. Une chaîne Swift ne peut pas porter cela : on
         // assemble donc les unités UTF-16 à la main.
-        let motifs = DecodeurWindows.formats.map { "*.\($0)" }.joined(separator: ";")
+        let motifs = DecodeurSurLePont.formats.map { "*.\($0)" }.joined(separator: ";")
         var filtre = [UInt16]()
         for morceau in ["Fichiers audio (\(motifs))", motifs, "Tous les fichiers", "*.*"] {
             filtre.append(contentsOf: Array(morceau.utf16))

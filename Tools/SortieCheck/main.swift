@@ -1,7 +1,8 @@
 import Foundation
 import SpectreCore
 import SpectreModele
-import SpectreWin
+import SpectreSon
+import SpectreSocle
 
 // Vérification de la sortie audio, sans oreille.
 //
@@ -73,7 +74,7 @@ do {
 
 print("=== Le lecteur ===")
 
-let lecteur = LecteurWindows()
+let lecteur = LecteurSurLePont()
 lecteur.load(url: temoin)
 
 // Le décodage part en tâche de fond : on attend qu'il arrive, comme le ferait
@@ -164,7 +165,7 @@ controle("l'arrêt ramène au début", lecteur.currentTime < 0.05 && !lecteur.is
 
 print("\n=== La sinusoïde ===")
 do {
-    let sinusoide = SinusoideWindows()
+    let sinusoide = SinusoideSurLePont()
     sinusoide.play(440)
     attendre(0.3)
     // Rien ne se mesure de l'extérieur ici — l'oscillateur est déjà mesuré dans le

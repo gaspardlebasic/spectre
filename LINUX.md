@@ -182,8 +182,8 @@ paquet et un fournisseur choisi à la compilation ; elle n'est pas dans ce plan.
 | 1. Le verre partagé | Rien de neuf à l'écran : Windows tourne à l'identique, et le dessin de l'interface devient commun. | **faite** |
 | 2. Une fenêtre, et l'image dedans | Le spectrogramme s'affiche, et le même harnais que Windows le mesure sur une troisième carte. | **faite** |
 | 3. Le dessin | La frise, les accords, la batterie, le panneau, d'un coup — et sans une ligne de dessin écrite. | **faite** |
-| 4. Le son qui entre | On ouvre un MP3 et on voit sa décomposition. | à faire |
-| 5. Le son qui sort | On l'entend, on le ralentit, on le transpose. | à faire |
+| 4. Le son qui entre | On ouvre un MP3 de sept minutes et on voit sa décomposition. | **faite** |
+| 5. Le son qui sort | On l'entend, on le ralentit, on le transpose — quatorze contrôles. | **faite** |
 | 6. Les gestes, et la fluidité | Molette, boucle, aimantation ; et un relevé qui chiffre la fluidité. | à faire |
 | 7. Réglages, sessions, langues | Les réglages se retrouvent au morceau suivant, aux emplacements XDG ; l'interface prend la langue du système. | à faire |
 | 8. La séparation | Les quatre pistes sortent, et se cochent. | à faire |
@@ -562,6 +562,82 @@ Une conséquence visible : **les lignes de grosse caisse et de claire sont plein
 là où le charleston montre ses coups un par un. Le relevé travaille sur le mélange,
 faute de séparation ; il verra les trois voies séparément à l'étape 8. Le dessin,
 lui, est juste — c'est la même `aire` qui trace le charleston correctement.
+
+## Étapes 4 et 5 — le son qui entre, et celui qui sort
+
+**Faites, et elles se sont révélées être la même étape.** En regardant ce que
+`SpectreWin/Lecteur.swift` touchait vraiment du système : **six fonctions**, toutes
+préfixées `spectre_sortie_`. Le décodeur, quatre. La sinusoïde, aucune de plus. Pas
+un des trois fichiers n'importait `WinSDK`.
+
+Ils sont donc dans `SpectreSon`, où Windows les partage, et ce qui a été écrit pour
+Linux est en dessous : `alsa.c` et `decodage.c`, les jumeaux de `wasapi.c` et
+`mediafoundation.c`.
+
+| harnais | Windows | Linux |
+|---|---|---|
+| `DecodeCheck` | 8 contrôles | **8 contrôles**, dont le même signal au bit près |
+| `SortieCheck` | 14 contrôles | **14 contrôles** |
+
+Un vrai morceau de sept minutes quarante-sept s'ouvre, s'analyse en 1,1 seconde
+— quatre cent quarante-trois fois le temps réel — et son tempo sort à 97 BPM.
+
+### Ce que le contrat a gagné au passage
+
+Le pont de décodage s'appelait `spectre_mf_*`, du nom de Media Foundation. Il
+s'appelle maintenant `spectre_decodage_*` : **un contrat nomme ce qu'il fait, pas
+celui qui l'a rempli le premier.** Sans ce renommage, le décodeur partagé aurait
+gardé dans son nom la trace d'un système sur trois.
+
+Et `viderLaFilePrincipale()` a rejoint le journal dans un module `SpectreSocle` —
+les deux ou trois choses que les deux portages demandent au système et qui ne
+tiennent nulle part ailleurs. **C'est le seul module partagé qui porte des `#if`**,
+et chacun porte sa raison.
+
+### Les choix de l'étape 4
+
+**libsndfile d'abord, libmpg123 ensuite.** La première lit le WAV, l'AIFF, le FLAC,
+l'OGG et l'Opus, et reconnaît **par le contenu et non par l'extension** : un `.mp3`
+qui est en réalité un WAV — cela arrive avec les fichiers qui ont traversé trois
+outils — passe alors par le bon chemin. La seconde décide pour ce que la première
+refuse.
+
+**Le rééchantillonnage et le mixage sont écrits à la main**, et seulement pour la
+séparation. Media Foundation les fait toute seule ; ALSA et libsndfile, non. Une
+interpolation linéaire suffit là : ce qui entre dans le réseau en ressort en quatre
+pistes qu'on réécoute à la même fréquence, et le repliement qu'elle laisse passer
+est très en dessous de ce que la séparation elle-même invente. Un rééchantillonneur
+digne de ce nom aurait sa place dans le noyau, mesuré — pas ici.
+
+### Le choix de l'étape 5
+
+**ALSA plutôt que PipeWire.** PipeWire *et* PulseAudio exposent tous deux un
+périphérique ALSA nommé `default` : une seule écriture couvre tout le monde, y
+compris les machines qui n'ont ni l'un ni l'autre. Le jour où la latence gênerait,
+PipeWire se glisse derrière les mêmes sept fonctions sans que rien d'autre bouge.
+
+`default` et non `hw:0`, aussi : c'est le nom qui passe par le greffon `plug`, donc
+par le rééchantillonneur. Sans lui, un fichier en 44,1 kHz sur une carte figée à
+48 kHz sonnerait un demi-ton trop haut.
+
+### Les deux pièges de ces étapes
+
+**Le contrat de décodage rend du mono, pas de l'entrelacé.** C'est écrit dans
+`pont.h` — « le signal est déjà mono », `canaux` n'étant là que pour information —
+et le mélange se fait du côté C pour ne pas garder l'entrelacé en mémoire, qui est
+ce qu'il y a de plus gros dans l'application. Rendre l'entrelacé donne un fichier de
+la bonne longueur, à la bonne fréquence, avec le bon nombre de canaux, et un signal
+faux : `DecodeCheck` a dit « écart max 0,665 à l'image 3385 », ce qui est exactement
+le genre d'erreur qu'aucune écoute ne diagnostiquerait.
+
+**La cadence d'ALSA se demande en temps, pas en images.** Le périphérique `default`
+passe par les greffons `plug` et `dmix`, qui n'ont pas les contraintes de la carte :
+à qui demande une période de 512 images, ils répondent volontiers **131 072** — trois
+secondes. Le lecteur remplit ce qu'il peut d'un bloc pareil, on complète le reste de
+silence, et la lecture avance **à un tiers du temps réel sans qu'une seule erreur
+soit dite**. En microsecondes — dix pour la période, quarante pour le tampon — ils
+répondent 441 et 1 764, ce qui est exactement le compromis de WASAPI en mode
+partagé.
 
 ## Les pièges prévus
 

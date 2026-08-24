@@ -4,6 +4,7 @@ import SpectreCore
 import SpectreDSP
 import SpectreModele
 import SpectreToile
+import SpectreSocle
 
 // Le rendu du spectrogramme sous Windows.
 //

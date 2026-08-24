@@ -310,6 +310,32 @@ if surMac {
 // Cairo derrière ne rendrait qu'une liste de symboles manquants.
 func modulesPartages(avecLeDessin: Bool) -> [Target] {
     var liste: [Target] = [
+        // Les deux ou trois choses que les deux portages demandent au système et
+        // qui ne tiennent pas ailleurs : où va ce qui rate, et comment vider la file
+        // principale. Le seul module partagé qui porte des `#if`, et chacun porte sa
+        // raison.
+        .target(
+            name: "SpectreSocle",
+            dependencies: ["CPont"],
+            path: "Sources/SpectreSocle",
+            swiftSettings: reglagesRelease
+        ),
+        // **Le son, une seule fois pour toutes les plateformes** : le lecteur, la
+        // sinusoïde d'écoute, le décodeur.
+        //
+        // Ces fichiers vivaient dans `SpectreWin` et n'importaient déjà `WinSDK`
+        // nulle part : de toute la couche Windows ils n'utilisaient que six
+        // fonctions du pont, que `wasapi.c` et `alsa.c` exportent sous les mêmes
+        // noms. Le travail qui reste au lecteur — accorder ce qu'on entend à ce que
+        // la tête montre — est le même des deux côtés, et il n'y avait aucune raison
+        // de l'écrire deux fois.
+        .target(
+            name: "SpectreSon",
+            dependencies: ["CPont", "SpectreCore", "SpectreDSP", "SpectreTextes",
+                           "SpectreModele", "SpectreSocle"],
+            path: "Sources/SpectreSon",
+            swiftSettings: reglagesRelease
+        ),
         // Le rendu du spectrogramme, et le vocabulaire de dessin — `remplir`,
         // `tracer`, `texte`, `arrondi`. Aucun `#if` : la bascule d'une plateforme à
         // l'autre se fait dans `CPont`, où deux fichiers C exportent les mêmes
@@ -319,7 +345,8 @@ func modulesPartages(avecLeDessin: Bool) -> [Target] {
             // `SpectreDSP` pour les demi-flottants : la matrice part sur la carte en
             // seize bits, où le pas vaut 0,06 dB — très en dessous du visible — et
             // la mémoire occupée est divisée par deux.
-            dependencies: ["CPont", "SpectreCore", "SpectreDSP", "SpectreModele"],
+            dependencies: ["CPont", "SpectreCore", "SpectreDSP", "SpectreModele",
+                           "SpectreSocle"],
             path: "Sources/SpectreToile",
             exclude: avecLeDessin ? [] : ["Pinceau.swift"],
             swiftSettings: reglagesRelease
@@ -351,6 +378,8 @@ func modulesPartages(avecLeDessin: Bool) -> [Target] {
 
 func produitsPartages(avecLeDessin: Bool) -> [Product] {
     var liste: [Product] = [
+        .library(name: "SpectreSocle", type: .static, targets: ["SpectreSocle"]),
+        .library(name: "SpectreSon", type: .static, targets: ["SpectreSon"]),
         .library(name: "SpectreToile", type: .static, targets: ["SpectreToile"]),
     ]
     if avecLeDessin {
@@ -370,7 +399,7 @@ if surWindows {
             path: "Sources/CPont",
             // Les deux ponts de Linux — OpenGL et Cairo — sont les jumeaux de
             // `d3d11.c` et `direct2d.cpp`, et n'ont rien à faire ici.
-            exclude: ["gl.c", "cairo.c"],
+            exclude: ["gl.c", "cairo.c", "decodage.c", "alsa.c"],
             cSettings: avecOnnx
                 ? [.define("SPECTRE_ONNX"),
                    // `unsafeFlags` plutôt que `headerSearchPath` : les en-têtes sont
@@ -409,7 +438,7 @@ if surWindows {
         .target(
             name: "SpectreWin",
             dependencies: ["SpectreCore", "SpectreDSP", "SpectreModele", "CPont",
-                           "SpectreToile"],
+                           "SpectreToile", "SpectreSon", "SpectreSocle"],
             path: "Sources/SpectreWin",
             swiftSettings: reglagesRelease,
             // Posées ici et non sur l'exécutable : les vérifications se lient à
@@ -426,7 +455,8 @@ if surWindows {
         .executableTarget(
             name: "SpectreWindows",
             dependencies: ["SpectreCore", "SpectreDSP", "SpectreModele", "SpectreWin",
-                           "SpectreToile", "SpectreDessin"],
+                           "SpectreToile", "SpectreDessin", "SpectreSon",
+                           "SpectreSocle"],
             path: "Sources/SpectreWindows",
             swiftSettings: reglagesRelease,
             linkerSettings: [
@@ -462,14 +492,14 @@ if surWindows {
         // WAV donné aux deux chemins doit rendre le même signal.
         .executableTarget(
             name: "DecodeCheck",
-            dependencies: ["SpectreCore", "SpectreWin"],
+            dependencies: ["SpectreCore", "SpectreSon"],
             path: "Tools/DecodeCheck"
         ),
         // La sortie audio, mesurée sans oreille : un périphérique qui marche est
         // cadencé par le temps réel, et cela se compte.
         .executableTarget(
             name: "SortieCheck",
-            dependencies: ["SpectreCore", "SpectreModele", "SpectreWin"],
+            dependencies: ["SpectreCore", "SpectreModele", "SpectreSon"],
             path: "Tools/SortieCheck"
         ),
         // Le rangement des pistes séparées : où elles vont, comment elles s'écrivent
@@ -502,7 +532,7 @@ if surLinux {
         .target(
             name: "CPont",
             path: "Sources/CPont",
-            sources: ["gl.c", "cairo.c"],
+            sources: ["gl.c", "cairo.c", "decodage.c", "alsa.c"],
             cSettings: [
                 // SDL3 est construite depuis les sources — la 24.04 ne livre que la
                 // 2 — et s'installe donc sous `/usr/local`. Voir `machine.sh`.
@@ -511,7 +541,8 @@ if surLinux {
                 // distribution : `pkg-config` en donne les chemins, et les recopier
                 // à la main ici les ferait diverger à la première mise à jour.
                 .unsafeFlags(["-I/usr/local/include"]
-                             + cheminsDe("cairo pango pangocairo glib-2.0")),
+                             + cheminsDe("cairo pango pangocairo glib-2.0 "
+                                         + "sndfile libmpg123 alsa")),
             ],
             linkerSettings: [
                 .unsafeFlags(["-L/usr/local/lib"]),
@@ -522,6 +553,9 @@ if surLinux {
                 .linkedLibrary("pangocairo-1.0"),
                 .linkedLibrary("gobject-2.0"),
                 .linkedLibrary("glib-2.0"),
+                .linkedLibrary("sndfile"),
+                .linkedLibrary("mpg123"),
+                .linkedLibrary("asound"),
             ]
         ),
         // SDL3, vue de Swift. `pkgConfig` la trouve où `machine.sh` l'a posée ;
@@ -539,7 +573,8 @@ if surLinux {
         .target(
             name: "SpectreLin",
             dependencies: ["SpectreCore", "SpectreDSP", "SpectreTextes",
-                           "SpectreModele", "CPont", "SpectreToile"],
+                           "SpectreModele", "CPont", "SpectreToile", "SpectreSon",
+                           "SpectreSocle"],
             path: "Sources/SpectreLin",
             swiftSettings: reglagesRelease
         ),
@@ -550,9 +585,23 @@ if surLinux {
             name: "SpectreLinux",
             dependencies: ["SpectreCore", "SpectreDSP", "SpectreTextes",
                            "SpectreModele", "SpectreLin", "SpectreToile",
-                           "SpectreDessin", "CSDL"],
+                           "SpectreDessin", "SpectreSon", "SpectreSocle", "CSDL"],
             path: "Sources/SpectreLinux",
             swiftSettings: reglagesRelease
+        ),
+        // Le décodage du système, mesuré contre la référence portable : le même WAV
+        // donné aux deux chemins doit rendre le même signal.
+        .executableTarget(
+            name: "DecodeCheck",
+            dependencies: ["SpectreCore", "SpectreSon"],
+            path: "Tools/DecodeCheck"
+        ),
+        // La sortie audio, mesurée sans oreille : un périphérique qui marche est
+        // cadencé par le temps réel, et cela se compte.
+        .executableTarget(
+            name: "SortieCheck",
+            dependencies: ["SpectreCore", "SpectreModele", "SpectreSon"],
+            path: "Tools/SortieCheck"
         ),
         // Le même harnais que sous Windows, sur une troisième carte graphique : la
         // vraie chaîne — téléversement, nuanceur, relecture — mais hors écran, donc
@@ -567,6 +616,8 @@ if surLinux {
         .library(name: "SpectreLin", type: .static, targets: ["SpectreLin"]),
         .executable(name: "SpectreLinux", targets: ["SpectreLinux"]),
         .executable(name: "RenduCheck", targets: ["RenduCheck"]),
+        .executable(name: "DecodeCheck", targets: ["DecodeCheck"]),
+        .executable(name: "SortieCheck", targets: ["SortieCheck"]),
     ]
 }
 

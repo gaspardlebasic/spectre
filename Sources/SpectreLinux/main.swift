@@ -4,8 +4,10 @@ import SpectreCore
 import SpectreDessin
 import SpectreLin
 import SpectreModele
+import SpectreSon
 import SpectreTextes
 import SpectreToile
+import SpectreSocle
 
 // Spectre sous Linux — la fenêtre.
 //
@@ -39,22 +41,22 @@ import SpectreToile
 /// modèle est générique sur son lecteur — parce que l'interface observe
 /// `model.player.speed` et qu'un protocole existentiel romprait ce suivi — mais rien
 /// d'autre n'a de raison de porter ce détail.
-typealias AppModel = SpectreModele.AppModel<LecteurLinux>
+typealias AppModel = SpectreModele.AppModel<LecteurSurLePont>
 
 // Et le même rebouclage pour ce qui dessine. Ces quatre types sont partagés avec
 // Windows et portent donc le lecteur en paramètre ; les rattacher ici une fois fait
 // que pas un appel de ce fichier ne montre la généricité.
-typealias Frise = SpectreDessin.Frise<LecteurLinux>
-typealias Batterie = SpectreDessin.Batterie<LecteurLinux>
-typealias Barre = SpectreDessin.Barre<LecteurLinux>
-typealias Commandes = SpectreDessin.Commandes<LecteurLinux>
+typealias Frise = SpectreDessin.Frise<LecteurSurLePont>
+typealias Batterie = SpectreDessin.Batterie<LecteurSurLePont>
+typealias Barre = SpectreDessin.Barre<LecteurSurLePont>
+typealias Commandes = SpectreDessin.Commandes<LecteurSurLePont>
 
-extension SpectreModele.AppModel where Lecteur == LecteurLinux {
+extension SpectreModele.AppModel where Lecteur == LecteurSurLePont {
     /// L'assemblage Linux : à chaque protocole du modèle, sa mise en œuvre.
     convenience init() {
-        self.init(lecteur: LecteurLinux(),
-                  décodeur: DecodeurLinux(),
-                  sinusoide: SinusoideLinux(),
+        self.init(lecteur: LecteurSurLePont(),
+                  décodeur: DecodeurSurLePont(),
+                  sinusoide: SinusoideSurLePont(),
                   pistes: RangementLinux(),
                   dialogue: DialogueLinux(),
                   récentsDuSystème: RecentsLinux(),
@@ -194,18 +196,6 @@ func colonne(deLInstant t: Double) -> Double? {
 }
 
 // MARK: - Une image
-
-/// Vide la file principale, et c'est indispensable.
-///
-/// Le modèle rend ses réponses **sur le fil principal** — l'analyse, le tempo, les
-/// accords, la batterie arrivent chacun quand ils sont prêts, par
-/// `DispatchQueue.main.async`. Sur macOS et sous Windows, la boucle d'évènements du
-/// système vide cette file toute seule ; SDL, non. Sans cet appel, la fenêtre reste
-/// à « Lecture du fichier… » pour toujours, et l'on cherche du côté du décodeur une
-/// panne qui est celle de la boucle.
-func viderLaFilePrincipale() {
-    _ = RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.001))
-}
 
 func uneImage() {
     var l: Int32 = 0, h: Int32 = 0

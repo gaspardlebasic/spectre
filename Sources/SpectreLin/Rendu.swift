@@ -1,6 +1,7 @@
 import CPont
 import Foundation
 import SpectreToile
+import SpectreSocle
 
 // MARK: - Le nuanceur
 
