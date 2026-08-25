@@ -1,8 +1,8 @@
 # Spectre
 
-Aide à la transcription de musique à l'oreille, sur macOS : on ouvre un fichier, on
-voit sa décomposition spectrale sur toute sa durée, on navigue dedans au trackpad,
-on ralentit, on transpose.
+Aide à la transcription de musique à l'oreille, sur macOS, Windows et Linux : on
+ouvre un fichier, on voit sa décomposition spectrale sur toute sa durée, on navigue
+dedans au trackpad, on ralentit, on transpose.
 
 Le parti pris est celui du **hors ligne**. Le fichier est analysé une fois pour
 toutes au chargement ; ensuite, plus rien ne recalcule quoi que ce soit — zoomer,
@@ -86,11 +86,40 @@ réinstalle veut les retrouver.
 Qui préfère ne rien inscrire nulle part peut prendre l'archive `.zip` publiée à
 côté : le dossier se suffit à lui-même, et `Spectre.exe` s'y lance tel quel.
 
-**La séparation des pistes n'est pas dans les livraisons Windows.** Les poids de
-Demucs pèsent 166 Mo, ne sont pas dans le dépôt et ne se refabriquent qu'avec
-PyTorch — voir `modele.sh` et [NOTICE.md](NOTICE.md) — si bien qu'aucune machine
-d'intégration continue ne peut les produire. Tout le reste est là : l'analyse, le
-relevé d'accords, la batterie, la lecture, les réglages.
+### Sur Linux
+
+Un AppImage, dans les [releases](../../releases) :
+
+| à télécharger | pour |
+|---|---|
+| [`Spectre-x86_64.AppImage`](../../releases/latest/download/Spectre-x86_64.AppImage) | les PC Intel et AMD |
+
+Il ne s'installe pas : on le rend exécutable et on le lance.
+
+```bash
+chmod +x Spectre-x86_64.AppImage
+./Spectre-x86_64.AppImage ~/Musique/morceau.mp3
+```
+
+Rien à installer à côté : la bibliothèque standard de Swift, SDL3, Cairo, Pango,
+libsndfile et libmpg123 voyagent avec l'application. Ce qui parle au matériel —
+pilotes graphiques, ALSA — vient du système, et c'est délibéré : un paquet qui
+embarquerait sa propre `libGL` ne verrait pas la carte de la machine sur laquelle il
+tourne. Il faut donc **OpenGL 3.3**, et Wayland ou X11.
+
+Le fichier `.desktop` embarqué met Spectre au menu et dans le « Ouvrir avec » des
+fichiers audio, pour qui utilise `AppImageLauncher` ou `appimaged`.
+
+Pas d'AppImage ARM64 dans les livraisons : GitHub n'offre pas de coureur Linux ARM
+gratuit. Sur une machine ARM, `./paquet.sh` le fabrique en quelques minutes.
+
+### La séparation des pistes
+
+**Elle n'est pas dans les livraisons Windows ni Linux.** Les poids de Demucs pèsent
+166 Mo, ne sont pas dans le dépôt et ne se refabriquent qu'avec PyTorch — voir
+`modele.sh` et [NOTICE.md](NOTICE.md) — si bien qu'aucune machine d'intégration
+continue ne peut les produire. Tout le reste est là : l'analyse, le relevé
+d'accords, la batterie, la lecture, les réglages.
 
 ## Construire soi-même
 
@@ -146,6 +175,21 @@ extensions à associer n'est écrite nulle part dans l'installeur : elle est lue
 dans `DecodeurWindows.formats`, pour que jamais Windows ne propose d'ouvrir avec
 Spectre un format que Spectre refuserait ensuite.
 
+Sous Linux, `./machine.sh` pose tout ce qu'il faut sur une Ubuntu neuve — les
+bibliothèques, Swift, et SDL3 qu'il construit depuis les sources, la 24.04 ne
+livrant que la 2. Ensuite :
+
+```bash
+./paquet.sh
+```
+
+Il compile, suit les dépendances au `ldd`, embarque ce qui doit l'être, écarte ce
+qui doit venir du système, et assemble l'AppImage. `./essai.sh` l'éprouve ensuite
+**avec Swift et `/usr/local` cachés par un espace de montage à lui** : c'est le
+pendant exact de l'épreuve du dossier propre de `build.ps1`, et c'est le seul
+contrôle qui compte — un paquet qui emprunte une bibliothèque à la machine qui l'a
+construit passe tout le reste et ne s'ouvre chez personne.
+
 ## Les six étages du code
 
 Le paquet est coupé en six, du plus portable au moins portable. La règle est
@@ -157,9 +201,12 @@ qu'un module ne connaît que ceux d'en dessous.
 | `SpectreDSP` | opérations vectorielles, transformée réelle | Accelerate, ou du Swift pur |
 | `SpectreCore` | l'analyse, le tempo, les palettes, les boucles, les sessions | **rien** |
 | `SpectreModele` | **le comportement de l'application** : ouverture, tourne-page, aimantation, boucle, pistes, survol | **rien** |
+| `SpectreSocle`, `SpectreToile`, `SpectreSon`, `SpectreDessin`, `SpectreSeparation` | ce que Windows et Linux partagent : le dessin de l'interface, les gestes, le lecteur, le décodeur, la séparation | rien, sauf par `CPont` |
 | `SpectreMac` | décodage, lecture, écriture des pistes, rendu Metal, séparation | AVFoundation, Metal, ONNX |
 | `Spectre` | la fenêtre, les menus, la réglette | SwiftUI, AppKit |
-| `SpectreWin`, `SpectreWindows`, `CPont` | le pendant Windows des deux derniers | Win32, Direct3D 11, Direct2D, Media Foundation, WASAPI |
+| `SpectreWin`, `SpectreWindows` | ce qui reste de Windows : la fenêtre, les messages, le menu | Win32 |
+| `SpectreLin`, `SpectreLinux` | ce qui reste de Linux : la fenêtre SDL, les évènements, le portail XDG | SDL3 |
+| `CPont` | le pont C, en fichiers jumeaux qui exportent les mêmes noms | Direct3D 11 / OpenGL, Direct2D / Cairo, Media Foundation / libsndfile, WASAPI / ALSA |
 
 `SpectreCore` n'importe que Foundation et `SpectreTextes` : c'est vérifiable d'un
 coup d'œil, et c'est ce qui donne son sens au découpage. Les deux tiers du code y
@@ -174,16 +221,29 @@ Les vérifications de `check.sh` sont des exécutables du paquet plutôt que des
 compilations à la main. Celles qui ne tirent que le noyau — couche numérique, WAV,
 analyse, relevé de la batterie, Fourier — tournent partout où Swift compile.
 
-**Spectre tourne aussi sous Windows**, et Linux suivra. Il y avait déjà eu un
-portage — SDL3, OpenGL, Dear ImGui — abandonné parce qu'il tenait un second modèle
-d'application, plus fruste, qui divergeait un peu plus chaque semaine ; il reste
-dans l'historique, à `577c6a8`. Celui-ci ne refait pas la même erreur :
-`SpectreModele` est né de là, et Windows n'a que ses protocoles à remplir pour
-avoir **la même** application, geste pour geste. La fenêtre est en Win32 sans
-intermédiaire, l'image en Direct3D 11, l'habillage en Direct2D, le son en Media
-Foundation et WASAPI, la séparation en ONNX Runtime. Ce qui manque encore y est
-dit franchement : [WINDOWS.md](WINDOWS.md) tient l'état du chantier, étape par
-étape, et surtout les pièges déjà payés.
+**Spectre tourne aussi sous Windows et sous Linux.** Il y avait déjà eu un portage —
+SDL3, OpenGL, Dear ImGui — abandonné parce qu'il tenait un second modèle
+d'application, plus fruste, qui divergeait un peu plus chaque semaine ; il reste dans
+l'historique, à `577c6a8`. Ceux-ci ne refont pas la même erreur : `SpectreModele` est
+né de là, et un portage n'a que ses protocoles à remplir pour avoir **la même**
+application, geste pour geste.
+
+Sous Windows, la fenêtre est en Win32 sans intermédiaire, l'image en Direct3D 11,
+l'habillage en Direct2D, le son en Media Foundation et WASAPI. Sous Linux, la fenêtre
+est en SDL3, l'image en OpenGL 3.3, l'habillage en Cairo et Pango, le son en
+libsndfile, libmpg123 et ALSA. La séparation est en ONNX Runtime des deux côtés.
+
+Et **presque rien n'est écrit deux fois**. À chaque étape du portage Linux, la même
+question : qu'est-ce que la version Windows touche vraiment du système ? La réponse a
+toujours été « moins qu'on ne croit » — le dessin de l'interface ne touchait que
+`Pinceau`, le lecteur six fonctions du pont, les gestes huit appels sur quatre cents
+lignes, la séparation aucun. Le Swift est donc monté dans les modules partagés, et
+seul du C est descendu : `gl.c` en face de `d3d11.c`, `cairo.c` en face de
+`direct2d.cpp`, `alsa.c` en face de `wasapi.c`, sous les mêmes noms de fonctions.
+`SpectreLin` fait cent trente lignes.
+
+[WINDOWS.md](WINDOWS.md) et [LINUX.md](LINUX.md) tiennent l'état de chaque chantier,
+étape par étape, et surtout les pièges déjà payés.
 
 ## L'analyse
 
