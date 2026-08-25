@@ -58,6 +58,29 @@ c'est exactement ce que fait un coureur d'intégration continue.
 
 **Donc la panne est après la fenêtre, dans le seul chemin que rien n'exerce.**
 
+### Et ce n'est pas le code source
+
+Le journal une fois en place, l'expérience s'est faite en une minute. On a remplacé
+**le seul `Spectre.exe`** dans l'installation de la v0.4 — les vingt bibliothèques,
+`swiftCore.dll` comprise, restant celles de l'installeur — par un exécutable
+construit à la main sur la machine d'essai. Même machine, même session, même
+fichier audio.
+
+**Elle s'ouvre, et elle sépare les pistes.**
+
+Or le seul écart de code entre l'étiquette `v0.4` et cette construction-là est le
+journal lui-même : le commit intermédiaire ne touche qu'à la page de téléchargement.
+Le code source est donc hors de cause, et la faute est dans **l'exécutable que
+fabrique le coureur**, pas dans ce qu'on lui donne à compiler. Les deux binaires
+sont pourtant jumeaux à l'œil : ARM64 tous les deux, sous-système « fenêtre », même
+nombre de sections, trente-sept kilooctets d'écart sur dix-neuf mégaoctets.
+
+C'est une conclusion inconfortable et il faut la dire telle quelle : **une chaîne de
+livraison qui produit un binaire cassé à partir d'un code sain est plus grave que le
+bogue qu'on cherchait.** Ce qui reste à trouver est ce qui diffère entre les deux
+compilations — la chaîne posée par `compnerd/gha-setup-swift` et celle qu'un
+installeur pose sur une vraie machine, au premier chef.
+
 ### Et le message, personne ne peut le lire
 
 `Journal` écrit sur la sortie d'erreur et dans `OutputDebugString`. L'application
