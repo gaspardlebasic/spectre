@@ -168,14 +168,21 @@ jobs:
       # se configurer si XScreenSaver ou XTest manquent, et le dit au bout de deux
       # minutes de tests réussis. Trois paquets de trop coûtent dix secondes ; trois
       # de moins coûtent une exécution entière.
+      #
+      # `file` est là pour `appimagetool`, et le greffon de libdecor pour que le
+      # paquet porte une barre de titre. Un conteneur n'a ni l'un ni l'autre : la
+      # machine de développement les avait, et c'est exactement le genre de
+      # dépendance qu'on ne découvre que sur un coureur nu.
       - name: Les bibliothèques
         run: |
           apt-get update -qq
           apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build pkg-config git curl ca-certificates \
+            file \
             libcairo2-dev libpango1.0-dev libasound2-dev \
             libsndfile1-dev libmpg123-dev libepoxy-dev libgl1-mesa-dev \
             libwayland-dev wayland-protocols libxkbcommon-dev libdecor-0-dev \
+            libdecor-0-plugin-1-cairo \
             libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev \
             libxfixes-dev libxss-dev libxtst-dev \
             libdrm-dev libgbm-dev libdbus-1-dev libudev-dev
