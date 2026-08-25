@@ -479,6 +479,12 @@ jobs:
           bibliothèque standard de Swift — et prend du système ce qui doit en venir :
           les pilotes graphiques et le son.
 
+          **Ce \`chmod\` n'est pas facultatif, et l'oublier ne dit rien.** Tout
+          navigateur retire le bit d'exécution au téléchargement. Un double-clic
+          proposera alors d'ouvrir le fichier avec « Disk Image Mounter », ou ne fera
+          rien du tout — un AppImage est une image disque tant qu'il n'est pas
+          exécutable, et le bureau ne voit que l'image.
+
           Il faut une carte qui sache OpenGL 3.3, et Wayland ou X11. Le fichier
           \`.desktop\` embarqué met Spectre au menu et dans le « Ouvrir avec » des
           fichiers audio, si l'on utilise \`AppImageLauncher\` ou \`appimaged\`.

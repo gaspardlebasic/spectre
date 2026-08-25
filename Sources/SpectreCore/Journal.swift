@@ -86,10 +86,42 @@ public enum Journal {
         ecrire("Spectre : \(message)", surLErreur: detourne)
     }
 
+    /// ─────────────────────────────────────────────────────────────────────────
+    /// UN `write` NU, ET SURTOUT PAS `FileHandle`
+    ///
+    /// `FileHandle.standardError.write(_:)` **tue le processus** quand la sortie
+    /// n'est pas ouverte : l'écriture lève, et Foundation l'appelle derrière un
+    /// `try!` — `Foundation/FileHandle.swift:709`. Ce n'est pas une hypothèse,
+    /// c'est ce qui a emporté la v0.4 sous Windows.
+    ///
+    /// Le montage exact : l'application est en sous-système « fenêtre » ; lancée
+    /// par l'Explorateur, elle n'hérite d'aucune console et les poignées du
+    /// processus restent nulles. La **première note** — le nom de la carte
+    /// graphique, écrit juste après la création du périphérique Direct3D — la
+    /// tuait donc, à l'endroit précis où plus rien ne regardait : l'épreuve du
+    /// dossier propre et le coureur redirigent tous deux la sortie, ce qui la rend
+    /// valide et fait disparaître la panne.
+    ///
+    /// Un journal qui tue l'application à laquelle il sert d'oreille est le pire
+    /// des défauts, et il ne se voit dans aucune relecture.
+    ///
+    /// **`fwrite` sur le flux, et pas `write` sur le descripteur.** La seconde
+    /// version a été écrite, et elle tuait encore le processus — sous Windows
+    /// seulement. `_write` sur un descripteur fermé ne rend pas `-1` : il passe par
+    /// le contrôle de paramètres du runtime C, dont le comportement par défaut est
+    /// d'abandonner le processus. Le flux, lui, existe toujours ; l'écriture échoue,
+    /// rend zéro, et personne ne meurt. C'est le harnais qui l'a dit, et il ne
+    /// l'aurait pas dit sans la machine d'essai Windows.
+    /// ─────────────────────────────────────────────────────────────────────────
     private static func ecrire(_ ligne: String, surLErreur: Bool) {
-        let flux = surLErreur ? FileHandle.standardError : FileHandle.standardOutput
         let octets = Array((ligne + "\n").utf8)
-        flux.write(Data(octets))
+        let flux = surLErreur ? stderr : stdout
+        _ = fwrite(octets, 1, octets.count, flux)
+        // Vidé à chaque ligne. `FileHandle` écrivait sans tampon, et les épreuves
+        // lisent cette sortie-là au fil de l'eau : la sortie ordinaire, elle, est
+        // tamponnée, et sans ce vidage un relevé n'arriverait qu'à la fermeture —
+        // ou jamais, si l'application tombe avant.
+        fflush(flux)
         // Le double dans le fichier n'a lieu d'être que si la sortie d'erreur ne
         // s'y déverse pas déjà : sinon chaque ligne y figurerait deux fois.
         if !detourne { ecrireDansLeFichier(ligne + "\n") }
@@ -128,7 +160,7 @@ public enum Journal {
     ///
     /// À appeler **le plus tôt possible**, et sous Windows après
     /// `rattacherLaConsole()` : c'est lui qui décide s'il y a un terminal.
-    public static func ouvrir(version: String? = nil) {
+    public static func ouvrir(version: String = Spectre.version) {
         guard let dossier = Storage.root else { return }
         let fichier = dossier.appendingPathComponent("journal.txt", isDirectory: false)
         let precedent = dossier.appendingPathComponent("journal-1.txt", isDirectory: false)
@@ -169,7 +201,7 @@ public enum Journal {
     /// Ne porte **ni nom de machine, ni nom d'utilisateur, ni chemin personnel** —
     /// c'est la même règle que celle des rapports de plantage, et elle commence ici
     /// puisque c'est ce fichier-ci qui partira un jour.
-    private static func entete(version: String?) {
+    private static func entete(version: String) {
         let horodatage = ISO8601DateFormatter().string(from: Date())
         let systeme = ProcessInfo.processInfo.operatingSystemVersionString
         #if arch(arm64)
@@ -179,12 +211,8 @@ public enum Journal {
         #else
         let tranche = "architecture inconnue"
         #endif
-        // Le numéro de version n'a pas encore de source unique : le Mac le lit dans
-        // son paquet, les deux autres ne l'ont nulle part. « inconnue » est donc la
-        // réponse honnête en attendant — voir `docs/PAQUETS.md`.
-        let numero = version ?? "inconnue"
         ecrire("", surLErreur: detourne)
-        ecrire("── \(horodatage) — Spectre \(numero) — \(systeme) — \(tranche)",
+        ecrire("── \(horodatage) — Spectre \(version) — \(systeme) — \(tranche)",
                surLErreur: detourne)
     }
 

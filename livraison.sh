@@ -47,6 +47,14 @@ echo "  ✓ le réseau de séparation est là — $(du -h "$APP/Contents/Resourc
 
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
 MINIMUM="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")"
+# `build.sh` pose ce numéro depuis `Sources/SpectreCore/Version.swift`. On le
+# revérifie ici parce que c'est le dernier moment où l'on peut : ce paquet-ci part.
+CODE="$(sed -n 's/.*let version = "\([^"]*\)".*/\1/p' Sources/SpectreCore/Version.swift)"
+if [ "$VERSION" != "$CODE" ]; then
+  echo "Échec : le paquet annonce $VERSION et le code dit $CODE." >&2
+  echo "        Le paquet a été assemblé autrement que par ./build.sh." >&2
+  exit 1
+fi
 echo "  ✓ version $VERSION, macOS $MINIMUM ou plus récent"
 
 # La signature ad-hoc ne rassure pas Gatekeeper — rien ne le fera sans identifiant

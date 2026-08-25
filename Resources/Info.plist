@@ -32,10 +32,14 @@
 	<string>6.0</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<!-- Ces deux nombres sont posés par build.sh, qui les prend dans
+	     Sources/SpectreCore/Version.swift : c'est le seul endroit où le numéro
+	     de version s'écrit. La valeur ci-dessous est délibérément fausse, pour
+	     qu'un paquet assemblé autrement se dénonce au lieu de mentir. -->
 	<key>CFBundleShortVersionString</key>
-	<string>0.2</string>
+	<string>0.0</string>
 	<key>CFBundleVersion</key>
-	<string>2</string>
+	<string>0.0</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>LSApplicationCategoryType</key>

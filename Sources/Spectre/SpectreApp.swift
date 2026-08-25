@@ -66,11 +66,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct Entry {
     static func main() {
         // Le journal avant tout le reste : ce qu'on cherche est toujours ce qui
-        // s'est dit avant que l'application ne se taise. Le numéro de version vient
-        // du paquet, seule des trois plateformes à en porter un que le programme
-        // puisse lire — voir `docs/PAQUETS.md`.
-        Journal.ouvrir(version: Bundle.main.infoDictionary?["CFBundleShortVersionString"]
-                                as? String)
+        // s'est dit avant que l'application ne se taise.
+        Journal.ouvrir()
         // La langue ensuite, avant tout ce qui s'affiche — y compris les deux
         // commandes en ligne ci-dessous, dont les messages sortent du même
         // catalogue que la fenêtre. `Preferences.shared` la pose en s'ouvrant.

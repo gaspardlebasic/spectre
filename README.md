@@ -101,6 +101,11 @@ chmod +x Spectre-x86_64.AppImage
 ./Spectre-x86_64.AppImage ~/Musique/morceau.mp3
 ```
 
+**Ce `chmod` n'est pas facultatif, et l'oublier ne dit rien.** Tout navigateur retire
+le bit d'exécution au téléchargement. Un double-clic proposera alors « Disk Image
+Mounter », ou ne fera rien : un AppImage est une image disque tant qu'il n'est pas
+exécutable, et le bureau ne voit que l'image.
+
 Rien à installer à côté : la bibliothèque standard de Swift, SDL3, Cairo, Pango,
 libsndfile et libmpg123 voyagent avec l'application. Ce qui parle au matériel —
 pilotes graphiques, ALSA — vient du système, et c'est délibéré : un paquet qui
@@ -743,8 +748,33 @@ paraît jamais plus forte qu'une autre à niveau égal.
 
 ## Vérification
 
-Deux niveaux. `check.sh` prouve que les pièces marchent ; `essai.sh` prouve que
-l'application marche.
+Trois niveaux. `check.sh` prouve que les pièces marchent ; `essai.sh` prouve que
+l'application marche ; `recette.sh` prouve que **ce qui est en ligne** marche.
+
+Le troisième a été ajouté après coup, et il a coûté cher de ne pas l'avoir : la
+v0.4 est partie avec deux paquets sur trois qui ne s'ouvraient sur aucune machine
+d'essai, les trois chaînes d'intégration continue étant au vert. Ce qu'on éprouvait
+n'était pas ce qu'on livrait — entre les deux il y a l'architecture du paquet face à
+celle de la machine, le bit d'exécution qu'un navigateur retire, un installeur qui
+pose les fichiers ailleurs, et le chemin qui suit l'ouverture de la fenêtre, qu'aucun
+coureur n'exerce faute de bureau.
+
+```bash
+./recette.sh v0.4
+```
+
+Il télécharge les paquets de la release, déplie l'archive macOS ailleurs, lève la
+quarantaine comme les notes de version le disent, et ouvre l'application. Il envoie
+l'AppImage à la machine Linux — **sans le bit d'exécution**, comme un navigateur le
+livre — vérifie qu'il refuse alors de s'ouvrir, puis le rend exécutable et le
+photographie. Sous Windows il pose l'installeur sur le bureau de la machine d'essai
+et s'arrête là : un accès distant tombe dans la session 0, qui n'a pas de bureau, et
+l'application s'y arrête bien avant ce qu'on veut éprouver. Ce dernier clic est
+donné par quelqu'un, et le prétendre automatique serait refaire l'erreur qu'on
+corrige.
+
+Voir [docs/PAQUETS.md](docs/PAQUETS.md) pour ce que les deux pannes étaient, et
+pourquoi rien ne les avait vues.
 
 `check.sh` commence par `LangueCheck`, qui compte les cinq catalogues et compare
 les repères de substitution d'une langue à l'autre. Le reste — couche numérique,

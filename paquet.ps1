@@ -64,6 +64,24 @@ param(
 
 $ErrorActionPreference = "Stop"
 $racine = $PSScriptRoot
+
+# ── Le numéro du code fait foi ───────────────────────────────────────────────
+#
+# Il vivait à trois endroits qui n'avaient aucun moyen de s'accorder, et ils ne
+# s'accordaient pas : le paquet macOS annonçait 0.2 pendant que la livraison
+# s'appelait 0.4. `Sources/SpectreCore/Version.swift` est maintenant le seul endroit
+# où il s'écrit, et ce script refuse de fabriquer un installeur dont l'étiquette le
+# dément — un paquet qui ment sur sa version fait chercher une panne dans le mauvais
+# code, ce qui est exactement ce que `docs/RAPPORTS.md` s'apprête à envoyer.
+$fichierVersion = Join-Path $racine "Sources\SpectreCore\Version.swift"
+$codeVersion = (Select-String -Path $fichierVersion -Pattern 'let version = "([^"]*)"').
+               Matches.Groups[1].Value
+if (-not $codeVersion) { throw "Le numéro de version est introuvable dans $fichierVersion." }
+if (-not $PSBoundParameters.ContainsKey('Version')) { $Version = $codeVersion }
+if ($Version -ne $codeVersion) {
+    throw ("L'étiquette dit « $Version » et le code dit « $codeVersion ». " +
+           "Corriger Sources\SpectreCore\Version.swift, dans le même commit que l'étiquette.")
+}
 # L'atelier, parce que `logo.ps1` est appelé d'ici et qu'il lui faut `rc.exe`.
 # `build.ps1` le pose aussi, mais il passe **après** : sans cette ligne, la
 # ressource de version échoue sur « rc.exe n'est pas reconnu », et le message

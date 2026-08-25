@@ -42,13 +42,30 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VERSION="0.0"
+# Le numéro du code fait foi. Sans `--version`, c'est celui-là qu'on prend ; avec, on
+# vérifie qu'il dit la même chose — voir `Sources/SpectreCore/Version.swift`.
+CODE="$(sed -n 's/.*let version = "\([^"]*\)".*/\1/p' Sources/SpectreCore/Version.swift)"
+if [ -z "$CODE" ]; then
+    echo "Le numéro de version est introuvable dans Sources/SpectreCore/Version.swift." >&2
+    exit 1
+fi
+
+VERSION="$CODE"
 while [ $# -gt 0 ]; do
     case "$1" in
         --version) VERSION="$2"; shift 2 ;;
         *) echo "argument inconnu : $1" >&2; exit 2 ;;
     esac
 done
+
+# Un paquet dont le nom dément ce que l'application dira d'elle-même est un paquet
+# qui fait chercher une panne dans le mauvais code. Mieux vaut refuser de le
+# fabriquer que d'avoir à s'en apercevoir dans un rapport de plantage.
+if [ "$VERSION" != "$CODE" ]; then
+    echo "L'étiquette dit « $VERSION » et le code dit « $CODE »." >&2
+    echo "Corriger Sources/SpectreCore/Version.swift, dans le même commit que l'étiquette." >&2
+    exit 1
+fi
 
 case "$(uname -m)" in
     aarch64|arm64) ARCH="aarch64" ;;

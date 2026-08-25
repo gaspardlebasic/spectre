@@ -42,6 +42,23 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Spectre"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+
+# Le numéro de version est posé ici, et pris dans le code.
+#
+# Il vivait dans le `Info.plist`, où il s'est tranquillement démodé : le paquet
+# annonçait 0.2 pendant que la livraison s'appelait 0.4, et personne ne pouvait le
+# voir puisque rien ne l'affiche. `Sources/SpectreCore/Version.swift` est maintenant
+# le seul endroit où il s'écrit — voir la note qui s'y trouve — et le paquet le
+# reçoit d'ici, à chaque assemblage, plutôt que d'en garder une copie qui dérive.
+VERSION="$(sed -n 's/.*let version = "\([^"]*\)".*/\1/p' Sources/SpectreCore/Version.swift)"
+if [ -z "$VERSION" ]; then
+  echo "Le numéro de version est introuvable dans Sources/SpectreCore/Version.swift." >&2
+  exit 1
+fi
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" \
+                        "$APP/Contents/Info.plist" >/dev/null
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" \
+                        "$APP/Contents/Info.plist" >/dev/null
 # L'icône est versionnée telle quelle ; `./logo.sh` la refabrique au besoin.
 cp Resources/Spectre.icns "$APP/Contents/Resources/Spectre.icns"
 

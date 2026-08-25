@@ -26,9 +26,12 @@ squashfs derrière un en-tête ELF, et sans `chmod +x` le bureau n'en voit que
 l'image. Tout navigateur retire ce bit au téléchargement, et tout le monde le
 recevra donc comme cela.
 
-`paquet.sh` finit par imprimer la ligne `chmod +x`. Elle n'est ni dans les notes de
-version, ni sur la page de téléchargement, ni dans le README — c'est-à-dire nulle
-part où quelqu'un la lira.
+Ce `chmod +x` **était** dit — dans les notes de version, dans le README et sur la
+page de téléchargement, avec un bouton pour le copier. Un premier jet de ce document
+prétendait le contraire ; c'était faux, et vérifier une phrase avant de la reprocher
+à quelqu'un vaut mieux que de la corriger après. Ce qui manquait n'était pas la
+commande mais **le nom de ce qu'on voit quand on l'oublie** : « Disk Image Mounter »,
+ou rien du tout. C'est ajouté aux trois endroits.
 
 ### Windows : le paquet est bon, l'application tombe
 
@@ -58,28 +61,73 @@ c'est exactement ce que fait un coureur d'intégration continue.
 
 **Donc la panne est après la fenêtre, dans le seul chemin que rien n'exerce.**
 
-### Et ce n'est pas le code source
+### Le raisonnement qui s'est trompé, et pourquoi il est noté ici
 
-Le journal une fois en place, l'expérience s'est faite en une minute. On a remplacé
-**le seul `Spectre.exe`** dans l'installation de la v0.4 — les vingt bibliothèques,
-`swiftCore.dll` comprise, restant celles de l'installeur — par un exécutable
-construit à la main sur la machine d'essai. Même machine, même session, même
-fichier audio.
+Le journal une fois en place, on a remplacé **le seul `Spectre.exe`** dans
+l'installation de la v0.4 — les vingt bibliothèques, `swiftCore.dll` comprise,
+restant celles de l'installeur — par un exécutable construit à la main. Même
+machine, même session, même fichier audio : **elle s'ouvre, et elle sépare les
+pistes.**
 
-**Elle s'ouvre, et elle sépare les pistes.**
+D'où la conclusion, écrite ici noir sur blanc : puisque le seul écart de code entre
+l'étiquette `v0.4` et cette construction est « le journal », le code source est hors
+de cause et c'est le coureur qui fabrique un binaire fautif.
 
-Or le seul écart de code entre l'étiquette `v0.4` et cette construction-là est le
-journal lui-même : le commit intermédiaire ne touche qu'à la page de téléchargement.
-Le code source est donc hors de cause, et la faute est dans **l'exécutable que
-fabrique le coureur**, pas dans ce qu'on lui donne à compiler. Les deux binaires
-sont pourtant jumeaux à l'œil : ARM64 tous les deux, sous-système « fenêtre », même
-nombre de sections, trente-sept kilooctets d'écart sur dix-neuf mégaoctets.
+**C'était faux, et la faute de raisonnement mérite d'être gardée.** « Le seul écart
+est le journal » traitait le journal comme un ajout inerte — un observateur qui
+regarde sans toucher. Il ne l'était pas : il changeait la façon dont l'application
+écrit ses messages, et c'est exactement le mécanisme qui était cassé. **L'instrument
+qu'on ajoute pour observer une panne peut être ce qui la fait disparaître**, et il
+faut se le demander avant d'exonérer quoi que ce soit.
 
-C'est une conclusion inconfortable et il faut la dire telle quelle : **une chaîne de
-livraison qui produit un binaire cassé à partir d'un code sain est plus grave que le
-bogue qu'on cherchait.** Ce qui reste à trouver est ce qui diffère entre les deux
-compilations — la chaîne posée par `compnerd/gha-setup-swift` et celle qu'un
-installeur pose sur une vraie machine, au premier chef.
+Le coureur n'y était pour rien.
+
+### Ce que l'exécutable de la v0.4 a fini par dire
+
+Il ne pouvait plus le dire lui-même — il ne tombait plus. On l'a donc relancé, **lui**,
+depuis une console qui gardait sa sortie d'erreur :
+
+```
+Foundation/FileHandle.swift:709: Fatal error: 'try!' expression unexpectedly
+raised an error: Error Domain=NSCocoaErrorDomain Code=512
+```
+
+`Journal` écrivait par `FileHandle.standardError.write`. Sous Windows, cette
+poignée-là vient du processus, et **une application lancée par l'Explorateur n'en a
+aucune** : l'écriture lève, Foundation l'appelle derrière un `try!`, et le processus
+meurt. C'est le journal qui tuait l'application à laquelle il servait d'oreille.
+
+Tout s'explique alors, y compris ce qui paraissait le plus étrange :
+
+| ce qu'on observait | pourquoi |
+|---|---|
+| la panne est « après la fenêtre » | la première note est le nom de la carte graphique, écrit juste après la création du périphérique Direct3D |
+| le module fautif est `swiftCore.dll`, au même décalage | c'est le piège d'une erreur fatale de Swift, quelle qu'elle soit |
+| l'épreuve du dossier propre passe | elle redirige la sortie, ce qui la rend valide |
+| le coureur passe | il redirige aussi |
+| lancée depuis un terminal, elle marche | `rattacherLaConsole()` récupère la console du parent |
+| lancée par un double-clic, elle meurt | il n'y a pas de parent qui ait une console |
+
+**Rien de ce qui l'éprouvait ne pouvait la voir**, parce que tout ce qui éprouve
+redirige. Une panne qui n'existe que lorsque personne ne regarde est le cas le plus
+défavorable qui soit, et c'est celui-là qui est parti en livraison.
+
+Le correctif est d'une ligne : `fwrite` sur le flux, qui échoue en silence, plutôt
+que `FileHandle`, qui lève. Il n'y a plus de `try!` sur le chemin.
+
+### Ce qu'on n'a pas réussi à rejouer, et qui est dit plutôt que caché
+
+`JournalCheck` reproduit la panne sur le Mac et sous Linux — il est passé au rouge
+avec le défaut, au vert sans lui. **Sous Windows, non**, et trois montages y ont
+échoué : fermer les descripteurs (le runtime C abat alors le processus de lui-même,
+quoi qu'on écrive), `SetStdHandle(…, nil)` dans le fils (il continue d'écrire dans
+le tube dont il a hérité), et `CreateProcessW` détaché sans aucune poignée
+(Foundation n'y lève toujours pas).
+
+Un contrôle qui ne peut pas devenir rouge ne prouve rien. Celui-là est donc **sauté
+sous Windows, et il le dit** ; le vrai lancement par l'Explorateur reste hors de
+portée d'un programme, et c'est `recette.sh` qui le couvre — en s'arrêtant sur un
+clic humain.
 
 ### Et le message, personne ne peut le lire
 
@@ -146,28 +194,41 @@ sans terminal, lui fait commettre une erreur fatale, et va relire le fichier. C'
 la seule façon — un programme ne survit pas à sa propre erreur fatale pour vérifier
 ce qu'elle a écrit. Il est dans `check.sh` et dans les trois chaînes.
 
-**Ce que le journal a dit tout de suite.** La ligne d'ouverture annonce
-« Spectre 0.2 » sur un Mac, alors que la dernière livraison est la 0.4 : le numéro
-de version du paquet macOS est resté sur place. Les trois plateformes le tirent de
-trois endroits qui n'ont aucun moyen de s'accorder — le `Info.plist` pour le Mac, la
-ressource de version pour Windows, rien du tout pour Linux. **Un seul numéro pour
-les trois** est un petit chantier à faire, et sa place est dans le chantier 2 : un
-rapport de plantage qui se trompe de version fait chercher la panne dans le mauvais
-code.
+**Ce que le journal a dit tout de suite.** La ligne d'ouverture annonçait
+« Spectre 0.2 » sur un Mac et « Spectre inconnue » sous Windows, alors que la
+livraison qui tournait s'appelait 0.4. C'est réparé au chantier 2 : le numéro n'a
+plus qu'une source.
+
+**Et il a fait disparaître la panne qu'il servait à observer** — voir plus haut. Le
+journal donnait à la sortie d'erreur un fichier valide, ce qui suffisait à éviter
+l'écriture qui tuait l'application. C'est le genre de coïncidence qui égare
+longtemps, et il valait mieux la comprendre que s'en féliciter.
 
 ### 2. Les deux pannes
 
-**Windows.** Le journal donne le point exact. Deux hypothèses en attendant, par
-ordre de vraisemblance : une régression du chemin « vraie fenêtre » entrée dans la
-v0.4 et jamais rejouée sur la machine d'essai ; ou une différence entre l'exécutable
-du coureur et celui qu'on construit à la main, qui se lit en construisant la même
-étiquette sur la machine virtuelle et en comparant.
+**Faite.** Quatre choses, et la première était la panne.
 
-**Linux.** Le correctif est le chantier 3. S'y ajoute la phrase qui manque :
-`chmod +x` doit être dans les notes de version, sur la page de téléchargement et
-dans le README.
+**Windows.** `Journal` écrit par `fwrite` sur le flux, et non plus par `FileHandle` :
+le `try!` de Foundation n'est plus sur le chemin, et l'application ne meurt plus de
+sa première note quand personne n'écoute. Vérifié là où cela compte — l'installation
+de la machine d'essai, ouverte d'un double-clic sur un fichier audio : elle s'ouvre
+et sépare les pistes, là où la v0.4 mourait en silence.
 
-**La recette**, décrite plus haut, pour que cela ne se reproduise pas.
+**Linux.** Le symptôme est nommé dans les notes de version et dans le README : un
+AppImage sans son bit d'exécution se propose d'être monté comme une image disque, ou
+ne fait rien. Le reste — l'architecture — est le chantier 3.
+
+**Un seul numéro de version.** `Sources/SpectreCore/Version.swift` est désormais le
+seul endroit où il s'écrit. `build.sh` le pose dans le `Info.plist` du paquet macOS,
+dont la valeur au dépôt est délibérément fausse pour qu'un paquet assemblé autrement
+se dénonce ; `paquet.sh`, `paquet.ps1` et `livraison.sh` refusent de fabriquer ou
+d'envoyer un paquet dont l'étiquette le contredit. Le seul geste à faire en livrant
+est de changer ce fichier, dans le commit de l'étiquette.
+
+**La recette.** `recette.sh` — voir plus haut, et le README. Passée sur la v0.4
+telle qu'elle est en ligne, elle relève trois défauts : le paquet macOS annonce 0.2,
+il n'écrit aucun journal, et il n'existe aucun AppImage pour la machine d'essai. Les
+trois sont vrais, et les trois sont réparés pour la prochaine livraison.
 
 ### 3. Linux : quelles constructions il faut
 
@@ -217,7 +278,7 @@ commencent une fois le chantier 1 en place, puisqu'elles en sont la suite.
 | étape | ce qu'elle rend visible | état |
 |---|---|---|
 | 1. Le journal sur disque | Rien à l'écran. Mais l'application dit enfin où elle tombe, sur les trois systèmes. | **faite** |
-| 2. Les deux pannes, et la recette | Les paquets livrés s'ouvrent, et une commande le vérifie sur les deux machines virtuelles avant chaque livraison. | à faire |
+| 2. Les deux pannes, et la recette | Les paquets livrés s'ouvrent, et une commande le vérifie sur les deux machines virtuelles avant chaque livraison. | **faite** — sauf l'AppImage ARM, qui est l'étape 3 |
 | 3. AppImage ARM64, puis le `.deb` | Linux servi sur les deux architectures, et un paquet qui se double-clique. | à faire |
 | 4. Le plancher macOS à 15 | Les Mac d'avant macOS 26 ouvrent Spectre, sans verre et sans le dire. | à faire |
 | 5. Sentry | Voir [RAPPORTS.md](RAPPORTS.md). | à faire |
