@@ -281,7 +281,8 @@ jobs:
             libwayland-dev wayland-protocols libxkbcommon-dev libdecor-0-dev \
             libdecor-0-plugin-1-cairo \
             libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev \
-            libxfixes-dev libdrm-dev libgbm-dev libdbus-1-dev libudev-dev
+            libxfixes-dev libxss-dev libxtst-dev \
+            libdrm-dev libgbm-dev libdbus-1-dev libudev-dev
 
       - name: SDL3
         run: |

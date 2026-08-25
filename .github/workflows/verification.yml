@@ -163,6 +163,11 @@ jobs:
       # Ce que l'application demande au système. La liste est celle de `machine.sh`,
       # amputée de ce qui ne sert qu'à un poste de travail — pas de bureau, pas de
       # polices, pas de Mesa complet : rien ici n'ouvre de fenêtre.
+      #
+      # Mais **pas amputée de ce que SDL exige à la configuration** : elle refuse de
+      # se configurer si XScreenSaver ou XTest manquent, et le dit au bout de deux
+      # minutes de tests réussis. Trois paquets de trop coûtent dix secondes ; trois
+      # de moins coûtent une exécution entière.
       - name: Les bibliothèques
         run: |
           apt-get update -qq
@@ -172,7 +177,8 @@ jobs:
             libsndfile1-dev libmpg123-dev libepoxy-dev libgl1-mesa-dev \
             libwayland-dev wayland-protocols libxkbcommon-dev libdecor-0-dev \
             libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev \
-            libxfixes-dev libdrm-dev libgbm-dev libdbus-1-dev libudev-dev
+            libxfixes-dev libxss-dev libxtst-dev \
+            libdrm-dev libgbm-dev libdbus-1-dev libudev-dev
 
       # La 24.04 ne livre que SDL2 : la 3 est sortie après le gel de cette LTS. La
       # version est celle de `machine.sh`, et les deux doivent rester d'accord — un
