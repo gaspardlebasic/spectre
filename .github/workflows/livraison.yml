@@ -276,6 +276,7 @@ jobs:
           apt-get update -qq
           apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build pkg-config git curl ca-certificates \
+            file \
             libcairo2-dev libpango1.0-dev libasound2-dev \
             libsndfile1-dev libmpg123-dev libepoxy-dev libgl1-mesa-dev \
             libwayland-dev wayland-protocols libxkbcommon-dev libdecor-0-dev \
