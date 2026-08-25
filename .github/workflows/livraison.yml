@@ -304,13 +304,18 @@ jobs:
 
       # Cherchés, pas exigés — même règle que sous Windows : un coureur ne peut pas
       # fabriquer 166 Mo de réseau entraîné, et l'application sait se passer de lui.
-      - name: Les poids de Demucs, s'ils sont attachés à la release
-        env:
-          GH_TOKEN: ${{ github.token }}
+      #
+      # `curl` et non `gh` : ce job tourne dans un conteneur `swift:6.3-jammy`, où
+      # `gh` n'est pas installé — les deux autres coureurs l'ont préinstallé, pas le
+      # conteneur. « poids absents » ci-dessous a déjà été imprimé une fois, et c'est
+      # ainsi qu'on l'a découvert. Le lien direct d'une release publique n'a besoin
+      # d'aucune main ni d'aucun jeton.
+      - name: Les poids de Demucs
         run: |
           mkdir -p Resources
-          gh release download modele-htdemucs-v4 --pattern 'htdemucs.onnx' \
-            --dir Resources 2>/dev/null \
+          curl -sL -o Resources/htdemucs.onnx \
+            "https://github.com/gaspardlebasic/spectre/releases/download/modele-htdemucs-v4/htdemucs.onnx" \
+            && ls -lh Resources/htdemucs.onnx \
             || echo "poids absents — la séparation s'annoncera absente"
 
       - name: Les harnais hors écran
