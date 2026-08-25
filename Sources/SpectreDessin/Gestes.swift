@@ -37,6 +37,10 @@ import SpectreModele
 // | tracer une boucle n'importe où | ⇧ + glisser          | ⇧ + glisser          |
 // | libérer de la grille           | ⌘ pendant le glisser | Ctrl pendant le glisser |
 //
+// Et le zoom a **des touches à lui**, « + » et « - », sur les deux plateformes qui
+// passent par ce fichier. Ce n'est pas une commodité : il existe des machines où
+// aucune des lignes ci-dessus n'arrive jamais — voir `zoomerLeTemps`.
+//
 // Le pincement à deux doigts zoome le temps sur les trois, mais par trois chemins :
 // macOS l'appelle `magnify`, Linux le reçoit de Wayland en `SDL_EVENT_PINCH_UPDATE`,
 // et Windows le convertit lui-même en Ctrl + molette. Les deux premiers tombent dans
@@ -78,6 +82,10 @@ public enum ToucheDeSpectre {
     case crochetOuvrant, crochetFermant
     case l, b, r, o
     case un
+    /// Le zoom du temps au clavier. Voir `touche(_:)` : c'est le seul chemin vers le
+    /// zoom qui ne demande ni pavé tactile ni modificateur, et il y a des machines où
+    /// c'est le seul qui reste.
+    case plus, moins
 }
 
 /// Les huit choses que les gestes demandent au système, et pas une de plus.
@@ -386,6 +394,31 @@ public final class Gestes<Lecteur: LecteurAudio> {
 
     // MARK: Le clavier
 
+    /// Le zoom du temps, sans molette et sans doigts.
+    ///
+    /// **Pourquoi il existe.** Le zoom se fait partout ailleurs à modificateur +
+    /// molette, ou au pincement. Ni l'un ni l'autre n'arrive à une application qui
+    /// tourne dans une machine virtuelle sur un Mac : le pincement demande un vrai
+    /// pavé tactile côté noyau, que Parallels ne présente pas, et un défilement fait
+    /// avec ⌃, ⌥ ou ⌘ enfoncé **ne traverse pas** — c'est mesuré, journal de SDL à
+    /// l'appui : les touches arrivent, le défilement arrive, les deux ensemble jamais.
+    /// Sans ces touches, une telle machine ne peut pas zoomer du tout — et comme le
+    /// morceau entier tient dans la fenêtre à l'ouverture, ne pas pouvoir zoomer veut
+    /// aussi dire ne rien pouvoir faire défiler, la vue étant déjà à sa butée.
+    ///
+    /// **L'ancre est la tête de lecture**, et non le milieu de la fenêtre : c'est le
+    /// point qu'on regarde, et le garder sous les yeux est ce qui distingue un zoom
+    /// utile d'un zoom qui perd la mesure qu'on suivait. Hors de l'écran — après un
+    /// long défilement — le milieu reprend la main, faute de mieux.
+    private func zoomerLeTemps(_ facteur: Double) {
+        let largeur = surface.taillePoints.largeur
+        let teteDeLecture = modele.point(ofTime: modele.playhead)
+        let ancre = (0...largeur).contains(teteDeLecture) ? teteDeLecture : largeur / 2
+        modele.viewport.zoomTime(factor: facteur, anchorX: ancre)
+        modele.cancelTurn()
+        modele.clampViewport()
+    }
+
     /// Rend `true` quand la touche a été traitée.
     public func touche(_ touche: ToucheDeSpectre) -> Bool {
         mesures?.uneEntree()
@@ -407,6 +440,8 @@ public final class Gestes<Lecteur: LecteurAudio> {
         case .b:              modele.snapLoopToBars()
         case .un:             modele.setDownbeatAtPlayhead()
         case .r:              basculerLePanneau()
+        case .plus:           zoomerLeTemps(1.35)
+        case .moins:          zoomerLeTemps(1 / 1.35)
         case .o:              return false
         }
         return true

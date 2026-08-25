@@ -422,6 +422,35 @@ surface.majuscule = false
 controle("⇧ + ← recule de cinq", abs(modele.playhead - 4) < 0.01,
          String(format: "%.2f s", modele.playhead))
 
+// Le zoom au clavier : le seul chemin vers le zoom qui ne demande ni molette ni
+// pavé tactile — et sur une machine virtuelle, le seul qui reste. La tête de lecture
+// est l'ancre, donc elle ne doit pas bouger d'un point sous nos yeux.
+modele.seek(to: 12)
+// Et la vue ramenée sur elle : les gestes précédents ont défilé loin, et une ancre
+// hors de l'écran est le cas de repli, qui se mesure ailleurs.
+modele.viewport.startColumn = modele.spectrogram.column(atTime: 12)
+    - surface.taillePoints.largeur * modele.viewport.columnsPerPoint / 2
+modele.clampViewport()
+unTour()
+let echelleAvantClavier = modele.viewport.columnsPerPoint
+let teteAvantLeZoom = modele.point(ofTime: modele.playhead)
+for _ in 0..<3 { _ = gestes.touche(.plus) }
+unTour()
+controle("« + » resserre le temps autour de la tête de lecture",
+         modele.viewport.columnsPerPoint < echelleAvantClavier,
+         String(format: "%.4f → %.4f colonne par point",
+                echelleAvantClavier, modele.viewport.columnsPerPoint))
+controle("et la tête de lecture ne bouge pas",
+         abs(modele.point(ofTime: modele.playhead) - teteAvantLeZoom) < 2,
+         String(format: "%.1f pt → %.1f pt", teteAvantLeZoom,
+                modele.point(ofTime: modele.playhead)))
+
+for _ in 0..<3 { _ = gestes.touche(.moins) }
+unTour()
+controle("« - » revient exactement d'où l'on venait",
+         abs(modele.viewport.columnsPerPoint - echelleAvantClavier) < 1e-6,
+         String(format: "%.4f colonne par point", modele.viewport.columnsPerPoint))
+
 controle("« R » ouvre le panneau des réglages",
          { let avant = panneau.ouvert; _ = gestes.touche(.r); return panneau.ouvert != avant }(),
          panneau.ouvert ? "ouvert" : "refermé")

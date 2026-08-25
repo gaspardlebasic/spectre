@@ -318,6 +318,13 @@ regarde le morceau en entier.
 | `1` | Poser le premier temps ici |
 | ⌘⌥R | Déplier ou replier le panneau de réglages |
 
+**Sous Windows et sous Linux, « + » et « - » zooment le temps**, ancrés sur la tête de
+lecture. Ce n'est pas une commodité de plus : une application qui tourne dans une
+machine virtuelle ne reçoit ni le pincement ni le moindre défilement fait avec ⌃, ⌥ ou
+⌘ enfoncé, et ces deux touches y sont le seul chemin vers le zoom — donc, la vue
+partant à la butée, le seul chemin vers le défilement aussi. Voir
+[LINUX.md](LINUX.md).
+
 Les gestes marchent **aussi au-dessus de la ligne de batterie** : molette, pincement,
 clic, ⇧ + glisser pour tracer une boucle. Les deux vues partagent le même axe des
 temps, et il n'y avait aucune raison qu'un zoom cesse parce que la souris est descendue

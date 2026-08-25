@@ -1044,7 +1044,8 @@ donc partagé plutôt que porté.
 
 **Le pincement à deux doigts, éprouvé par un vrai pavé tactile.** Le geste est écrit
 et mesuré sur papier ; il n'a jamais reçu d'évènement réel, faute d'un pavé tactile
-dans la machine virtuelle. Voir l'étape 6.
+dans la machine virtuelle. Voir l'étape 6, et « Ce que Parallels laisse passer », plus
+bas, qui dit maintenant *pourquoi* il n'en recevra pas.
 
 **Le sélecteur de fichiers, éprouvé par une vraie main.** Le portail est là, le
 chemin compile, mais personne n'a cliqué : aucune souris ne se pilote sous Wayland
@@ -1052,6 +1053,64 @@ depuis un terminal distant. C'est le seul morceau du portage qui ne soit pas mes
 
 **L'AppImage ARM64.** GitHub n'offre pas de coureur Linux ARM gratuit ; il se
 fabrique à la main, comme le paquet macOS.
+
+## Le paquet qui ne savait pas séparer
+
+L'AppImage s'ouvrait, jouait, analysait, relevait la batterie et les accords — et ne
+séparait rien, sans jamais le dire autrement que par un dossier de pistes vide dans
+le rangement.
+
+Elle n'emportait **ni les poids ni le moteur**. Ni l'un ni l'autre n'apparaît dans la
+fermeture de `ldd` sur laquelle `paquet.sh` construit sa liste : ONNX Runtime est
+ouvert par `dlopen` à l'exécution — précisément pour que l'application s'ouvre quand
+il n'est pas là — et les poids sont un fichier de données. Ce qu'aucun outil ne
+nomme, il faut le nommer soi-même ; `build.ps1` le fait sous Windows depuis toujours,
+et `paquet.sh` ne le faisait pas.
+
+Les deux vont **à côté de l'exécutable**, dans `usr/bin`, parce que c'est le premier
+endroit où `Reseau.fichier` et `Reseau.bibliotheque` regardent : rien à désigner dans
+`AppRun`, donc rien qui puisse mentir. Ils pèsent 167 et 24 Mo, contre 15 pour
+l'exécutable et 110 pour les cinquante bibliothèques : l'AppImage compressée fait
+141 Mo, dont les deux tiers sont le réseau.
+
+La leçon vaut au-delà de la séparation : **l'épreuve de la fenêtre ne prouve rien de
+ce qui se charge à la demande.** Un paquet qui s'ouvre, rend une image et annonce la
+bonne carte graphique peut n'avoir aucune des trois choses qu'on ouvre par `dlopen`.
+
+Ce qui est mesuré maintenant, sur le vrai morceau et par le paquet lui-même : sept
+minutes quarante-huit séparées en une minute quarante-quatre — 0,22 fois le temps
+réel, six cœurs, sans accélération matérielle.
+
+## Ce que Parallels laisse passer, et ce qu'il mange
+
+Le portage supposait que le zoom se ferait « à Ctrl + défilement, faute de pavé
+tactile ». Un journal des évènements de SDL, gestes faits à la main dans la machine
+virtuelle, dit que c'était faux :
+
+| ce qu'on fait sur le pavé du Mac | ce que le système invité reçoit |
+|---|---|
+| deux doigts verticalement | le défilement, cran par cran |
+| deux doigts horizontalement | **le défilement horizontal, lui aussi** |
+| un pincement | rien |
+| deux doigts avec ⌃, ⌥ ou ⇧ enfoncé | **rien du tout** |
+| ⌃, ⌥, ⇧ seuls | les touches, normalement |
+| ⌘ (donc Super) | rien : GNOME le garde pour l'aperçu des activités |
+
+Deux conséquences, et la seconde n'était pas devinable :
+
+1. **Aucun modificateur + défilement n'existe dans une machine virtuelle.** Le zoom a
+   donc des touches à lui, « + » et « - », dans `SpectreDessin/Gestes.swift`, ancrées
+   sur la tête de lecture. C'est du partagé : Windows les reçoit aussi.
+2. **Le défilement horizontal marchait déjà.** Il ne faisait rien parce qu'il n'y
+   avait rien à faire : à l'ouverture le morceau entier tient dans la fenêtre, et
+   `Viewport.clamp` retient la vue à sa butée. Sans zoom, pas de défilement — les deux
+   pannes n'en étaient qu'une.
+
+Une dernière chose, vue au journal et laissée telle quelle : le défilement vertical
+porte **un cran horizontal parasite toutes les quatre ou cinq encoches**, toujours du
+même côté. C'est le pilote de Parallels, pas l'application. Un verrouillage d'axe le
+couvrirait, au prix du défilement en diagonale que la lecture des deux axes sert
+justement à rendre — on ne le fait pas sans l'avoir vu gêner.
 
 ## Les pièges qui étaient annoncés, et ce qu'ils ont coûté
 
