@@ -19,6 +19,10 @@ les trois plateformes ; c'est ce que mesure `verification.yml`. Qui touche à
 systèmes, pas pour un — [WINDOWS.md](WINDOWS.md) tient l'état du chantier, ce qui
 reste, et les pièges déjà payés.
 
+**Le chantier d'après est écrit, et n'est pas commencé** : Spectre enverra un
+rapport tout seul quand il tombera chez quelqu'un — [docs/RAPPORTS.md](docs/RAPPORTS.md)
+en tient le plan, les décisions déjà prises et les pièges qu'on peut nommer d'avance.
+
 ## Les règles de la maison
 
 1. **Tout est en français** : le code, les commentaires, la documentation, les
@@ -147,23 +151,33 @@ mêmes protocoles avec Direct3D 11 et Win32 — c'est le jumeau de `SpectreMac`,
 fait la même longueur — tandis que `SpectreWindows` porte la fenêtre. Le pont C vers
 ce que Swift ne peut pas dire lui-même est dans `Sources/CPont`.
 
-Deux modules de plus vivent entre les deux, et **ils ne sont d'aucune plateforme** :
+Cinq modules de plus vivent entre les deux, et **ils ne sont d'aucune plateforme** :
 
 | Étage | Ce qu'il contient | Dépend de |
 |-------|-------------------|-----------|
-| `SpectreToile` | `Pinceau` : le vocabulaire de dessin — `remplir`, `tracer`, `texte`, `arrondi` — calqué sur le `GraphicsContext` de SwiftUI. | `CPont` |
-| `SpectreDessin` | **L'interface dessinée** : la frise, le panneau de réglages, la batterie, la barre d'état, les commandes, la colonne des pistes, les infobulles, les icônes. | `SpectreModele`, `SpectreToile` |
+| `SpectreSocle` | Le journal, et l'appel qui vide la file principale. Le seul module partagé qui porte des `#if`, un par plateforme, chacun avec sa raison. | `CPont` |
+| `SpectreToile` | `Pinceau` : le vocabulaire de dessin — `remplir`, `tracer`, `texte`, `arrondi` — calqué sur le `GraphicsContext` de SwiftUI ; et le rendu du spectrogramme. | `CPont`, `SpectreModele` |
+| `SpectreSon` | Le lecteur, la sinusoïde d'écoute, le décodeur. | `CPont`, `SpectreModele` |
+| `SpectreDessin` | **L'interface dessinée** : la frise, le panneau de réglages, la batterie, la barre d'état, les commandes, la colonne des pistes, les infobulles, les icônes ; **les gestes**, et le relevé de fluidité. | `SpectreModele`, `SpectreToile` |
+| `SpectreSeparation` | Le moteur d'inférence de Demucs, et le rangement des pistes. | `CPont`, `SpectreModele` |
 
-Ils sont sortis de `SpectreWindows`, qui les portait sans jamais y importer
-`WinSDK` : de toute la couche Windows, ces huit fichiers n'utilisaient que
-`Pinceau`. Linux les hérite donc tels quels, et ce qui lui reste à écrire est ce
-qui touche au système. `SpectreToile` ne porte **aucun `#if`** : la bascule se fait
-un étage plus bas, dans `CPont`, où `direct2d.cpp` et son jumeau Cairo exportent les
+Ils sont tous sortis de la couche Windows, et **toujours pour la même raison** : en
+regardant ce qu'ils touchaient vraiment du système, la réponse a chaque fois été
+« moins qu'on ne croit ». Le dessin ne touchait que `Pinceau` ; le lecteur, six
+fonctions du pont ; les gestes, huit appels sur quatre cents lignes ; le relevé de
+fluidité, un seul ; la séparation, aucun — tout passait déjà par `onnx.c`.
+
+**Le relevé se fait avant d'écrire, jamais après.** Écrire d'abord le jumeau puis
+constater qu'il était inutile coûte le double, et laisse deux fichiers à tenir
+d'accord pour toujours.
+
+`SpectreToile` et `SpectreDessin` ne portent **aucun `#if`** : la bascule se fait un
+étage plus bas, dans `CPont`, où `direct2d.cpp` et son jumeau Cairo exportent les
 mêmes fonctions.
 
 Corollaire, et il est du même ordre que celui de `SpectreModele` : **une commande,
-un repère, un panneau se dessinent dans `SpectreDessin`, pas dans la fenêtre.** Ce
-qui est dessiné à côté est dessiné pour une plateforme seule.
+un repère, un panneau, un geste se mettent dans `SpectreDessin`, pas dans la
+fenêtre.** Ce qui est écrit à côté est écrit pour une plateforme seule.
 
 **Les quatre premiers compilent partout où Swift compile.** `SpectreModele` est
 l'étage qui a manqué au premier portage : faute de lui, Windows avait son propre
@@ -225,6 +239,77 @@ chemin numérique portable.
   travail, pas un diagnostic.
 - `## Ce qui n'est pas encore là`, à la fin du README, tient la liste des manques
   assumés.
+
+## Les skills
+
+`.claude/skills/` et `.claude/agents/` sont **dans le dépôt**, et non dans
+`~/.claude` : tout agent qui ouvre ce dossier les voit, sans rien installer. Ce
+sont des **copies figées** — pas des sous-modules —, donc elles ne bougent que
+lorsqu'on les retélécharge exprès.
+
+| Skill | Ce qu'elle donne | Déclenchement |
+|-------|------------------|---------------|
+| `thermos` | Lance en parallèle les deux revues ci-dessous et fond leurs verdicts en un seul. | à la main |
+| `thermo-nuclear-review` | Audit d'une branche : bugs, ruptures, sécurité, régressions d'usage. | à la main |
+| `thermo-nuclear-code-quality-review` | Audit de maintenabilité : fichiers qui enflent, abstractions creuses, conditions en plat de nouilles. | à la main |
+| `improve-codebase-architecture` | Cherche les modules trop plats, en fait un rapport HTML hors dépôt, puis passe au gril celui qu'on choisit. | à la main |
+| `codebase-design` | Le vocabulaire de conception — module, interface, profondeur, couture, adaptateur — dont les autres dépendent. | à la demande du modèle |
+| `grilling` | L'interrogatoire par tours : questions numérotées, chacune avec sa réponse recommandée. | à la demande du modèle |
+| `domain-modeling` | Tenir le vocabulaire du domaine et écrire les décisions prises. | à la demande du modèle |
+| `tdd` | Rouge → vert : ce qu'est un test qui survit à une réécriture, et où il se pose. | à la demande du modèle |
+| `diagnosing-bugs` | La discipline des bugs durs : d'abord construire une boucle qui vire au rouge sur *ce* bug-là. | à la demande du modèle |
+
+« À la main » veut dire que la skill porte `disable-model-invocation: true` : elle
+ne part que si on la nomme (`/thermos`, `/improve-codebase-architecture`). Les
+cinq autres, un agent peut les ouvrir de lui-même quand le sujet s'y prête.
+
+**Rien de tout cela n'est optionnel.** `improve-codebase-architecture` appelle
+`codebase-design`, `grilling` et `domain-modeling` par leur nom et s'arrête sans
+elles ; `thermos` appelle ses deux sous-agents de `.claude/agents/` par le leur.
+Le nom du dossier doit rester égal au champ `name:` du `SKILL.md` qu'il contient,
+sinon la skill n'est simplement pas découverte.
+
+**D'où elles viennent.** `thermos`, les deux `thermo-nuclear-*` et les deux
+sous-agents : `cursor/plugins`, dossier `thermos/`, commit
+`46125561306434d8a1d7745d540d8932ab0cd2a2`. Les cinq autres :
+`mattpocock/skills`, `main` au 24 août 2026, soit
+`6654f6b60cd9d5be8b54c6fafe44346dabeb3b76`. Mettre à jour, c'est retélécharger à
+un commit choisi et le commettre en corrigeant ces deux numéros ici. Le
+`code-review` de mattpocock n'est **pas** installé : le `/code-review` de Claude
+Code fait déjà ce travail, et deux revues qui se contredisent ne valent pas mieux
+qu'une.
+
+**Ce qu'il faut leur retrancher, ici.** Elles sont écrites en anglais et pour des
+dépôts qui ne sont pas celui-ci :
+
+- Ce qui atterrit dans le dépôt reste **en français**, quoi qu'en dise une skill —
+  règle 1 de la maison. La conversation, elle, peut se tenir dans leur langue.
+- Elles supposent un `CONTEXT.md` à la racine et des ADR dans `docs/adr/` : il n'y
+  en a **ni l'un ni l'autre**. Le vocabulaire du domaine, ce sont le README et les
+  six étages plus haut ; les décisions déjà prises sont dans ce fichier et dans
+  [docs/RAPPORTS.md](docs/RAPPORTS.md). C'est là qu'il faut lire, et là qu'il faut
+  écrire — un second glossaire qui divergerait du README coûterait plus qu'il ne
+  rapporte.
+- `grilling` interroge l'auteur : ses questions portent sur le **comportement de
+  l'application**, jamais sur un choix d'implémentation à arbitrer (règle 2). Le
+  reste se tranche seul.
+- **Les conventions d'épreuve du dépôt priment sur les conseils génériques de
+  `tdd`.** Il n'y a pas de framework de test ici : l'épreuve, ce sont les harnais
+  de `Tools/` que `check.sh` enchaîne, `./essai.sh` qui y ajoute l'application, et
+  `build/essai/fenetre.png` qu'on regarde. Un contrôle neuf s'ajoute donc à un
+  harnais existant, ou en devient un dans `Tools/`, et se branche dans `check.sh`
+  ou `essai.sh` — sinon personne ne le repassera. Les coutures, elles, sont déjà
+  posées : ce sont les six étages et les protocoles de
+  `Sources/SpectreModele/Plateforme.swift` ; les rouvrir à chaque cycle, comme
+  `tdd` le demande, n'a pas de sens. Et le « code-review skill » qu'il cite est
+  ici `/code-review`.
+- `diagnosing-bugs` insiste pour construire une boucle de retour avant de
+  chercher : elle existe déjà, c'est le morceau témoin, identique à l'octet près
+  d'une exécution à l'autre. Commencer par lui plutôt que par un harnais jetable.
+
+**Elles n'apparaissent qu'au démarrage suivant** : la liste des skills est lue une
+fois, à l'ouverture de la session. En ajouter une pendant qu'on travaille ne la
+rend pas visible ; il faut relancer.
 
 ## Les commits
 

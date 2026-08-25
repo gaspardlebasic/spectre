@@ -5,6 +5,9 @@ import SpectreModele
 import SpectreToile
 import SpectreWin
 import WinSDK
+import SpectreSeparation
+import SpectreSocle
+import SpectreSon
 
 // Spectre sous Windows.
 //
@@ -38,23 +41,23 @@ rattacherLaConsole()
 /// modèle est générique sur son lecteur — parce que l'interface observe
 /// `model.player.speed` et qu'un protocole existentiel romprait ce suivi — mais
 /// rien d'autre n'a de raison de porter ce détail.
-typealias AppModel = SpectreModele.AppModel<LecteurWindows>
+typealias AppModel = SpectreModele.AppModel<LecteurSurLePont>
 
 // Et le même rebouclage pour ce qui dessine. Ces quatre types sont partagés avec
 // Linux et portent donc le lecteur en paramètre ; les rattacher ici une fois fait
 // que pas un appel de ce fichier n'a changé quand ils ont déménagé.
-typealias Frise = SpectreDessin.Frise<LecteurWindows>
-typealias Batterie = SpectreDessin.Batterie<LecteurWindows>
-typealias Barre = SpectreDessin.Barre<LecteurWindows>
-typealias Commandes = SpectreDessin.Commandes<LecteurWindows>
+typealias Frise = SpectreDessin.Frise<LecteurSurLePont>
+typealias Batterie = SpectreDessin.Batterie<LecteurSurLePont>
+typealias Barre = SpectreDessin.Barre<LecteurSurLePont>
+typealias Commandes = SpectreDessin.Commandes<LecteurSurLePont>
 
-extension SpectreModele.AppModel where Lecteur == LecteurWindows {
+extension SpectreModele.AppModel where Lecteur == LecteurSurLePont {
     /// L'assemblage Windows : à chaque protocole du modèle, sa mise en œuvre.
     convenience init(fenetre: HWND?) {
-        self.init(lecteur: LecteurWindows(),
-                  décodeur: DecodeurWindows(),
-                  sinusoide: SinusoideWindows(),
-                  pistes: RangementWindows(),
+        self.init(lecteur: LecteurSurLePont(),
+                  décodeur: DecodeurSurLePont(),
+                  sinusoide: SinusoideSurLePont(),
+                  pistes: RangementSurLePont(),
                   dialogue: DialogueWindows(fenetre: fenetre),
                   récentsDuSystème: RecentsWindows(),
                   préférences: PreferencesWindows.partagees)
@@ -116,7 +119,7 @@ final class Application: EchosDeLaFenetre {
     let fenetre: Fenetre
     let rendu: RenduD3D11
     let modele: AppModel
-    let gestes: Gestes
+    let gestes: GestesWindows
     let panneau = Panneau()
     /// Ce qui ne se replie jamais : les quatre pistes et la porte des réglages.
     let flottant = Flottant()
@@ -157,8 +160,8 @@ final class Application: EchosDeLaFenetre {
         self.modele = AppModel(fenetre: fenetre.poignee)
         self.commandes = Commandes(modele: modele,
                                    preferences: PreferencesWindows.partagees)
-        self.gestes = Gestes(modele: modele, fenetre: fenetre, panneau: panneau,
-                             flottant: flottant)
+        self.gestes = GestesWindows(modele: modele, fenetre: fenetre,
+                                    panneau: panneau, flottant: flottant)
         modele.renderer = rendu
         rendu.origineDesTeintes = PreferencesWindows.partagees.hueOrigin
         fenetre.echos = self
@@ -410,7 +413,7 @@ final class Application: EchosDeLaFenetre {
     /// présentation. Piloter le viewport directement mesurerait le rendu, pas
     /// l'application.
     func mesurerLaFluidite(secondes: Double) -> String {
-        let compteur = Mesures()
+        let compteur = Mesures(cadence: cadenceDeLEcran())
         mesures = compteur
         fenetre.montrer()
 
@@ -473,7 +476,7 @@ if let sortie = rendreDans {
                                 hauteur: tailleVoulue.hauteur) else { exit(1) }
     let source: AudioSource
     do {
-        source = try DecodeurWindows().charger(morceau)
+        source = try DecodeurSurLePont().charger(morceau)
     } catch {
         Journal.erreur("\(error)")
         exit(1)

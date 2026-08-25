@@ -6,8 +6,12 @@
 # l'application, au lieu d'une liste de fichiers qu'il fallait tenir à jour à la
 # main à chaque déplacement. Celles qui ne tirent que `SpectreCore` — couche
 # numérique, WAV, analyse, batterie, Fourier — tournent partout où Swift compile,
-# et `verification.yml` les repasse sur le chemin numérique portable ; le rendu, la
-# lecture et la séparation passent par la couche Apple.
+# et `verification.yml` les repasse sur le chemin numérique portable.
+#
+# Le reste dépend du système, et la liste en dépend donc aussi : sur le Mac, le
+# rendu, la lecture et la séparation passent par la couche Apple ; sous Linux, par
+# les jumeaux de `CPont`, avec des harnais qui portent d'autres noms. Ce script
+# choisit d'après `uname`, plutôt que d'exister en deux exemplaires.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -70,9 +74,32 @@ echo
 echo "=== Analyse ==="
 "$BIN/AnalysisCheck"
 
+# Les gestes, sans fenêtre et sans carte : depuis qu'ils ne touchent le système que
+# par huit fonctions, une surface de papier suffit à les faire tourner.
+#
+# Windows et Linux seulement, et ce n'est pas un oubli : ils partagent `Gestes`,
+# tandis que macOS a les siens dans `TimelineView`, où SwiftUI les reçoit. Le
+# harnais est ce qui tient les deux premiers d'accord ; le troisième l'est par la
+# discipline dite en tête de `SpectreDessin/Gestes.swift` — chaque ligne y a son
+# pendant exact.
+if [ -x "$BIN/GestesCheck" ]; then
+  echo
+  echo "=== Les gestes ==="
+  "$BIN/GestesCheck"
+fi
+
 echo
 echo "=== Rendu ==="
-"$BIN/RenderCheck" "$OUT/rendu.png"
+if [ "$(uname)" = "Darwin" ]; then
+  "$BIN/RenderCheck" "$OUT/rendu.png"
+elif [ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]; then
+  # Hors écran, mais pas sans écran : OpenGL a besoin d'un contexte, et un contexte
+  # a besoin d'un serveur d'affichage même quand on ne montre rien. C'est la
+  # différence avec Metal, qui rend dans le vide sans rien demander.
+  "$BIN/RenduCheck" "$OUT/rendu.ppm"
+else
+  echo "  (pas de session graphique — RenduCheck demande un contexte OpenGL)"
+fi
 
 echo
 echo "=== Fourier ==="
@@ -90,12 +117,36 @@ echo
 echo "=== Séparation ==="
 # Le réseau du dépôt, quand il a été fabriqué : sans lui la comparaison des deux
 # chemins de calcul se saute au lieu de se faire.
+SEPARATION="SeparationCheck"
+[ "$(uname)" = "Darwin" ] || SEPARATION="PistesCheck"
 if [ -f Resources/htdemucs.onnx ]; then
-  SPECTRE_MODELE="$PWD/Resources/htdemucs.onnx" "$BIN/SeparationCheck"
+  SPECTRE_MODELE="$PWD/Resources/htdemucs.onnx" "$BIN/$SEPARATION"
 else
-  "$BIN/SeparationCheck"
+  "$BIN/$SEPARATION"
 fi
 
 echo
 echo "=== Lecture ==="
-"$BIN/PlaybackCheck"
+if [ "$(uname)" = "Darwin" ]; then
+  "$BIN/PlaybackCheck"
+else
+  # Le décodage et la sortie audio, chacun mesuré pour lui-même. Le pendant macOS
+  # n'en fait qu'un parce qu'AVFoundation fait les deux ; ici ce sont deux
+  # bibliothèques distinctes, et deux jumeaux de `CPont`.
+  "$BIN/DecodeCheck"
+  echo
+  # Un périphérique peut n'être juste qu'à *sa* fréquence : il accepte 44 100 Hz,
+  # l'annonce, et draine ensuite au tiers du temps réel. Quand le premier essai
+  # échoue, on refait le même à 48 000 Hz — si celui-là passe, la panne est sous
+  # nous, et l'on évite de chercher des jours du côté du lecteur.
+  if ! "$BIN/SortieCheck"; then
+    echo
+    echo "  ↑ le même essai, à la fréquence que le périphérique préfère :"
+    if "$BIN/SortieCheck" --frequence 48000; then
+      echo
+      echo "  → à 48 000 Hz la sortie est exacte : c'est le périphérique qui accepte"
+      echo "    44 100 Hz sans savoir le tenir. Voir LINUX.md, étape 9."
+    fi
+    false
+  fi
+fi

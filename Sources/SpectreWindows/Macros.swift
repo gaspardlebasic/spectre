@@ -37,3 +37,16 @@ func positionY(_ l: LPARAM) -> Int { Int(Int16(truncatingIfNeeded: l >> 16)) }
 func pointeur<T>(_ l: LPARAM, _ type: T.Type) -> UnsafeMutablePointer<T>? {
     UnsafeMutablePointer<T>(bitPattern: Int(l))
 }
+
+/// La cadence de l'écran, en hertz, telle que Windows la déclare.
+///
+/// Le relevé de fluidité s'en sert pour dire combien d'images ont manqué leur tour.
+/// Il vit maintenant dans `SpectreDessin`, partagé avec Linux, et cette ligne-ci est
+/// tout ce qu'il restait de Windows dedans.
+func cadenceDeLEcran() -> Double {
+    var mode = DEVMODEW()
+    mode.dmSize = WORD(MemoryLayout<DEVMODEW>.size)
+    // `ENUM_CURRENT_SETTINGS` vaut −1, et c'est une macro : Swift ne l'importe pas.
+    let obtenu = EnumDisplaySettingsW(nil, DWORD(bitPattern: -1), &mode)
+    return obtenu ? Double(mode.dmDisplayFrequency) : 0
+}

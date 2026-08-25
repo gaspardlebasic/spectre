@@ -3,24 +3,25 @@ import SpectreCore
 import SpectreTextes
 import SpectreModele
 
-// Le rangement des pistes séparées, sous Windows — le jumeau de
-// `SpectreMac/Stems.swift`.
+// Le rangement des pistes séparées — le jumeau de `SpectreMac/Stems.swift`.
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// POURQUOI CELUI-CI EST ÉCRIT DEUX FOIS, ALORS QUE LE MOTEUR NE L'EST PLUS
+// POURQUOI CELUI-CI EST ÉCRIT DEUX FOIS, ET SEULEMENT DEUX
 //
 // Le calcul de Demucs est descendu dans le noyau : une convention à côté et les
-// deux plateformes sépareraient la même musique différemment, sans que personne ne
-// s'en aperçoive. Le rangement, lui, n'a rien d'un algorithme — c'est de la
-// plomberie de fichiers, et elle diffère franchement d'un système à l'autre :
-// AVFoundation écrit du FLAC en trois lignes, Windows n'a pas d'écrivain sans perte
-// qu'on puisse supposer présent.
+// plateformes sépareraient la même musique différemment, sans que personne ne s'en
+// aperçoive. Le rangement, lui, n'a rien d'un algorithme — c'est de la plomberie de
+// fichiers, et elle diffère franchement de macOS : AVFoundation écrit du FLAC en
+// trois lignes, ce dont ni Windows ni Linux ne disposent sans y ajouter une
+// bibliothèque.
 //
-// C'est exactement le partage que le décodeur, le lecteur et le rendu suivent déjà :
-// ce qui se calcule est commun, ce qui touche au système est jumeau. Un `Player` et
-// un `Lecteur` de trois cents lignes chacun ne sont pas un échec de conception.
+// **Mais elle ne diffère pas entre Windows et Linux.** Ce fichier vivait dans
+// `SpectreWin` ; il n'importait déjà pas `WinSDK`, et tout ce qu'il fait — écrire du
+// WAV vingt-quatre bits sous `Storage.root`, tenir un plafond de cache, relire les
+// quatre pistes — se fait avec Foundation seule. Le recopier pour Linux aurait fait
+// deux rangements à tenir d'accord, pour rien.
 //
-// Ce qui est commun quand même : la **réserve de niveau** et le format d'écriture,
+// Ce qui est commun aux trois : la **réserve de niveau** et le format d'écriture,
 // qui vivent dans `SpectreCore/EcritureWAV.swift`. Écrire avec une réserve que la
 // relecture ne rattrape pas rend un signal six décibels trop bas en silence, et
 // c'est une faute qui a déjà été commise une fois sur le Mac.
@@ -300,8 +301,9 @@ public enum RangementDesPistes {
 ///
 /// Il ne distingue jamais les deux : il demande si un morceau est séparé, la somme de
 /// telles pistes, ou le lancement d'un calcul. Que les pistes soient rangées dans
-/// `%APPDATA%` et écrites en WAV vingt-quatre bits ne le regarde pas.
-public final class RangementWindows: ServiceDeSeparation {
+/// `%APPDATA%` ou sous `~/.local/share`, et écrites en WAV vingt-quatre bits, ne le
+/// regarde pas.
+public final class RangementSurLePont: ServiceDeSeparation {
     public init() {}
 
     public var modeleDisponible: Bool { Reseau.disponible }
@@ -339,7 +341,7 @@ public final class RangementWindows: ServiceDeSeparation {
                         rangement: @escaping (Error?) -> Void) -> TravailAnnulable {
         let travail = TravailDeSeparation()
         travail.lancer(fichier: fichier, empreinte: empreinte,
-                       moteur: SeparateurWindows(), avancement: avancement,
+                       moteur: SeparateurSurLePont(), avancement: avancement,
                        fin: fin, range: rangement)
         return travail
     }

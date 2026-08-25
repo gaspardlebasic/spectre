@@ -1,8 +1,5 @@
 import Foundation
-import SpectreDessin
-import SpectreToile
 import SpectreModele
-import WinSDK
 
 // La fluidité, en nombres.
 //
@@ -27,7 +24,13 @@ import WinSDK
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Ce qui compte les images, et le temps qu'elles mettent.
-final class Mesures {
+///
+/// Rien ici ne connaît de système : la seule chose que ce relevé demandait à Windows
+/// était la cadence de l'écran, et elle est maintenant donnée à l'initialisation.
+/// C'est ce qui a permis au fichier de monter d'un étage sans qu'une ligne du calcul
+/// change — et donc de comparer les trois plateformes avec le même barème, ce qui
+/// est tout l'intérêt d'un relevé.
+public final class Mesures {
     /// Intervalles entre images, en millisecondes.
     private var intervalles: [Double] = []
     /// Latences entre une entrée et l'image qui la montre, en millisecondes.
@@ -37,17 +40,16 @@ final class Mesures {
     /// n'attend rien — une image rendue sans geste ne mesure aucune latence.
     private var entreeEnAttente: Double?
 
-    /// Cadence de l'écran, telle que Windows la déclare. Sert à dire combien
+    /// Cadence de l'écran, telle que le système la déclare. Sert à dire combien
     /// d'images ont manqué leur tour, et non à cadencer quoi que ce soit.
-    let cadence: Double
+    public let cadence: Double
 
-    init() {
-        var mode = DEVMODEW()
-        mode.dmSize = WORD(MemoryLayout<DEVMODEW>.size)
-        // `ENUM_CURRENT_SETTINGS` vaut −1, et c'est une macro : Swift ne l'importe
-        // pas. Voir `Macros.swift` pour les autres.
-        let obtenu = EnumDisplaySettingsW(nil, DWORD(bitPattern: -1), &mode)
-        cadence = obtenu && mode.dmDisplayFrequency > 1 ? Double(mode.dmDisplayFrequency) : 60
+    /// La cadence est donnée plutôt que demandée : c'est le seul point où ce relevé
+    /// touchait le système, et le sortir d'ici est ce qui rend le fichier portable.
+    /// Zéro ou moins vaut « on ne sait pas », et 60 est alors la valeur la moins
+    /// mauvaise.
+    public init(cadence: Double) {
+        self.cadence = cadence > 1 ? cadence : 60
         intervalles.reserveCapacity(100_000)
         latences.reserveCapacity(10_000)
     }
@@ -55,18 +57,18 @@ final class Mesures {
     /// Une entrée vient d'arriver. Seule la première d'une rafale compte : ce qu'on
     /// mesure est le retard entre le geste et ce qu'il montre, et un geste continu
     /// en fait arriver dix par image.
-    func uneEntree() {
+    public func uneEntree() {
         if entreeEnAttente == nil { entreeEnAttente = Horloge.maintenant() }
     }
 
     /// Nombre d'images présentées alors que la fenêtre était cachée. Une seule
     /// suffit à rendre le relevé suspect ; toutes le rendent sans objet.
-    private(set) var imagesCachees = 0
+    public private(set) var imagesCachees = 0
 
-    func uneImageCachee() { imagesCachees += 1 }
+    public func uneImageCachee() { imagesCachees += 1 }
 
     /// Une image vient d'être présentée.
-    func uneImage() {
+    public func uneImage() {
         let maintenant = Horloge.maintenant()
         if let precedente = derniereImage {
             intervalles.append((maintenant - precedente) * 1000)
@@ -78,7 +80,7 @@ final class Mesures {
         }
     }
 
-    func recommencer() {
+    public func recommencer() {
         intervalles.removeAll(keepingCapacity: true)
         latences.removeAll(keepingCapacity: true)
         derniereImage = nil
@@ -86,10 +88,10 @@ final class Mesures {
         imagesCachees = 0
     }
 
-    var nombreDImages: Int { intervalles.count + 1 }
+    public var nombreDImages: Int { intervalles.count + 1 }
 
     /// Le rapport, tel qu'on le lit et tel qu'on le compare d'une version à l'autre.
-    func rapport(carte: String) -> String {
+    public func rapport(carte: String) -> String {
         guard intervalles.count > 1 else {
             return "Pas assez d'images pour mesurer quoi que ce soit."
         }

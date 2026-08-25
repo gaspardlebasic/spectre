@@ -118,7 +118,7 @@ public extension WAVFile {
     ///
     /// Le contrat s'arrête là. Un WAV venu d'ailleurs n'a pas été écrit par nous et
     /// n'a aucune raison d'être remonté : c'est à l'appelant de ne poser la question
-    /// que sur ses propres fichiers — voir `RangementWindows`, qui vérifie
+    /// que sur ses propres fichiers — voir `RangementSurLePont`, qui vérifie
     /// l'emplacement avant de la poser. Le pendant macOS s'est fait prendre
     /// exactement là : `write` décidait sur l'extension, `gain` sur l'extension *et*
     /// l'emplacement, et les deux ne disaient donc pas la même chose.

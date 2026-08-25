@@ -46,12 +46,26 @@ public enum Reseau {
         return gestionnaire.fileExists(atPath: rangement.path) ? rangement : nil
     }
 
-    /// L'`onnxruntime.dll` à charger, s'il y en a une.
+    /// Le nom que porte le moteur d'inférence sur ce système.
     ///
-    /// À côté de l'exécutable en premier — c'est là que la distribution la pose — et
-    /// dans `build/onnxruntime/<architecture>` ensuite, où `onnx.ps1` l'installe
-    /// pendant qu'on travaille. `SPECTRE_ONNXRUNTIME` tranche pour qui veut en
-    /// essayer une autre.
+    /// C'est **toute** la différence entre les deux portages sur ce chemin-là : le
+    /// reste — chercher à côté de l'exécutable, puis dans le dossier de
+    /// construction — est le même, et `onnx.sh` range son butin exactement là où
+    /// `onnx.ps1` range le sien.
+    public static var nomDeLaBibliotheque: String {
+        #if os(Windows)
+        return "onnxruntime.dll"
+        #else
+        return "libonnxruntime.so"
+        #endif
+    }
+
+    /// Le moteur d'inférence à charger, s'il y en a un.
+    ///
+    /// À côté de l'exécutable en premier — c'est là que la distribution le pose — et
+    /// dans `build/onnxruntime/<architecture>` ensuite, où `onnx.ps1` ou `onnx.sh`
+    /// l'installe pendant qu'on travaille. `SPECTRE_ONNXRUNTIME` tranche pour qui
+    /// veut en essayer un autre.
     public static var bibliotheque: URL? {
         let gestionnaire = FileManager.default
         if let impose = ProcessInfo.processInfo.environment["SPECTRE_ONNXRUNTIME"],
@@ -59,7 +73,8 @@ public enum Reseau {
             return URL(fileURLWithPath: impose)
         }
         var candidats: [URL] = []
-        if let voisin = dossierDeLApplication?.appendingPathComponent("onnxruntime.dll") {
+        if let voisin = dossierDeLApplication?
+            .appendingPathComponent(nomDeLaBibliotheque) {
             candidats.append(voisin)
         }
         #if arch(arm64)
@@ -73,7 +88,8 @@ public enum Reseau {
         if let bin = dossierDeLApplication {
             candidats.append(bin.deletingLastPathComponent()
                 .deletingLastPathComponent().deletingLastPathComponent()
-                .appendingPathComponent("build/onnxruntime/\(architecture)/onnxruntime.dll"))
+                .appendingPathComponent(
+                    "build/onnxruntime/\(architecture)/\(nomDeLaBibliotheque)"))
         }
         return candidats.first { gestionnaire.fileExists(atPath: $0.path) }
     }
@@ -93,7 +109,7 @@ public enum Reseau {
     }
 }
 
-/// Le moteur d'inférence de Windows, vu du noyau.
+/// Le moteur d'inférence, vu du noyau.
 ///
 /// Une classe et non une structure : elle possède une session ONNX, qu'il faut
 /// refermer. Un `deinit` est le seul endroit où l'on peut en être sûr.
@@ -102,10 +118,10 @@ public final class MoteurONNX: MoteurDemucs {
 
     public init(modele: URL, bibliotheque: URL) throws {
         var erreur = [CChar](repeating: 0, count: Int(SPECTRE_ERREUR_MAX))
-        let ouvert = modele.path.withUTF16Terminé { chemin in
-            bibliotheque.path.withUTF16Terminé { dll in
+        let ouvert = modele.path.withCString { chemin in
+            bibliotheque.path.withCString { moteur in
                 erreur.withUnsafeMutableBufferPointer {
-                    spectre_reseau_ouvrir(chemin, dll, $0.baseAddress)
+                    spectre_reseau_ouvrir(chemin, moteur, $0.baseAddress)
                 }
             }
         }
@@ -147,7 +163,7 @@ public final class MoteurONNX: MoteurDemucs {
 }
 
 /// La séparation par Demucs, sous Windows.
-public struct SeparateurWindows: StemSeparator {
+public struct SeparateurSurLePont: StemSeparator {
     public init() {}
 
     public func separate(fileAt url: URL,
@@ -175,7 +191,7 @@ public struct SeparateurWindows: StemSeparator {
 
     /// Charge le morceau tel que le réseau l'attend : stéréo, 44,1 kHz, flottant.
     ///
-    /// Media Foundation fait la conversion — c'est ce que `spectre_mf_decoder_entrelace`
+    /// Media Foundation fait la conversion — c'est ce que `spectre_decodage_decoder_entrelace`
     /// lui demande. Le rééchantillonnage n'est pas une politesse : le réseau a appris
     /// à cette fréquence-là.
     ///
@@ -185,13 +201,13 @@ public struct SeparateurWindows: StemSeparator {
     /// conversion est ce qu'on vient chercher ici.
     public static func lirePourLeReseau(_ url: URL) throws -> [[Float]] {
         let resultat = url.path.withCString {
-            spectre_mf_decoder_entrelace($0, Demucs.sampleRate, Int32(Demucs.channels))
+            spectre_decodage_decoder_entrelace($0, Demucs.sampleRate, Int32(Demucs.channels))
         }
         guard resultat.code == 0, let bloc = resultat.echantillons else {
-            let message = String(cString: spectre_mf_message(resultat.code))
+            let message = String(cString: spectre_decodage_message(resultat.code))
             throw SeparationFailure.engine("« \(url.lastPathComponent) » : \(message)")
         }
-        defer { spectre_mf_liberer(bloc) }
+        defer { spectre_decodage_liberer(bloc) }
 
         let images = Int(resultat.images)
         let canaux = Int(resultat.canaux)
@@ -206,18 +222,5 @@ public struct SeparateurWindows: StemSeparator {
             }
         }
         return sortie
-    }
-}
-
-private extension String {
-    /// Le chemin en UTF-16 terminé par un zéro, ce que `LoadLibraryW` attend.
-    ///
-    /// Le dessin a le même convertisseur, dans `SpectreToile`, et les deux restent
-    /// chez eux : rien ne justifie qu'un module de dessin publie de quoi convertir
-    /// des chaînes pour que le chargeur de bibliothèques s'en serve.
-    func withUTF16Terminé<T>(_ corps: (UnsafePointer<UInt16>) -> T) -> T {
-        var unites = Array(utf16)
-        unites.append(0)
-        return unites.withUnsafeBufferPointer { corps($0.baseAddress!) }
     }
 }

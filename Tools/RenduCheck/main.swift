@@ -1,24 +1,34 @@
 import Foundation
 import SpectreCore
-import SpectreWin
 
-// Vérification du rendu Direct3D 11 : on fabrique une matrice de synthèse, on la
+// Le même harnais sur deux cartes graphiques. Ce qui change tient en un nom de
+// module et un nom de classe : la chaîne mesurée — téléversement, nuanceur,
+// relecture — est écrite une seule fois, dans `SpectreToile`.
+#if os(Windows)
+import SpectreWin
+typealias RenduMesure = RenduD3D11
+#else
+import SpectreLin
+typealias RenduMesure = RenduGL
+#endif
+
+// Vérification du rendu sur carte graphique : on fabrique une matrice de synthèse, on la
 // fait passer par la vraie chaîne — téléversement, nuanceur, relecture — et on
 // mesure ce qui sort. Aucune fenêtre : tout se fait hors écran.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // POURQUOI CE PROGRAMME EXISTE
 //
-// Le nuanceur HLSL a été traduit du MSL sans qu'aucune machine ne puisse
-// l'afficher pendant l'écriture. Or « ça a l'air bien » ne distingue pas une image
-// juste d'une image retournée, décalée d'un pixel, ou dont le contraste a glissé —
-// toutes plausibles. Et le retournement est ici le piège même du portage : la
-// version GLSL a dû *retirer* le renversement de l'axe vertical, la version HLSL
-// doit le *garder*, et se tromper produit une image parfaitement crédible.
+// Les nuanceurs HLSL puis GLSL ont été traduits du MSL sans qu'aucune machine ne
+// puisse les afficher pendant l'écriture. Or « ça a l'air bien » ne distingue pas
+// une image juste d'une image retournée, décalée d'un pixel, ou dont le contraste a
+// glissé — toutes plausibles. Le retournement de l'axe vertical est le piège même
+// du portage, et se tromper produit une image parfaitement crédible.
 //
 // Les trois scènes sont celles de `Tools/RenderCheck`, qui mesure la version
-// Metal. Deux cartes graphiques tenues au même barème, avec les mêmes nombres :
-// c'est la seule façon de savoir que les deux écritures disent la même chose.
+// Metal. **Trois cartes graphiques tenues au même barème**, avec les mêmes
+// nombres : c'est la seule façon de savoir que les trois écritures disent la même
+// chose.
 // ─────────────────────────────────────────────────────────────────────────────
 
 var echecs = 0
@@ -30,7 +40,7 @@ func controle(_ intitule: String, _ ok: Bool, _ detail: String) {
 let sortie = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "rendu.ppm"
 
 let largeur = 600, hauteur = 300
-guard let rendu = RenduD3D11(largeur: largeur, hauteur: hauteur) else {
+guard let rendu = RenduMesure(largeur: largeur, hauteur: hauteur) else {
     print("  ✗ Direct3D 11 indisponible")
     exit(1)
 }

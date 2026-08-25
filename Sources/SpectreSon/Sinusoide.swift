@@ -2,6 +2,7 @@ import CPont
 import Foundation
 import SpectreCore
 import SpectreModele
+import SpectreSocle
 
 /// La sinusoïde d'écoute : la raie qu'on désigne, et l'accord qu'on survole.
 ///
@@ -10,7 +11,7 @@ import SpectreModele
 /// fichier n'est qu'un périphérique et un rappel, et il reprend la même façon de
 /// traverser la frontière du fil audio que `SpectreMac/ToneGenerator` : **un
 /// tampon de nombres, et aucune propriété lue à deux endroits.**
-public final class SinusoideWindows: Sinusoide {
+public final class SinusoideSurLePont: Sinusoide {
 
     /// Douze voix : c'est ce qu'il faut pour un accord de sept notes avec ses
     /// doublures, et couper les plus hautes donnerait à entendre autre chose que ce
@@ -21,9 +22,9 @@ public final class SinusoideWindows: Sinusoide {
     /// plus, en queue, pour la forme d'onde. Elle traverse par le même chemin que
     /// le reste plutôt que d'être lue sur une propriété que deux fils toucheraient
     /// en même temps.
-    private static let caseDeLaForme = 2 * SinusoideWindows.voix
+    private static let caseDeLaForme = 2 * SinusoideSurLePont.voix
     private let commandes =
-        UnsafeMutablePointer<Double>.allocate(capacity: 2 * SinusoideWindows.voix + 1)
+        UnsafeMutablePointer<Double>.allocate(capacity: 2 * SinusoideSurLePont.voix + 1)
 
     /// Niveau de la sinusoïde. Assez pour s'entendre par-dessus rien, assez peu pour
     /// ne pas couvrir la musique quand on écoute les deux.
@@ -141,6 +142,6 @@ public final class SinusoideWindows: Sinusoide {
 
 private let rappelDeLaSinusoide: SpectreRemplir = { destination, images, canaux, contexte in
     guard let destination, let contexte else { return 0 }
-    let sinusoide = Unmanaged<SinusoideWindows>.fromOpaque(contexte).takeUnretainedValue()
+    let sinusoide = Unmanaged<SinusoideSurLePont>.fromOpaque(contexte).takeUnretainedValue()
     return Int32(sinusoide.remplir(destination, images: Int(images), canaux: Int(canaux)))
 }

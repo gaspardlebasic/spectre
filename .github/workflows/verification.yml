@@ -8,10 +8,12 @@
 #
 # Le noyau ne connaît aucun système. On le compile et on le fait tourner par les
 # deux chemins numériques — celui d'Accelerate et celui en Swift pur — parce
-# qu'une frontière qu'on ne mesure que d'un côté n'est qu'une promesse. Le coureur
-# Linux tient cette promesse en continu : il n'existe pas encore de version Linux,
-# mais c'est justement en la préparant tous les jours qu'elle coûtera un pilote et
-# non une application.
+# qu'une frontière qu'on ne mesure que d'un côté n'est qu'une promesse.
+#
+# Le coureur Linux a longtemps dit « il n'existe pas encore de version Linux, et
+# c'est justement en la préparant tous les jours qu'elle coûtera un pilote et non
+# une application ». Elle existe depuis le portage, et ce coureur construit
+# maintenant l'application entière — fenêtre, son, séparation comprises.
 
 name: Vérification
 
@@ -148,11 +150,7 @@ jobs:
           }
 
   linux:
-    name: Linux — le noyau
-    # Il n'y a pas encore de version Linux, et c'est précisément pourquoi ce
-    # coureur existe : il mesure tous les jours que le noyau et sa couche numérique
-    # restent écrits sans rien connaître du système. Une portabilité qu'on ne
-    # vérifie qu'au moment d'en avoir besoin n'est jamais là quand ce moment vient.
+    name: Linux — l'application
     runs-on: ubuntu-latest
     # La même version que la chaîne Windows : le portage se juge sur un désaccord
     # entre plateformes, pas sur un désaccord entre compilateurs.
@@ -161,14 +159,65 @@ jobs:
       - uses: actions/checkout@v4
       - name: Version de la chaîne
         run: swift --version
-      - name: Construire et vérifier le noyau
+
+      # Ce que l'application demande au système. La liste est celle de `machine.sh`,
+      # amputée de ce qui ne sert qu'à un poste de travail — pas de bureau, pas de
+      # polices, pas de Mesa complet : rien ici n'ouvre de fenêtre.
+      - name: Les bibliothèques
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config git curl ca-certificates \
+            libcairo2-dev libpango1.0-dev libasound2-dev \
+            libsndfile1-dev libmpg123-dev libepoxy-dev libgl1-mesa-dev \
+            libwayland-dev wayland-protocols libxkbcommon-dev libdecor-0-dev \
+            libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev \
+            libxfixes-dev libdrm-dev libgbm-dev libdbus-1-dev libudev-dev
+
+      # La 24.04 ne livre que SDL2 : la 3 est sortie après le gel de cette LTS. La
+      # version est celle de `machine.sh`, et les deux doivent rester d'accord — un
+      # coureur qui construit une autre SDL que la machine de développement mesure
+      # autre chose que ce qu'on livre.
+      - name: SDL3
+        run: |
+          git clone --depth 1 --branch release-3.4.14 \
+            https://github.com/libsdl-org/SDL /tmp/SDL
+          cmake -S /tmp/SDL -B /tmp/SDL/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DSDL_SHARED=ON
+          cmake --build /tmp/SDL/build
+          cmake --install /tmp/SDL/build
+          ldconfig
+
+      # C'est la ligne qui a changé de sens : ce n'est plus le noyau qui se compile,
+      # c'est l'application. Un désaccord de plateforme se voit ici, pas trois
+      # semaines plus tard sur la machine de quelqu'un.
+      - name: Construire l'application
+        run: swift build -c release
+
+      # Tous les harnais qui n'ont besoin ni d'un périphérique audio ni d'un
+      # contexte OpenGL — un coureur n'a ni l'un ni l'autre.
+      #
+      # `SortieCheck` et `RenduCheck` restent donc dehors, et c'est une vraie
+      # lacune, pas un oubli : la sortie audio et le rendu sont mesurés à la main
+      # sur la machine de développement, par `./essai.sh`. Les y faire entrer
+      # demanderait un périphérique nul — qui draine aussi vite qu'il peut, et ne
+      # dirait donc rien de la cadence — et un Xvfb avec un rendu logiciel, qui ne
+      # dirait rien de la carte.
+      - name: Les harnais hors écran
         env:
           SPECTRE_RANGEMENT: ${{ runner.temp }}/spectre
         run: |
-          swift build -c release
           BIN="$(swift build -c release --show-bin-path)"
-          for harnais in DSPCheck WAVCheck SessionCheck FilterCheck ChainCheck \
-                         GaplessCheck AnalysisCheck PercussionCheck HarmonyCheck; do
+          for harnais in LangueCheck DSPCheck WAVCheck SessionCheck FilterCheck \
+                         ChainCheck GaplessCheck AnalysisCheck PercussionCheck \
+                         HarmonyCheck GestesCheck DecodeCheck PistesCheck; do
             echo "── $harnais"
             "$BIN/$harnais"
           done
+
+      # L'AppImage se fabrique aussi, et pour la même raison que l'installeur sous
+      # Windows : un paquet qui ne s'assemble qu'à la veille d'une livraison
+      # s'assemble mal. On ne l'éprouve pas ici — il n'y a pas d'écran — mais on
+      # sait qu'il se monte.
+      - name: L'AppImage
+        run: ./paquet.sh

@@ -11,6 +11,8 @@
 #ifndef SPECTRE_INTERNE_H
 #define SPECTRE_INTERNE_H
 
+#ifdef _WIN32
+
 #define COBJMACROS
 #define WIN32_LEAN_AND_MEAN
 
@@ -18,6 +20,19 @@
 #include <d3d11.h>
 #include <dxgi1_3.h>
 #include <d2d1_1.h>
+
+#else
+
+// Sous Linux, la même structure porte du GL et du SDL. Elle reste opaque de
+// l'autre côté de la frontière, exactement comme sa jumelle : Swift ne voit ni
+// l'une ni l'autre, et c'est ce qui permet à un seul `Rendu.swift` de piloter les
+// deux.
+#include <epoxy/gl.h>
+#include <SDL3/SDL.h>
+#include <cairo/cairo.h>
+#include <pango/pangocairo.h>
+
+#endif
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DIRECTWRITE N'A PAS DE CHEMIN C, ET C'EST LE SEUL
@@ -32,11 +47,13 @@
 // `d3d11.c` reste en C et ne voit que des types déclarés, ce qui lui suffit — il
 // ne fait que les porter dans la structure et les libérer par le pont.
 // ─────────────────────────────────────────────────────────────────────────────
+#ifdef _WIN32
 #ifdef __cplusplus
 #include <dwrite.h>
 #else
 typedef struct IDWriteFactory IDWriteFactory;
 typedef struct IDWriteTextFormat IDWriteTextFormat;
+#endif
 #endif
 
 #include "pont.h"
@@ -56,6 +73,8 @@ extern "C" {
 /// chercher une fonte à chaque changement de taille, soit des dizaines de fois par
 /// image. Douze couples couvrent tout ce que l'interface demande.
 #define SPECTRE_FORMATS 12
+
+#ifdef _WIN32
 
 struct SpectreRendu {
     ID3D11Device *appareil;
@@ -97,14 +116,80 @@ struct SpectreRendu {
     int decoupes;
 };
 
+#else
+
+struct SpectreRendu {
+    SDL_Window *fenetre;
+    /// Vrai quand c'est nous qui l'avons créée — le rendu hors écran s'en fait une,
+    /// cachée. Une fenêtre qu'on n'a pas créée ne se détruit pas.
+    int fenetreANous;
+    SDL_GLContext contexte;
+
+    GLuint programme;
+    GLuint tableauDeSommets;
+    GLuint tuiles;                       // texture 2D en tableau, une tranche par tuile
+    GLuint tableDesNotes;                // la palette « notes », en RGBA
+
+    /// La cible hors écran. Zéro à l'écran, où l'on dessine dans le tampon de la
+    /// fenêtre.
+    GLuint cadre;
+    GLuint cibleTexture;
+
+    int largeur, hauteur;
+    /// Zone que le nuanceur occupe, en pixels. Zéro veut dire « toute la fenêtre ».
+    /// La ligne de batterie prend la bande du dessous.
+    int zoneLargeur, zoneHauteur;
+    char carte[128];
+
+    // Les emplacements des uniformes, relevés une fois à l'édition de liens.
+    // Direct3D verse la structure entière dans un tampon de constantes ; OpenGL
+    // désigne chaque uniforme par son nom, et les retrouver à chaque image coûterait
+    // une comparaison de chaînes par uniforme et par image.
+    GLint u_origine, u_parPixel, u_tailleVue;
+    GLint u_colonnes, u_lignes, u_hauteurTuile, u_pas, u_palette;
+    GLint u_minDb, u_maxDb, u_gammaValeur, u_penteParOctave;
+    GLint u_log2FminSur1k, u_lignesParOctave, u_demiTonLigne0;
+    GLint u_teteDeLecture, u_boucleDebut, u_boucleFin;
+    GLint u_tuiles, u_tableDesNotes;
+
+    // La surimpression, en Cairo. Nulle tant que `spectre_surimpression_preparer`
+    // n'a pas été appelé, et refaite quand la fenêtre change de taille.
+    //
+    // Direct2D écrit dans le tampon de la chaîne d'échange ; Cairo dessine sur le
+    // processeur, dans une surface qu'on téléverse ensuite et qu'on fond par-dessus
+    // le spectrogramme. D'où la texture et le petit nuanceur qui vont avec.
+    cairo_surface_t *surface;
+    cairo_t *pinceau;
+    PangoLayout *miseEnPage;
+    int surfaceLargeur, surfaceHauteur;
+    GLuint texteTexture;
+    GLuint programmeComposition;
+    GLuint tableauComposition;
+    GLint u_composition;
+
+    float echelle;
+    int dessinEnCours;
+    /// Combien de découpes sont empilées, pour n'en dépiler que ce qui a été posé.
+    int decoupes;
+};
+
+#endif
+
+#ifdef _WIN32
+
 /// Défait la surface Direct2D avant que la chaîne se redimensionne, et la refait
 /// après. Appelé par `d3d11.c`, écrit dans `direct2d.c`.
+///
+/// Sans pendant sous Linux : OpenGL n'a pas de chaîne d'échange à recréer, et la
+/// surface Cairo se refait toute seule quand la taille a changé.
 void spectre_surimpression_lacher(SpectreRendu *rendu);
 void spectre_surimpression_reprendre(SpectreRendu *rendu);
 
-/// Libère ce que la surimpression garde en propre. Appelé depuis `d3d11.c`, qui
-/// n'a pas le droit de toucher aux interfaces DirectWrite — il ne les voit que
-/// déclarées.
+#endif
+
+/// Libère ce que la surimpression garde en propre. Appelé depuis le rendu, qui n'a
+/// pas le droit de toucher aux interfaces de la bibliothèque de dessin — il ne les
+/// voit que déclarées.
 void spectre_surimpression_detruire(SpectreRendu *rendu);
 
 #ifdef __cplusplus

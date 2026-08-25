@@ -1,6 +1,6 @@
 import Foundation
 import SpectreCore
-import SpectreWin
+import SpectreSon
 
 // Vérification du décodage sous Windows.
 //
@@ -22,7 +22,7 @@ import SpectreWin
 // pour une raison qui tienne à cette enveloppe-ci.
 //
 // C'est aussi ce qui justifie que le WAV soit essayé en premier dans
-// `DecodeurWindows` : ce contrôle mesure que le raccourci ne change rien.
+// `DecodeurSurLePont` : ce contrôle mesure que le raccourci ne change rien.
 //
 // Donner des fichiers en argument fait passer le même barème sur eux — sans la
 // comparaison, qui n'a plus de sens, mais avec tout le reste.
@@ -90,7 +90,7 @@ let parSwift: WAVFile.Contents
 let parSysteme: WAVFile.Contents
 do {
     parSwift = try WAVFile.read(at: temoin)
-    parSysteme = try DecodeurWindows.parMediaFoundation(temoin)
+    parSysteme = try DecodeurSurLePont.parMediaFoundation(temoin)
 } catch {
     print("  ✗ \(error)")
     exit(1)
@@ -148,7 +148,7 @@ print("\n=== Les refus ===")
 
 let absent = dossier.appendingPathComponent("nexiste-pas.mp3")
 do {
-    _ = try DecodeurWindows.lire(absent)
+    _ = try DecodeurSurLePont.lire(absent)
     controle("un fichier absent est refusé", false, "il a été accepté")
 } catch {
     // Ce qui compte n'est pas qu'il échoue, mais qu'il le dise en français et sans
@@ -161,7 +161,7 @@ do {
 let bidon = dossier.appendingPathComponent("pas-du-son.mp3")
 try? Data("ceci n'est pas un fichier audio, et ne le sera jamais".utf8).write(to: bidon)
 do {
-    _ = try DecodeurWindows.lire(bidon)
+    _ = try DecodeurSurLePont.lire(bidon)
     controle("un fichier qui n'est pas du son est refusé", false, "il a été accepté")
 } catch {
     // Et il dit autre chose que « introuvable » : le fichier est bien là, c'est son
@@ -178,7 +178,7 @@ do {
 let malNomme = dossier.appendingPathComponent("en-fait-un-wav.mp3")
 try? FileManager.default.copyItem(at: temoin, to: malNomme)
 do {
-    let contenu = try DecodeurWindows.lire(malNomme)
+    let contenu = try DecodeurSurLePont.lire(malNomme)
     controle("un WAV mal nommé passe quand même par le système",
              contenu.frameCount > 0 && contenu.sampleRate == parSwift.sampleRate,
              "\(contenu.frameCount) images à \(Int(contenu.sampleRate)) Hz")
@@ -193,7 +193,7 @@ if !donnes.isEmpty {
     print("\n=== Les fichiers donnés ===")
     for url in donnes {
         do {
-            let contenu = try DecodeurWindows.lire(url)
+            let contenu = try DecodeurSurLePont.lire(url)
             let duree = contenu.duration
             controle(url.lastPathComponent, contenu.frameCount > 0,
                      String(format: "%.1f s, %.0f Hz, %d canal(aux)",

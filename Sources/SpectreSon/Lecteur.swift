@@ -4,6 +4,7 @@ import Observation
 import SpectreCore
 import SpectreTextes
 import SpectreModele
+import SpectreSocle
 
 /// La lecture sous Windows : WASAPI en dessous, et rien d'autre.
 ///
@@ -22,7 +23,7 @@ import SpectreModele
 /// celui du temps** : ce que la tête de lecture doit montrer n'est pas la position
 /// d'où l'on tire des échantillons, mais celle de ce qui sort du haut-parleur.
 /// Voir `currentTime`.
-@Observable public final class LecteurWindows: LecteurAudio {
+@Observable public final class LecteurSurLePont: LecteurAudio {
 
     // MARK: L'état partagé avec le fil audio
 
@@ -158,7 +159,7 @@ import SpectreModele
         // ouverture. `AVAudioFile` n'a pas ce problème parce qu'il lit en flux ;
         // nous n'avons pas de lecteur en flux, alors on décode à côté.
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let contenu = try? DecodeurWindows.lire(nouvelle)
+            let contenu = try? DecodeurSurLePont.lire(nouvelle)
             // La référence faible est reprise dans une constante avant le second
             // bloc. Dans le premier, `self` est une *variable* capturée, et un bloc
             // imbriqué qui la relit est ce que le mode Swift 6 refusera.
@@ -373,6 +374,6 @@ import SpectreModele
 /// son objet par le contexte qu'on lui a confié à l'ouverture.
 private let rappelDeRendu: SpectreRemplir = { destination, images, canaux, contexte in
     guard let destination, let contexte else { return 0 }
-    let lecteur = Unmanaged<LecteurWindows>.fromOpaque(contexte).takeUnretainedValue()
+    let lecteur = Unmanaged<LecteurSurLePont>.fromOpaque(contexte).takeUnretainedValue()
     return Int32(lecteur.remplir(destination, images: Int(images), canaux: Int(canaux)))
 }

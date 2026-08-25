@@ -6,13 +6,24 @@
 // `onnxruntime.lib` est une bibliothèque d'importation : s'y lier ferait refuser le
 // démarrage de l'exécutable quand la DLL n'est pas là — pas « la séparation est
 // absente », mais « SpectreWindows.exe ne s'ouvre pas », avec le code 0xC0000135 et
-// sans un mot. Or seize mégaoctets de moteur d'inférence n'ont rien à faire dans un
-// dépôt, et l'intégration continue compile sans les avoir téléchargés.
+// sans un mot. Sous Linux, un `libonnxruntime.so` absent donne la même chose en
+// moins bavard encore. Or seize mégaoctets de moteur d'inférence n'ont rien à faire
+// dans un dépôt, et l'intégration continue compile sans les avoir téléchargés.
 //
-// `LoadLibraryW` puis un seul `GetProcAddress` règlent les deux d'un coup : rien à
-// l'édition de liens, l'application s'ouvre toujours, et la séparation s'annonce
-// absente exactement comme elle le fait sur un Mac dont les poids ne sont pas
-// installés — un chemin déjà éprouvé.
+// Un chargement à l'exécution puis une seule résolution de symbole règlent les deux
+// d'un coup : rien à l'édition de liens, l'application s'ouvre toujours, et la
+// séparation s'annonce absente exactement comme elle le fait sur un Mac dont les
+// poids ne sont pas installés — un chemin déjà éprouvé.
+//
+// UN SEUL FICHIER POUR LES DEUX SYSTÈMES, ET POURQUOI
+//
+// Partout ailleurs dans ce pont, Windows et Linux ont deux fichiers jumeaux qui
+// exportent les mêmes noms — `d3d11.c` et `gl.c`, `wasapi.c` et `alsa.c`. Ici, non :
+// de ces deux cent cinquante lignes, **trois** diffèrent — ouvrir la bibliothèque,
+// y chercher `OrtGetApiBase`, la refermer — et `ORTCHAR_T` qui vaut `wchar_t` là et
+// `char` ici. Écrire un second fichier pour cela ferait deux moteurs d'inférence à
+// tenir d'accord, ce qui est exactement le coût que les jumeaux servent à éviter
+// quand ils sont justifiés.
 //
 // L'en-tête, lui, est nécessaire à la compilation : `OrtApi` est une structure d'une
 // centaine de pointeurs de fonction dont l'ordre fait tout, et la redéclarer à la
@@ -21,8 +32,12 @@
 // séparation n'est pas installée.
 // ─────────────────────────────────────────────────────────────────────────────
 
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -33,13 +48,74 @@
 
 #include <onnxruntime_c_api.h>
 
+#ifdef _WIN32
+typedef HMODULE Bibliotheque;
+#else
+typedef void *Bibliotheque;
+// `ORT_API_CALL` est vide hors de Windows, mais l'en-tête ne le définit que quand il
+// est inclus ; le typedef du chargeur en a besoin avant.
+#endif
+
 struct SpectreReseau {
-    HMODULE bibliotheque;
+    Bibliotheque bibliotheque;
     const OrtApi *api;
     OrtEnv *environnement;
     OrtSession *session;
     OrtMemoryInfo *memoire;
 };
+
+/// Les trois seules lignes de ce fichier qui diffèrent d'un système à l'autre.
+///
+/// `LOAD_WITH_ALTERED_SEARCH_PATH` sous Windows : la DLL est désignée par un chemin
+/// absolu, et ce drapeau fait chercher ses propres dépendances **à côté d'elle**
+/// plutôt que dans le dossier de l'exécutable — sans lui,
+/// `onnxruntime_providers_shared.dll` n'est pas trouvée quand le moteur est rangé
+/// ailleurs que l'application. `RTLD_LOCAL` sous Linux fait le pendant : les
+/// symboles du moteur ne doivent pas se mêler à ceux de l'application.
+static Bibliotheque charger(const char *chemin, char *erreur) {
+#ifdef _WIN32
+    wchar_t large[4096];
+    if (MultiByteToWideChar(CP_UTF8, 0, chemin, -1, large, 4096) == 0) {
+        snprintf(erreur, SPECTRE_ERREUR_MAX,
+                 "le chemin d'onnxruntime.dll ne se convertit pas.");
+        return NULL;
+    }
+    HMODULE module = LoadLibraryExW(large, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+    if (!module) {
+        snprintf(erreur, SPECTRE_ERREUR_MAX,
+                 "onnxruntime.dll n'a pas pu être chargée (erreur %lu).",
+                 (unsigned long)GetLastError());
+    }
+    return module;
+#else
+    void *module = dlopen(chemin, RTLD_NOW | RTLD_LOCAL);
+    if (!module) {
+        // `dlerror` dit *pourquoi* — une dépendance manquante, une architecture qui
+        // n'est pas la bonne — et c'est la seule chose qui distingue ces cas.
+        const char *pourquoi = dlerror();
+        snprintf(erreur, SPECTRE_ERREUR_MAX,
+                 "libonnxruntime.so n'a pas pu être chargée : %s",
+                 pourquoi ? pourquoi : "raison inconnue");
+    }
+    return module;
+#endif
+}
+
+static void *symbole(Bibliotheque module, const char *nom) {
+#ifdef _WIN32
+    return (void *)GetProcAddress(module, nom);
+#else
+    return dlsym(module, nom);
+#endif
+}
+
+static void decharger(Bibliotheque module) {
+#ifdef _WIN32
+    FreeLibrary(module);
+#else
+    dlclose(module);
+#endif
+}
 
 static void dire(char *erreur, const char *quoi) {
     if (erreur) { snprintf(erreur, SPECTRE_ERREUR_MAX, "%s", quoi); }
@@ -60,42 +136,32 @@ static int echoue(struct SpectreReseau *r, OrtStatus *statut, char *erreur,
     return 1;
 }
 
-SpectreReseau *spectre_reseau_ouvrir(const uint16_t *chemin,
-                                     const uint16_t *bibliotheque, char *erreur) {
+SpectreReseau *spectre_reseau_ouvrir(const char *chemin,
+                                     const char *bibliotheque, char *erreur) {
     if (!chemin || !bibliotheque) { dire(erreur, "chemin manquant."); return NULL; }
 
-    // `LOAD_WITH_ALTERED_SEARCH_PATH` : la DLL est désignée par un chemin absolu, et
-    // ce drapeau fait chercher ses propres dépendances **à côté d'elle** plutôt que
-    // dans le dossier de l'exécutable. Sans lui, `onnxruntime_providers_shared.dll`
-    // n'est pas trouvée quand le moteur est rangé ailleurs que l'application.
-    HMODULE module = LoadLibraryExW((LPCWSTR)bibliotheque, NULL,
-                                    LOAD_WITH_ALTERED_SEARCH_PATH);
-    if (!module) {
-        snprintf(erreur, SPECTRE_ERREUR_MAX,
-                 "onnxruntime.dll n'a pas pu être chargée (erreur %lu).",
-                 (unsigned long)GetLastError());
-        return NULL;
-    }
+    Bibliotheque module = charger(bibliotheque, erreur);
+    if (!module) { return NULL; }
 
     typedef const OrtApiBase *(ORT_API_CALL *Base)(void);
-    Base base = (Base)(void *)GetProcAddress(module, "OrtGetApiBase");
+    Base base = (Base)symbole(module, "OrtGetApiBase");
     if (!base) {
-        FreeLibrary(module);
-        dire(erreur, "cette onnxruntime.dll n'expose pas OrtGetApiBase.");
+        decharger(module);
+        dire(erreur, "cette bibliothèque n'expose pas OrtGetApiBase.");
         return NULL;
     }
     const OrtApi *api = base()->GetApi(ORT_API_VERSION);
     if (!api) {
-        FreeLibrary(module);
-        // Le seul cas où cela arrive : une DLL plus ancienne que l'en-tête avec
-        // lequel on a compilé. Le dire ainsi évite de chercher du côté du modèle.
+        decharger(module);
+        // Le seul cas où cela arrive : une bibliothèque plus ancienne que l'en-tête
+        // avec lequel on a compilé. Le dire ainsi évite de chercher du côté du modèle.
         snprintf(erreur, SPECTRE_ERREUR_MAX,
-                 "onnxruntime.dll est trop ancienne (API %d demandée).", ORT_API_VERSION);
+                 "ONNX Runtime est trop ancien (API %d demandée).", ORT_API_VERSION);
         return NULL;
     }
 
     struct SpectreReseau *r = (struct SpectreReseau *)calloc(1, sizeof(struct SpectreReseau));
-    if (!r) { FreeLibrary(module); dire(erreur, "mémoire insuffisante."); return NULL; }
+    if (!r) { decharger(module); dire(erreur, "mémoire insuffisante."); return NULL; }
     r->bibliotheque = module;
     r->api = api;
 
@@ -110,7 +176,22 @@ SpectreReseau *spectre_reseau_ouvrir(const uint16_t *chemin,
     // optimisations valent la peine d'être faites une fois.
     api->SetSessionGraphOptimizationLevel(options, ORT_ENABLE_ALL);
 
-    OrtStatus *statut = api->CreateSession(r->environnement, (const ORTCHAR_T *)chemin,
+    // `ORTCHAR_T` vaut `wchar_t` sous Windows et `char` ailleurs : la conversion est
+    // le seul endroit du fichier où le chemin change de forme, et elle est ici plutôt
+    // que chez l'appelant pour que le contrat reste en UTF-8 partout.
+#ifdef _WIN32
+    wchar_t large[4096];
+    if (MultiByteToWideChar(CP_UTF8, 0, chemin, -1, large, 4096) == 0) {
+        dire(erreur, "le chemin du réseau ne se convertit pas.");
+        api->ReleaseSessionOptions(options);
+        spectre_reseau_fermer(r);
+        return NULL;
+    }
+    const ORTCHAR_T *cheminOrt = large;
+#else
+    const ORTCHAR_T *cheminOrt = chemin;
+#endif
+    OrtStatus *statut = api->CreateSession(r->environnement, cheminOrt,
                                            options, &r->session);
     api->ReleaseSessionOptions(options);
     if (echoue(r, statut, erreur, "ouverture du réseau")) {
@@ -132,7 +213,7 @@ void spectre_reseau_fermer(SpectreReseau *r) {
         if (r->session) { r->api->ReleaseSession(r->session); }
         if (r->environnement) { r->api->ReleaseEnv(r->environnement); }
     }
-    if (r->bibliotheque) { FreeLibrary(r->bibliotheque); }
+    if (r->bibliotheque) { decharger(r->bibliotheque); }
     free(r);
 }
 
@@ -221,12 +302,17 @@ int spectre_reseau_disponible(void) { return 1; }
 // restent, et disent la même chose que sur un Mac dont les poids ne sont pas
 // installés : la fonction est absente, pas cassée.
 
-SpectreReseau *spectre_reseau_ouvrir(const uint16_t *chemin,
-                                     const uint16_t *bibliotheque, char *erreur) {
+SpectreReseau *spectre_reseau_ouvrir(const char *chemin,
+                                     const char *bibliotheque, char *erreur) {
     (void)chemin; (void)bibliotheque;
     if (erreur) {
+#ifdef _WIN32
         snprintf(erreur, SPECTRE_ERREUR_MAX,
                  "Cette version a été compilée sans ONNX Runtime — lancer .\\onnx.ps1.");
+#else
+        snprintf(erreur, SPECTRE_ERREUR_MAX,
+                 "Cette version a été compilée sans ONNX Runtime — lancer ./onnx.sh.");
+#endif
     }
     return NULL;
 }

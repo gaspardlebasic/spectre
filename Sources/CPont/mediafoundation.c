@@ -45,22 +45,22 @@ static SpectreDecodage echec(int code, HRESULT hr) {
     return d;
 }
 
-const char *spectre_mf_message(int code) {
+const char *spectre_decodage_message(int code) {
     switch (code) {
-    case SPECTRE_MF_OK:        return "aucune erreur";
-    case SPECTRE_MF_DEMARRAGE: return "Media Foundation n'a pas pu démarrer";
-    case SPECTRE_MF_CHEMIN:    return "le chemin du fichier est illisible";
-    case SPECTRE_MF_OUVERTURE: return "Windows ne sait pas lire ce format";
-    case SPECTRE_MF_ABSENT:    return "fichier introuvable";
-    case SPECTRE_MF_FORMAT:    return "aucune piste audio décodable dans ce fichier";
-    case SPECTRE_MF_LECTURE:   return "le décodage s'est interrompu";
-    case SPECTRE_MF_MEMOIRE:   return "mémoire insuffisante";
-    case SPECTRE_MF_VIDE:      return "le fichier ne contient aucun son";
+    case SPECTRE_DECODAGE_OK:        return "aucune erreur";
+    case SPECTRE_DECODAGE_DEMARRAGE: return "Media Foundation n'a pas pu démarrer";
+    case SPECTRE_DECODAGE_CHEMIN:    return "le chemin du fichier est illisible";
+    case SPECTRE_DECODAGE_OUVERTURE: return "Windows ne sait pas lire ce format";
+    case SPECTRE_DECODAGE_ABSENT:    return "fichier introuvable";
+    case SPECTRE_DECODAGE_FORMAT:    return "aucune piste audio décodable dans ce fichier";
+    case SPECTRE_DECODAGE_LECTURE:   return "le décodage s'est interrompu";
+    case SPECTRE_DECODAGE_MEMOIRE:   return "mémoire insuffisante";
+    case SPECTRE_DECODAGE_VIDE:      return "le fichier ne contient aucun son";
     default:                   return "erreur inconnue";
     }
 }
 
-void spectre_mf_liberer(float *echantillons) {
+void spectre_decodage_liberer(float *echantillons) {
     free(echantillons);
 }
 
@@ -82,9 +82,9 @@ static SpectreDecodage decoder(const char *chemin, UINT32 frequenceVoulue,
     // Le chemin arrive en UTF-8 parce que c'est ce que Swift a naturellement
     // sous la main ; Windows le veut en UTF-16.
     int taille = MultiByteToWideChar(CP_UTF8, 0, chemin, -1, NULL, 0);
-    if (taille <= 0) { return echec(SPECTRE_MF_CHEMIN, 0); }
+    if (taille <= 0) { return echec(SPECTRE_DECODAGE_CHEMIN, 0); }
     wchar_t *large = (wchar_t *)malloc((size_t)taille * sizeof(wchar_t));
-    if (!large) { return echec(SPECTRE_MF_MEMOIRE, 0); }
+    if (!large) { return echec(SPECTRE_DECODAGE_MEMOIRE, 0); }
     MultiByteToWideChar(CP_UTF8, 0, chemin, -1, large, taille);
 
     // `RPC_E_CHANGED_MODE` veut dire que le fil est déjà initialisé dans l'autre
@@ -96,7 +96,7 @@ static SpectreDecodage decoder(const char *chemin, UINT32 frequenceVoulue,
     if (FAILED(hr)) {
         free(large);
         if (fermerCom) { CoUninitialize(); }
-        return echec(SPECTRE_MF_DEMARRAGE, hr);
+        return echec(SPECTRE_DECODAGE_DEMARRAGE, hr);
     }
 
     IMFSourceReader *lecteur = NULL;
@@ -111,11 +111,11 @@ static SpectreDecodage decoder(const char *chemin, UINT32 frequenceVoulue,
         // distingue, alors autant le dire.
         int quoi = (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)
                     || hr == HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND))
-                 ? SPECTRE_MF_ABSENT : SPECTRE_MF_OUVERTURE;
+                 ? SPECTRE_DECODAGE_ABSENT : SPECTRE_DECODAGE_OUVERTURE;
         return echec(quoi, hr);
     }
 
-    SpectreDecodage sortie = echec(SPECTRE_MF_LECTURE, 0);
+    SpectreDecodage sortie = echec(SPECTRE_DECODAGE_LECTURE, 0);
     float *tampon = NULL;
     long long remplis = 0, capacite = 0;
     IMFMediaType *voulu = NULL, *obtenu = NULL;
@@ -163,7 +163,7 @@ static SpectreDecodage decoder(const char *chemin, UINT32 frequenceVoulue,
                 (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL, voulu);
     }
     if (FAILED(hr)) {
-        sortie = echec(SPECTRE_MF_FORMAT, hr);
+        sortie = echec(SPECTRE_DECODAGE_FORMAT, hr);
         goto fin;
     }
 
@@ -178,7 +178,7 @@ static SpectreDecodage decoder(const char *chemin, UINT32 frequenceVoulue,
         IMFMediaType_GetUINT32(obtenu, &MF_MT_AUDIO_SAMPLES_PER_SECOND, &frequence);
     }
     if (FAILED(hr) || canaux == 0 || frequence == 0) {
-        sortie = echec(SPECTRE_MF_FORMAT, hr);
+        sortie = echec(SPECTRE_DECODAGE_FORMAT, hr);
         goto fin;
     }
     // Ce qu'on a demandé n'est pas toujours ce qu'on obtient — un décodeur peut
@@ -186,7 +186,7 @@ static SpectreDecodage decoder(const char *chemin, UINT32 frequenceVoulue,
     // séparer un morceau à la mauvaise fréquence, ce qui donnerait des pistes
     // transposées sans que rien ne signale pourquoi.
     if (canauxVoulus > 0 && (canaux != canauxVoulus || frequence != frequenceVoulue)) {
-        sortie = echec(SPECTRE_MF_FORMAT, hr);
+        sortie = echec(SPECTRE_DECODAGE_FORMAT, hr);
         goto fin;
     }
 
@@ -195,7 +195,7 @@ static SpectreDecodage decoder(const char *chemin, UINT32 frequenceVoulue,
     // estimation sur un fichier compressé.
     capacite = (long long)frequence * 30 * (canauxVoulus > 0 ? (long long)canaux : 1);
     tampon = (float *)malloc((size_t)capacite * sizeof(float));
-    if (!tampon) { sortie = echec(SPECTRE_MF_MEMOIRE, 0); goto fin; }
+    if (!tampon) { sortie = echec(SPECTRE_DECODAGE_MEMOIRE, 0); goto fin; }
 
     for (;;) {
         DWORD drapeaux = 0;
@@ -204,7 +204,7 @@ static SpectreDecodage decoder(const char *chemin, UINT32 frequenceVoulue,
                 (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, NULL, &drapeaux,
                 NULL, &echantillon);
         if (FAILED(hr)) {
-            if (remplis == 0) { sortie = echec(SPECTRE_MF_LECTURE, hr); goto fin; }
+            if (remplis == 0) { sortie = echec(SPECTRE_DECODAGE_LECTURE, hr); goto fin; }
             break;                      // une panne en fin de course ne perd pas le reste
         }
         if (drapeaux & MF_SOURCE_READERF_ENDOFSTREAM) {
@@ -239,7 +239,7 @@ static SpectreDecodage decoder(const char *chemin, UINT32 frequenceVoulue,
                         IMFMediaBuffer_Unlock(bloc);
                         IMFMediaBuffer_Release(bloc);
                         IMFSample_Release(echantillon);
-                        sortie = echec(SPECTRE_MF_MEMOIRE, 0);
+                        sortie = echec(SPECTRE_DECODAGE_MEMOIRE, 0);
                         goto fin;
                     }
                     tampon = agrandi;
@@ -270,13 +270,13 @@ static SpectreDecodage decoder(const char *chemin, UINT32 frequenceVoulue,
         IMFSample_Release(echantillon);
     }
 
-    if (remplis == 0) { sortie = echec(SPECTRE_MF_VIDE, 0); goto fin; }
+    if (remplis == 0) { sortie = echec(SPECTRE_DECODAGE_VIDE, 0); goto fin; }
 
     sortie.echantillons = tampon;
     sortie.images = canauxVoulus > 0 ? remplis / (long long)canaux : remplis;
     sortie.frequence = (double)frequence;
     sortie.canaux = (int)canaux;
-    sortie.code = SPECTRE_MF_OK;
+    sortie.code = SPECTRE_DECODAGE_OK;
     sortie.resultat = 0;
     tampon = NULL;                      // rendu à l'appelant, pas libéré ici
 
@@ -290,12 +290,12 @@ fin:
     return sortie;
 }
 
-SpectreDecodage spectre_mf_decoder(const char *chemin) {
+SpectreDecodage spectre_decodage_decoder(const char *chemin) {
     return decoder(chemin, 0, 0);
 }
 
-SpectreDecodage spectre_mf_decoder_entrelace(const char *chemin, double frequence,
+SpectreDecodage spectre_decodage_decoder_entrelace(const char *chemin, double frequence,
                                              int canaux) {
-    if (frequence <= 0 || canaux <= 0) { return echec(SPECTRE_MF_FORMAT, 0); }
+    if (frequence <= 0 || canaux <= 0) { return echec(SPECTRE_DECODAGE_FORMAT, 0); }
     return decoder(chemin, (UINT32)frequence, (UINT32)canaux);
 }

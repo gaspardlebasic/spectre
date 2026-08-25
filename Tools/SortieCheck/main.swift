@@ -1,7 +1,8 @@
 import Foundation
 import SpectreCore
 import SpectreModele
-import SpectreWin
+import SpectreSon
+import SpectreSocle
 
 // Vérification de la sortie audio, sans oreille.
 //
@@ -48,9 +49,25 @@ let dossier = URL(fileURLWithPath: NSTemporaryDirectory())
 try? FileManager.default.createDirectory(at: dossier, withIntermediateDirectories: true)
 defer { try? FileManager.default.removeItem(at: dossier) }
 
+/// La fréquence du morceau témoin. 44 100 Hz par défaut, comme la plupart des
+/// fichiers ; `--frequence 48000` en demande une autre.
+///
+/// L'option existe parce qu'un périphérique peut n'être juste qu'à *sa* fréquence.
+/// Le portage Linux en a rencontré un : le codec émulé de la machine virtuelle
+/// accepte 44 100 Hz, l'annonce, et ne draine ensuite qu'un tiers du temps réel,
+/// tandis qu'à 48 000 Hz il est exact. Sans de quoi essayer les deux, ce genre de
+/// panne se lit comme une faute du lecteur — et l'on cherche des jours du mauvais
+/// côté.
+let frequenceDuTemoin: Int = {
+    let arguments = CommandLine.arguments
+    guard let i = arguments.firstIndex(of: "--frequence"), i + 1 < arguments.count,
+          let valeur = Int(arguments[i + 1]), valeur > 0 else { return 44100 }
+    return valeur
+}()
+
 let temoin = dossier.appendingPathComponent("temoin.wav")
 do {
-    let frequence = 44100
+    let frequence = frequenceDuTemoin
     let images = frequence * 20
     var octets = [UInt8]()
     octets.reserveCapacity(44 + images * 2)
@@ -72,8 +89,9 @@ do {
 // MARK: - Le lecteur, de bout en bout
 
 print("=== Le lecteur ===")
+print("  (morceau témoin à \(frequenceDuTemoin) Hz)")
 
-let lecteur = LecteurWindows()
+let lecteur = LecteurSurLePont()
 lecteur.load(url: temoin)
 
 // Le décodage part en tâche de fond : on attend qu'il arrive, comme le ferait
@@ -164,7 +182,7 @@ controle("l'arrêt ramène au début", lecteur.currentTime < 0.05 && !lecteur.is
 
 print("\n=== La sinusoïde ===")
 do {
-    let sinusoide = SinusoideWindows()
+    let sinusoide = SinusoideSurLePont()
     sinusoide.play(440)
     attendre(0.3)
     // Rien ne se mesure de l'extérieur ici — l'oscillateur est déjà mesuré dans le

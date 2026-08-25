@@ -33,8 +33,9 @@ sudo apt-get install -y --no-install-recommends \
     libcairo2-dev libpango1.0-dev \
     libasound2-dev \
     libsndfile1-dev libmpg123-dev \
-    libgl1-mesa-dev libglu1-mesa-dev libegl1-mesa-dev mesa-utils \
+    libgl1-mesa-dev libglu1-mesa-dev libegl1-mesa-dev mesa-utils libepoxy-dev \
     libwayland-dev wayland-protocols libxkbcommon-dev libdecor-0-dev \
+    libdecor-0-plugin-1-cairo \
     libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxfixes-dev \
     libxss-dev libxtst-dev libibus-1.0-dev libsamplerate0-dev \
     libaudio-dev libjack-dev libsndio-dev libgles2-mesa-dev \
@@ -42,10 +43,17 @@ sudo apt-get install -y --no-install-recommends \
     fonts-dejavu-core fonts-noto-core
 
 # Ce que chacun sert, pour qui relit :
+#   libdecor-0-plugin  — la barre de titre sous Wayland. Le paquet `-dev` ne suffit
+#                        pas : c'est le **greffon** qui dessine, et sans lui SDL dit
+#                        « falling back on no decorations » et la fenêtre s'ouvre
+#                        sans barre de titre, sans croix, sans rien pour la
+#                        déplacer. Ce n'est pas une dépendance de compilation, c'est
+#                        une dépendance d'exécution — d'où l'oubli facile.
 #   cairo, pango       — le dessin de l'interface et la composition du texte
 #   asound             — la sortie audio ; PipeWire et PulseAudio l'exposent aussi
 #   sndfile, mpg123    — le décodage, et l'écriture FLAC des pistes séparées
 #   mesa, egl, gbm     — OpenGL 3.3 pour le spectrogramme
+#   epoxy              — les pointeurs de fonctions d'OpenGL, sans chargeur à écrire
 #   wayland, xkb, x11  — les deux dos de SDL3 ; il choisit à l'exécution
 #   noto               — les caractères que DejaVu n'a pas ; cinq langues à écrire
 
@@ -91,7 +99,7 @@ fi
 
 bleu "Ce que ça donne"
 swift --version
-for module in sdl3 cairo pango sndfile libmpg123 alsa gl; do
+for module in sdl3 cairo pango sndfile libmpg123 alsa gl epoxy; do
     if pkg-config --exists "$module"; then
         printf '  %-12s %s\n' "$module" "$(pkg-config --modversion "$module")"
     else

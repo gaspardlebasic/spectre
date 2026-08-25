@@ -246,9 +246,100 @@ jobs:
             build/Spectre-*.zip
           if-no-files-found: error
 
+  linux:
+    name: Linux ${{ matrix.arch }}
+    # Un seul coureur, et c'est une limite qu'il faut dire : GitHub n'offre pas de
+    # coureur Linux ARM64 gratuit. L'AppImage livré est donc x86_64 seulement ;
+    # celui d'ARM se fabrique à la main par `./paquet.sh` sur une machine ARM, et se
+    # joint à la release comme le paquet macOS.
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    # `-jammy` : Ubuntu 22.04, et c'est le choix qui décide de tout. Un AppImage
+    # construit contre une glibc récente ne s'ouvre pas sur une distribution plus
+    # ancienne, tandis que l'inverse marche toujours — on construit donc contre la
+    # plus vieille glibc qu'on veuille servir. La version de Swift, elle, reste celle
+    # des deux autres chaînes : un portage se juge sur un désaccord de plateforme,
+    # pas de compilateur.
+    container: swift:6.3-jammy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version de la chaîne
+        run: swift --version
+
+      - name: Les bibliothèques
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config git curl ca-certificates \
+            libcairo2-dev libpango1.0-dev libasound2-dev \
+            libsndfile1-dev libmpg123-dev libepoxy-dev libgl1-mesa-dev \
+            libwayland-dev wayland-protocols libxkbcommon-dev libdecor-0-dev \
+            libdecor-0-plugin-1-cairo \
+            libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev \
+            libxfixes-dev libdrm-dev libgbm-dev libdbus-1-dev libudev-dev
+
+      - name: SDL3
+        run: |
+          git clone --depth 1 --branch release-3.4.14 \
+            https://github.com/libsdl-org/SDL /tmp/SDL
+          cmake -S /tmp/SDL -B /tmp/SDL/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DSDL_SHARED=ON
+          cmake --build /tmp/SDL/build
+          cmake --install /tmp/SDL/build
+          ldconfig
+
+      # Sans lui, la séparation est **compilée absente** plutôt que d'échouer à
+      # l'édition de liens. Ici on la veut, donc on l'installe — le jumeau exact de
+      # ce que fait la chaîne Windows deux travaux plus haut.
+      - name: ONNX Runtime
+        run: ./onnx.sh --arch x64
+
+      # Cherchés, pas exigés — même règle que sous Windows : un coureur ne peut pas
+      # fabriquer 166 Mo de réseau entraîné, et l'application sait se passer de lui.
+      - name: Les poids de Demucs, s'ils sont attachés à la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p Resources
+          gh release download modele-htdemucs-v4 --pattern 'htdemucs.onnx' \
+            --dir Resources 2>/dev/null \
+            || echo "poids absents — la séparation s'annoncera absente"
+
+      - name: Les harnais hors écran
+        env:
+          SPECTRE_RANGEMENT: ${{ runner.temp }}/spectre
+        run: |
+          swift build -c release
+          BIN="$(swift build -c release --show-bin-path)"
+          for harnais in LangueCheck DSPCheck WAVCheck SessionCheck FilterCheck \
+                         ChainCheck GaplessCheck AnalysisCheck PercussionCheck \
+                         HarmonyCheck GestesCheck DecodeCheck PistesCheck; do
+            echo "── $harnais"
+            "$BIN/$harnais"
+          done
+
+      - name: L'AppImage
+        env:
+          SPECTRE_RANGEMENT: ${{ runner.temp }}/spectre
+        run: ./paquet.sh --version "${GITHUB_REF_NAME#v}"
+
+      - name: Ce qui a été produit
+        run: ls -lh build/Spectre-*.AppImage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spectre-linux-${{ matrix.arch }}
+          path: build/Spectre-*.AppImage
+          if-no-files-found: error
+
   release:
     name: La release
-    needs: windows
+    needs: [windows, linux]
     # Seulement sur une étiquette : un essai lancé à la main construit et s'arrête
     # là. C'est ce qui permet d'éprouver ce fichier sans rien publier.
     if: github.ref_type == 'tag'
@@ -298,6 +389,25 @@ jobs:
           l'auteur de Spectre** — leur auteur les réserve à un usage scientifique, voir
           [NOTICE.md](https://github.com/gaspardlebasic/spectre/blob/main/NOTICE.md).
           \`modele.sh\` permet de les obtenir directement depuis les serveurs de Meta.
+
+          ## Linux
+
+          | fichier | pour |
+          |---|---|
+          | \`Spectre-x86_64.AppImage\` | PC Intel et AMD |
+
+          Un AppImage ne s'installe pas : \`chmod +x Spectre-x86_64.AppImage\` puis on le
+          lance. Il porte tout ce dont il a besoin — SDL3, Cairo, Pango, la
+          bibliothèque standard de Swift — et prend du système ce qui doit en venir :
+          les pilotes graphiques et le son.
+
+          Il faut une carte qui sache OpenGL 3.3, et Wayland ou X11. Le fichier
+          \`.desktop\` embarqué met Spectre au menu et dans le « Ouvrir avec » des
+          fichiers audio, si l'on utilise \`AppImageLauncher\` ou \`appimaged\`.
+
+          **Pas d'AppImage ARM64** : GitHub n'offre pas de coureur Linux ARM gratuit.
+          Sur un Raspberry Pi ou une machine ARM, \`./paquet.sh\` le fabrique en
+          quelques minutes.
           NOTES
 
           # `--clobber` remplace un fichier de même nom : ce flux doit pouvoir être

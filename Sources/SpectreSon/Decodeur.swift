@@ -15,7 +15,7 @@ import SpectreCore
 /// Le décodeur vit dans cet étage, et non dans `SpectreCore` comme au premier
 /// portage : le noyau ne doit rien connaître d'un système, et `Décodeur` est
 /// précisément la couture prévue pour cela.
-public struct DecodeurWindows: Décodeur {
+public struct DecodeurSurLePont: Décodeur {
     public init() {}
 
     public func charger(_ url: URL) throws -> AudioSource {
@@ -44,17 +44,17 @@ public struct DecodeurWindows: Décodeur {
     /// deux décodages du **même** fichier WAV — la seule façon de mesurer celui-ci
     /// sans dépendre d'un fichier compressé que le dépôt ne peut pas porter.
     public static func parMediaFoundation(_ url: URL) throws -> WAVFile.Contents {
-        // `spectre_mf_decoder` rend un tableau alloué en C : on le recopie dans un
+        // `spectre_decodage_decoder` rend un tableau alloué en C : on le recopie dans un
         // `[Float]` et on le rend immédiatement. Le doublon coûte une fois la
         // taille du signal, le temps d'une copie — et évite d'avoir à porter cette
         // propriété jusque dans le reste de l'application.
-        let resultat = url.path.withCString { spectre_mf_decoder($0) }
+        let resultat = url.path.withCString { spectre_decodage_decoder($0) }
         guard resultat.code == 0, let bloc = resultat.echantillons else {
-            let message = String(cString: spectre_mf_message(resultat.code))
+            let message = String(cString: spectre_decodage_message(resultat.code))
             throw Echec.decodeur("« \(url.lastPathComponent) » : \(message)",
                                  Int32(truncatingIfNeeded: resultat.resultat))
         }
-        defer { spectre_mf_liberer(bloc) }
+        defer { spectre_decodage_liberer(bloc) }
 
         var mono = [Float](UnsafeBufferPointer(start: bloc, count: Int(resultat.images)))
 
