@@ -356,10 +356,11 @@ int spectre_sortie_en_vol(const SpectreSortie *sortie);
 // ─────────────────────────────────────────── La séparation, par ONNX Runtime
 //
 // Le pendant macOS passe par le paquet Swift de Microsoft, qui ne connaît qu'Apple.
-// Ailleurs, ONNX Runtime se distribue en DLL, et c'est **`LoadLibraryW` qui la
-// charge** — pas l'éditeur de liens. Voir la longue note en tête d'`onnx.c` : c'est
-// ce qui permet à l'application de s'ouvrir quand le moteur n'est pas installé, et
-// à l'intégration continue de compiler sans télécharger seize mégaoctets.
+// Ailleurs, ONNX Runtime se distribue en bibliothèque partagée, et c'est **le
+// chargeur du système qui l'ouvre** — pas l'éditeur de liens : `LoadLibraryW` sous
+// Windows, `dlopen` sous Linux. Voir la longue note en tête d'`onnx.c` : c'est ce
+// qui permet à l'application de s'ouvrir quand le moteur n'est pas installé, et à
+// l'intégration continue de compiler sans télécharger seize mégaoctets.
 //
 // Le pont ne connaît qu'un réseau, celui de Demucs : deux entrées nommées « mix » et
 // « spec », deux sorties nommées « zout » et « xt ». Un pont générique sur les
@@ -370,12 +371,15 @@ typedef struct SpectreReseau SpectreReseau;
 /// Faux quand cette compilation n'a pas vu les en-têtes d'ONNX Runtime.
 int spectre_reseau_disponible(void);
 
-/// Ouvre un réseau. `chemin` et `bibliotheque` sont de l'UTF-16 terminé par un zéro
-/// — le fichier `.onnx`, et l'`onnxruntime.dll` à charger.
+/// Ouvre un réseau : le fichier `.onnx`, et la bibliothèque à charger.
+///
+/// Les deux chemins sont de l'**UTF-8 terminé par un zéro**, comme partout ailleurs
+/// dans ce pont. C'est Windows qui convertit en UTF-16 chez lui — le contrat dit ce
+/// qu'il fait, pas comment le premier système à l'avoir rempli s'y prenait.
 ///
 /// Rend `NULL` en cas d'échec, et remplit `erreur` (`SPECTRE_ERREUR_MAX` octets).
-SpectreReseau *spectre_reseau_ouvrir(const uint16_t *chemin,
-                                     const uint16_t *bibliotheque, char *erreur);
+SpectreReseau *spectre_reseau_ouvrir(const char *chemin,
+                                     const char *bibliotheque, char *erreur);
 void spectre_reseau_fermer(SpectreReseau *reseau);
 
 /// Applique le réseau à une tranche.

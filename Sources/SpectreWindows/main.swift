@@ -5,6 +5,7 @@ import SpectreModele
 import SpectreToile
 import SpectreWin
 import WinSDK
+import SpectreSeparation
 import SpectreSocle
 import SpectreSon
 
@@ -56,7 +57,7 @@ extension SpectreModele.AppModel where Lecteur == LecteurSurLePont {
         self.init(lecteur: LecteurSurLePont(),
                   décodeur: DecodeurSurLePont(),
                   sinusoide: SinusoideSurLePont(),
-                  pistes: RangementWindows(),
+                  pistes: RangementSurLePont(),
                   dialogue: DialogueWindows(fenetre: fenetre),
                   récentsDuSystème: RecentsWindows(),
                   préférences: PreferencesWindows.partagees)
@@ -118,7 +119,7 @@ final class Application: EchosDeLaFenetre {
     let fenetre: Fenetre
     let rendu: RenduD3D11
     let modele: AppModel
-    let gestes: Gestes
+    let gestes: GestesWindows
     let panneau = Panneau()
     /// Ce qui ne se replie jamais : les quatre pistes et la porte des réglages.
     let flottant = Flottant()
@@ -159,8 +160,8 @@ final class Application: EchosDeLaFenetre {
         self.modele = AppModel(fenetre: fenetre.poignee)
         self.commandes = Commandes(modele: modele,
                                    preferences: PreferencesWindows.partagees)
-        self.gestes = Gestes(modele: modele, fenetre: fenetre, panneau: panneau,
-                             flottant: flottant)
+        self.gestes = GestesWindows(modele: modele, fenetre: fenetre,
+                                    panneau: panneau, flottant: flottant)
         modele.renderer = rendu
         rendu.origineDesTeintes = PreferencesWindows.partagees.hueOrigin
         fenetre.echos = self
@@ -412,7 +413,7 @@ final class Application: EchosDeLaFenetre {
     /// présentation. Piloter le viewport directement mesurerait le rendu, pas
     /// l'application.
     func mesurerLaFluidite(secondes: Double) -> String {
-        let compteur = Mesures()
+        let compteur = Mesures(cadence: cadenceDeLEcran())
         mesures = compteur
         fenetre.montrer()
 

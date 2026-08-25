@@ -88,7 +88,10 @@ func cheminsDe(_ modules: String) -> [String] {
 let racineDuPaquet = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 let onnxInclude = racineDuPaquet
     .appendingPathComponent("build/onnxruntime/include", isDirectory: true)
-let avecOnnx = surWindows && FileManager.default.fileExists(
+// Windows **et** Linux : les deux vont chercher leur moteur par script — `onnx.ps1`
+// et `onnx.sh` — et le rangent au même endroit. Absent, la séparation est compilée
+// absente et l'application le dit, au lieu de refuser de s'ouvrir.
+let avecOnnx = (surWindows || surLinux) && FileManager.default.fileExists(
     atPath: onnxInclude.appendingPathComponent("onnxruntime_c_api.h").path)
 
 // L'icône et le numéro de version, quand `logo.ps1` les a compilés. Même règle que
@@ -299,17 +302,8 @@ if surMac {
 // ici plutôt que deux fois : ce sont les mêmes fichiers, avec les mêmes
 // dépendances, et une divergence entre les deux déclarations produirait deux
 // modules qui se ressemblent — exactement ce que ces modules existent pour éviter.
-// Ce que les deux portages partagent, et qui n'est d'aucune plateforme. Déclaré ici
-// plutôt que deux fois : ce sont les mêmes fichiers, avec les mêmes dépendances, et
-// une divergence entre les deux déclarations produirait deux modules qui se
-// ressemblent — exactement ce que ces modules existent pour éviter.
-//
-// `avecLeDessin` est faux tant qu'une plateforme n'a pas de dos pour `Pinceau`.
-// C'est le cas de Linux jusqu'à l'étape 3 : le spectrogramme s'y affiche — c'est
-// l'étape 2 — mais rien ne se dessine encore par-dessus, et lier un pinceau sans
-// Cairo derrière ne rendrait qu'une liste de symboles manquants.
-func modulesPartages(avecLeDessin: Bool) -> [Target] {
-    var liste: [Target] = [
+func modulesPartages() -> [Target] {
+    let liste: [Target] = [
         // Les deux ou trois choses que les deux portages demandent au système et
         // qui ne tiennent pas ailleurs : où va ce qui rate, et comment vider la file
         // principale. Le seul module partagé qui porte des `#if`, et chacun porte sa
@@ -348,12 +342,10 @@ func modulesPartages(avecLeDessin: Bool) -> [Target] {
             dependencies: ["CPont", "SpectreCore", "SpectreDSP", "SpectreModele",
                            "SpectreSocle"],
             path: "Sources/SpectreToile",
-            exclude: avecLeDessin ? [] : ["Pinceau.swift"],
             swiftSettings: reglagesRelease
         ),
-    ]
-    guard avecLeDessin else { return liste }
-    liste += [
+        // Le vocabulaire de dessin est lié partout : les deux plateformes ont
+        // maintenant un dos pour `Pinceau` — Direct2D là, Cairo ici.
         // **L'interface dessinée, une seule fois pour toutes les plateformes** : la
         // frise, le panneau de réglages, la batterie, la barre d'état, les
         // commandes, la colonne des pistes, les infobulles, les icônes.
@@ -363,8 +355,11 @@ func modulesPartages(avecLeDessin: Bool) -> [Target] {
         // Les y laisser aurait obligé Linux à redessiner la frise une troisième fois
         // — la faute exacte qui a tué le premier portage, un étage plus bas.
         //
-        // Ce qui reste dans l'exécutable de chaque plateforme, c'est ce qui touche au
-        // système : la fenêtre, la souris, le menu, la mesure de fluidité.
+        // Les gestes et le relevé de fluidité les ont rejoints à l'étape 6, pour la
+        // même raison : de quatre cents lignes de gestes, huit appels touchaient
+        // Win32, et le relevé n'en touchait qu'un. Ce qui reste dans l'exécutable de
+        // chaque plateforme, c'est la fenêtre, la traduction des évènements, et le
+        // menu du système.
         .target(
             name: "SpectreDessin",
             dependencies: ["SpectreCore", "SpectreTextes", "SpectreModele",
@@ -372,24 +367,50 @@ func modulesPartages(avecLeDessin: Bool) -> [Target] {
             path: "Sources/SpectreDessin",
             swiftSettings: reglagesRelease
         ),
+        // **La séparation, une seule fois pour les deux portages** : le moteur
+        // d'inférence, et le rangement des pistes.
+        //
+        // Ces deux fichiers vivaient dans `SpectreWin` et n'importaient déjà pas
+        // `WinSDK` : tout passait par `onnx.c`, dont trois lignes sur deux cent
+        // cinquante étaient de Windows. macOS garde les siens — son moteur arrive
+        // par SwiftPM et son rangement écrit du FLAC par AVFoundation — mais entre
+        // Windows et Linux il n'y avait rien à distinguer.
+        .target(
+            name: "SpectreSeparation",
+            dependencies: ["CPont", "SpectreCore", "SpectreTextes", "SpectreModele"],
+            path: "Sources/SpectreSeparation",
+            swiftSettings: reglagesRelease
+        ),
+        // Les gestes, mesurés sans fenêtre.
+        //
+        // Il est déclaré ici et non du côté d'une plateforme parce qu'il ne dépend
+        // que de modules partagés : c'est le même harnais, sur les mêmes gestes, et
+        // c'est ce qui lui donne son intérêt. Voir son en-tête — tant que les gestes
+        // vivaient dans la couche Windows, il n'aurait pas pu exister.
+        .executableTarget(
+            name: "GestesCheck",
+            dependencies: ["SpectreCore", "SpectreTextes", "SpectreModele",
+                           "SpectreDessin"],
+            path: "Tools/GestesCheck"
+        ),
     ]
     return liste
 }
 
-func produitsPartages(avecLeDessin: Bool) -> [Product] {
-    var liste: [Product] = [
+func produitsPartages() -> [Product] {
+    [
         .library(name: "SpectreSocle", type: .static, targets: ["SpectreSocle"]),
         .library(name: "SpectreSon", type: .static, targets: ["SpectreSon"]),
         .library(name: "SpectreToile", type: .static, targets: ["SpectreToile"]),
+        .library(name: "SpectreDessin", type: .static, targets: ["SpectreDessin"]),
+        .library(name: "SpectreSeparation", type: .static,
+                 targets: ["SpectreSeparation"]),
+        .executable(name: "GestesCheck", targets: ["GestesCheck"]),
     ]
-    if avecLeDessin {
-        liste += [.library(name: "SpectreDessin", type: .static, targets: ["SpectreDessin"])]
-    }
-    return liste
 }
 
 if surWindows {
-    cibles += modulesPartages(avecLeDessin: true) + [
+    cibles += modulesPartages() + [
         // Le vocabulaire COM de Direct3D 11, tenu du côté C. Swift n'importe pas
         // les macros d'un en-tête, et toute l'API de Direct3D en est faite : sans
         // ce pont, chaque appel s'écrirait comme un déréférencement de table
@@ -438,7 +459,7 @@ if surWindows {
         .target(
             name: "SpectreWin",
             dependencies: ["SpectreCore", "SpectreDSP", "SpectreModele", "CPont",
-                           "SpectreToile", "SpectreSon", "SpectreSocle"],
+                           "SpectreToile", "SpectreSon", "SpectreSocle", "SpectreSeparation"],
             path: "Sources/SpectreWin",
             swiftSettings: reglagesRelease,
             // Posées ici et non sur l'exécutable : les vérifications se lient à
@@ -507,11 +528,11 @@ if surWindows {
         // `SeparationCheck`, qui fait le même travail sur le Mac.
         .executableTarget(
             name: "PistesCheck",
-            dependencies: ["SpectreCore", "SpectreModele", "SpectreWin"],
+            dependencies: ["SpectreCore", "SpectreModele", "SpectreSeparation"],
             path: "Tools/PistesCheck"
         ),
     ]
-    produits += produitsPartages(avecLeDessin: true) + [
+    produits += produitsPartages() + [
         .library(name: "SpectreWin", type: .static, targets: ["SpectreWin"]),
         .executable(name: "SpectreWindows", targets: ["SpectreWindows"]),
         .executable(name: "RenduCheck", targets: ["RenduCheck"]),
@@ -522,18 +543,26 @@ if surWindows {
 }
 
 if surLinux {
-    cibles += modulesPartages(avecLeDessin: true) + [
+    cibles += modulesPartages() + [
         // Le pont vers OpenGL. Le jumeau de la déclaration Windows, en beaucoup plus
-        // court : il n'y a ni vocabulaire COM à tenir, ni moteur d'inférence à
-        // trouver, et `epoxy` remplace le chargeur de pointeurs de fonctions.
+        // court : il n'y a pas de vocabulaire COM à tenir, et `epoxy` remplace le
+        // chargeur de pointeurs de fonctions.
         //
-        // `sources` n'énumère que `gl.c` : le reste du dossier est du Direct3D, du
-        // Media Foundation et du WASAPI, que ce système ne saurait pas lire.
+        // `sources` énumère les cinq fichiers de ce système ; le reste du dossier est
+        // du Direct3D, du Media Foundation et du WASAPI, que Linux ne saurait pas
+        // lire. `onnx.c`, lui, est **le même des deux côtés** — voir son en-tête.
         .target(
             name: "CPont",
             path: "Sources/CPont",
-            sources: ["gl.c", "cairo.c", "decodage.c", "alsa.c"],
-            cSettings: [
+            sources: ["gl.c", "cairo.c", "decodage.c", "alsa.c", "onnx.c"],
+            cSettings: (avecOnnx
+                        ? [.define("SPECTRE_ONNX"),
+                           // `unsafeFlags` plutôt que `headerSearchPath` : les
+                           // en-têtes sont hors de l'arborescence de la cible — ils
+                           // vivent dans `build/`, que le dépôt ignore — et
+                           // `headerSearchPath` refuse d'en sortir.
+                           .unsafeFlags(["-I", onnxInclude.path])]
+                        : []) + [
                 // SDL3 est construite depuis les sources — la 24.04 ne livre que la
                 // 2 — et s'installe donc sous `/usr/local`. Voir `machine.sh`.
                 //
@@ -556,6 +585,9 @@ if surLinux {
                 .linkedLibrary("sndfile"),
                 .linkedLibrary("mpg123"),
                 .linkedLibrary("asound"),
+                // `dlopen` : c'est ainsi qu'ONNX Runtime est chargé, à l'exécution
+                // et non à l'édition de liens — voir l'en-tête d'`onnx.c`.
+                .linkedLibrary("dl"),
             ]
         ),
         // SDL3, vue de Swift. `pkgConfig` la trouve où `machine.sh` l'a posée ;
@@ -572,9 +604,12 @@ if surLinux {
         // rendu lui-même étant partagé.
         .target(
             name: "SpectreLin",
+            // `CSDL` depuis l'étape 7 : le sélecteur de fichiers passe par SDL, qui
+            // parle au portail XDG quand il est là. `SpectreSeparation` depuis
+            // l'étape 8.
             dependencies: ["SpectreCore", "SpectreDSP", "SpectreTextes",
-                           "SpectreModele", "CPont", "SpectreToile", "SpectreSon",
-                           "SpectreSocle"],
+                           "SpectreModele", "CPont", "CSDL", "SpectreToile",
+                           "SpectreSon", "SpectreSocle", "SpectreSeparation"],
             path: "Sources/SpectreLin",
             swiftSettings: reglagesRelease
         ),
@@ -611,13 +646,22 @@ if surLinux {
             dependencies: ["SpectreCore", "SpectreLin"],
             path: "Tools/RenduCheck"
         ),
+        // Le rangement des pistes séparées, et le moteur. Le **même harnais** que
+        // sous Windows, sur le même code : c'est ce qui dit que la séparation range
+        // et relit pareil des deux côtés.
+        .executableTarget(
+            name: "PistesCheck",
+            dependencies: ["SpectreCore", "SpectreModele", "SpectreSeparation"],
+            path: "Tools/PistesCheck"
+        ),
     ]
-    produits += produitsPartages(avecLeDessin: true) + [
+    produits += produitsPartages() + [
         .library(name: "SpectreLin", type: .static, targets: ["SpectreLin"]),
         .executable(name: "SpectreLinux", targets: ["SpectreLinux"]),
         .executable(name: "RenduCheck", targets: ["RenduCheck"]),
         .executable(name: "DecodeCheck", targets: ["DecodeCheck"]),
         .executable(name: "SortieCheck", targets: ["SortieCheck"]),
+        .executable(name: "PistesCheck", targets: ["PistesCheck"]),
     ]
 }
 

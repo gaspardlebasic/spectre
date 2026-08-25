@@ -151,23 +151,33 @@ mêmes protocoles avec Direct3D 11 et Win32 — c'est le jumeau de `SpectreMac`,
 fait la même longueur — tandis que `SpectreWindows` porte la fenêtre. Le pont C vers
 ce que Swift ne peut pas dire lui-même est dans `Sources/CPont`.
 
-Deux modules de plus vivent entre les deux, et **ils ne sont d'aucune plateforme** :
+Cinq modules de plus vivent entre les deux, et **ils ne sont d'aucune plateforme** :
 
 | Étage | Ce qu'il contient | Dépend de |
 |-------|-------------------|-----------|
-| `SpectreToile` | `Pinceau` : le vocabulaire de dessin — `remplir`, `tracer`, `texte`, `arrondi` — calqué sur le `GraphicsContext` de SwiftUI. | `CPont` |
-| `SpectreDessin` | **L'interface dessinée** : la frise, le panneau de réglages, la batterie, la barre d'état, les commandes, la colonne des pistes, les infobulles, les icônes. | `SpectreModele`, `SpectreToile` |
+| `SpectreSocle` | Le journal, et l'appel qui vide la file principale. Le seul module partagé qui porte des `#if`, un par plateforme, chacun avec sa raison. | `CPont` |
+| `SpectreToile` | `Pinceau` : le vocabulaire de dessin — `remplir`, `tracer`, `texte`, `arrondi` — calqué sur le `GraphicsContext` de SwiftUI ; et le rendu du spectrogramme. | `CPont`, `SpectreModele` |
+| `SpectreSon` | Le lecteur, la sinusoïde d'écoute, le décodeur. | `CPont`, `SpectreModele` |
+| `SpectreDessin` | **L'interface dessinée** : la frise, le panneau de réglages, la batterie, la barre d'état, les commandes, la colonne des pistes, les infobulles, les icônes ; **les gestes**, et le relevé de fluidité. | `SpectreModele`, `SpectreToile` |
+| `SpectreSeparation` | Le moteur d'inférence de Demucs, et le rangement des pistes. | `CPont`, `SpectreModele` |
 
-Ils sont sortis de `SpectreWindows`, qui les portait sans jamais y importer
-`WinSDK` : de toute la couche Windows, ces huit fichiers n'utilisaient que
-`Pinceau`. Linux les hérite donc tels quels, et ce qui lui reste à écrire est ce
-qui touche au système. `SpectreToile` ne porte **aucun `#if`** : la bascule se fait
-un étage plus bas, dans `CPont`, où `direct2d.cpp` et son jumeau Cairo exportent les
+Ils sont tous sortis de la couche Windows, et **toujours pour la même raison** : en
+regardant ce qu'ils touchaient vraiment du système, la réponse a chaque fois été
+« moins qu'on ne croit ». Le dessin ne touchait que `Pinceau` ; le lecteur, six
+fonctions du pont ; les gestes, huit appels sur quatre cents lignes ; le relevé de
+fluidité, un seul ; la séparation, aucun — tout passait déjà par `onnx.c`.
+
+**Le relevé se fait avant d'écrire, jamais après.** Écrire d'abord le jumeau puis
+constater qu'il était inutile coûte le double, et laisse deux fichiers à tenir
+d'accord pour toujours.
+
+`SpectreToile` et `SpectreDessin` ne portent **aucun `#if`** : la bascule se fait un
+étage plus bas, dans `CPont`, où `direct2d.cpp` et son jumeau Cairo exportent les
 mêmes fonctions.
 
 Corollaire, et il est du même ordre que celui de `SpectreModele` : **une commande,
-un repère, un panneau se dessinent dans `SpectreDessin`, pas dans la fenêtre.** Ce
-qui est dessiné à côté est dessiné pour une plateforme seule.
+un repère, un panneau, un geste se mettent dans `SpectreDessin`, pas dans la
+fenêtre.** Ce qui est écrit à côté est écrit pour une plateforme seule.
 
 **Les quatre premiers compilent partout où Swift compile.** `SpectreModele` est
 l'étage qui a manqué au premier portage : faute de lui, Windows avait son propre

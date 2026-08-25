@@ -1,12 +1,12 @@
 import Foundation
 import SpectreCore
 import SpectreModele
-import SpectreWin
+import SpectreSeparation
 #if canImport(WinSDK)
 import WinSDK
 #endif
 
-// Le rangement des pistes séparées sous Windows — le pendant de `SeparationCheck`,
+// Le rangement des pistes séparées — le pendant de `SeparationCheck`,
 // qui fait le même travail sur le Mac.
 //
 // ─────────────────────────────────────────────────────────────────────────────
@@ -249,7 +249,7 @@ if let dll = Reseau.bibliotheque {
         verifie(false, "un fichier qui n'est pas un réseau est refusé", "\(error)")
     }
 } else {
-    print("  (ONNX Runtime n'est pas installé — lancer .\\onnx.ps1)")
+    print("  (ONNX Runtime n'est pas installé — lancer onnx.ps1 ou onnx.sh)")
 }
 
 titre("Le moteur, quand le réseau n'est pas là")
@@ -258,11 +258,11 @@ titre("Le moteur, quand le réseau n'est pas là")
 // puis échouée. C'est le même chemin que sur un Mac dont le modèle n'est pas
 // installé, et c'est ce que le modèle d'application consulte pour décider s'il
 // propose les pistes.
-let service = RangementWindows()
+let service = RangementSurLePont()
 if Reseau.fichier == nil {
     verifie(!service.modeleDisponible, "elle s'annonce absente")
     do {
-        _ = try SeparateurWindows().separate(fileAt: atelier, progress: { _ in },
+        _ = try SeparateurSurLePont().separate(fileAt: atelier, progress: { _ in },
                                              isCancelled: { false })
         verifie(false, "et refuse de séparer", "aucune erreur levée")
     } catch let erreur as SeparationFailure {
@@ -275,7 +275,7 @@ if Reseau.fichier == nil {
     // où les poids se fabriquent — et le dire séparément évite de chercher du côté
     // du modèle quand c'est la DLL qui n'est pas installée.
     verifie(Reseau.bibliotheque != nil, "ONNX Runtime est installé",
-            Reseau.bibliotheque?.path ?? "lancer .\\onnx.ps1")
+            Reseau.bibliotheque?.path ?? "lancer le script onnx")
     verifie(service.modeleDisponible == (Reseau.bibliotheque != nil),
             "la séparation est proposée si et seulement si les deux sont là")
 }
@@ -306,7 +306,7 @@ if !Reseau.disponible {
 
     let debut = Date()
     do {
-        let pistes = try SeparateurWindows().separate(fileAt: fichier, progress: { _ in },
+        let pistes = try SeparateurSurLePont().separate(fileAt: fichier, progress: { _ in },
                                                       isCancelled: { false })
         let secondes = Date().timeIntervalSince(debut)
         verifie(Set(pistes.channels.keys) == Set(Stem.separated),
@@ -352,7 +352,7 @@ if !Reseau.disponible {
         // niveau, que rien ne rattrape à la relecture puisque ce fichier-là n'est pas
         // une de nos pistes. Comparer au tableau de départ donnait ×0,48 et faisait
         // chercher un facteur deux dans le retour à l'échelle, où il n'était pas.
-        let entree = try SeparateurWindows.lirePourLeReseau(fichier)[0]
+        let entree = try SeparateurSurLePont.lirePourLeReseau(fichier)[0]
         var somme = [Double](repeating: 0, count: duree)
         for i in 0..<duree {
             for piste in Stem.separated { somme[i] += Double(pistes.channels[piste]![0][i]) }

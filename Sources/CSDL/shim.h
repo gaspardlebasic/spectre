@@ -17,3 +17,11 @@
 static const SDL_WindowFlags SpectreFenetreOpenGL = SDL_WINDOW_OPENGL;
 static const SDL_WindowFlags SpectreFenetreRedimensionnable = SDL_WINDOW_RESIZABLE;
 static const SDL_WindowFlags SpectreFenetreDense = SDL_WINDOW_HIGH_PIXEL_DENSITY;
+
+// Et les mêmes, pour l'entrée. `SDL_KMOD_SHIFT` et `SDL_BUTTON_LMASK` sont des
+// macros qui portent un calcul — un « ou » de deux constantes pour la première, un
+// décalage pour la seconde — et Swift ne les importe pas. Les redéclarer typées les
+// rend visibles, et c'est toujours la macro de SDL qui donne la valeur.
+static const SDL_Keymod SpectreMajuscule = SDL_KMOD_SHIFT;
+static const SDL_Keymod SpectreControle = SDL_KMOD_CTRL;
+static const SDL_MouseButtonFlags SpectreBoutonGauche = SDL_BUTTON_LMASK;

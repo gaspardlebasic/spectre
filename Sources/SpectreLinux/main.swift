@@ -7,6 +7,7 @@ import SpectreModele
 import SpectreSon
 import SpectreTextes
 import SpectreToile
+import SpectreSeparation
 import SpectreSocle
 
 // Spectre sous Linux — la fenêtre.
@@ -17,6 +18,7 @@ import SpectreSocle
 //     SpectreLinux morceau.wav --gris                 sans la palette des notes
 //     SpectreLinux morceau.wav --sans-habillage       ni réglette, ni batterie, ni barre
 //     SpectreLinux morceau.wav --reglages             le panneau ouvert dès le départ
+//     SpectreLinux morceau.wav --fluidite 5           défile 5 s et chiffre la fluidité
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // CE QUE CE FICHIER EST, ET CE QU'IL N'EST PAS ENCORE
@@ -26,13 +28,7 @@ import SpectreSocle
 // `SpectreLin`, et ce fichier ne fait que les brancher les unes aux autres, puis
 // tourner.
 //
-// À l'étape 3, il n'y a **pas de gestes** : la souris et le clavier sont l'étape 6.
-// La fenêtre montre le morceau entier, avec toute son interface, et se ferme par
-// Échap. Ce qui manque au reste — le son, la séparation, le décodage d'autre chose
-// qu'un WAV — est dit dans `SpectreLin/Plateforme.swift`, étape par étape.
-//
-// Le pendant Windows de ce fichier fait mille lignes. Celui-ci en fait deux cent
-// cinquante, et l'écart est précisément ce que les étapes 4 à 8 vont combler.
+// Ce qui manque encore est dit dans `SpectreLin/Plateforme.swift`, étape par étape.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // MARK: - Le modèle, muni de ce que Linux lui fournit
@@ -57,7 +53,7 @@ extension SpectreModele.AppModel where Lecteur == LecteurSurLePont {
         self.init(lecteur: LecteurSurLePont(),
                   décodeur: DecodeurSurLePont(),
                   sinusoide: SinusoideSurLePont(),
-                  pistes: RangementLinux(),
+                  pistes: RangementSurLePont(),
                   dialogue: DialogueLinux(),
                   récentsDuSystème: RecentsLinux(),
                   préférences: PreferencesLinux.partagees)
@@ -294,27 +290,89 @@ if let photo {
     exit(0)
 }
 
+// MARK: - Les gestes
+
+let surface = SurfaceSDL(fenetre: fenetre, modele: modele, panneau: panneau,
+                         flottant: flottant, taillePoints: taillePoints)
+
+// MARK: - Le relevé de fluidité
+
+/// Fait défiler l'image pendant `secondes`, et rend le compte de ce que cela a coûté.
+///
+/// Le défilement est **posté à notre propre fenêtre** en vrais évènements de molette :
+/// le geste traverse donc exactement le même chemin qu'un doigt sur le pavé —
+/// traduction, modèle, recadrage, nuanceur, présentation. Piloter le viewport
+/// directement mesurerait le rendu, pas l'application. C'est le même protocole que
+/// sous Windows, et c'est ce qui rend les deux relevés comparables.
+func mesurerLaFluidite(secondes: Double) -> String {
+    let compteur = Mesures(cadence: cadenceDeLEcran(fenetre))
+    surface.gestes.mesures = compteur
+
+    // On laisse d'abord l'analyse finir : mesurer pendant qu'un cœur calcule la
+    // matrice donnerait le coût de l'analyse, pas celui du défilement.
+    for _ in 0..<600 {
+        viderLaFilePrincipale()
+        uneImage()
+        rendu.presenter()
+        if modele.spectrogram.columnCount > 0, modele.status == nil { break }
+    }
+    compteur.recommencer()
+
+    let points = taillePoints()
+    let debut = Horloge.maintenant()
+    var sens = 1.0
+    var evenement = SDL_Event()
+    while Horloge.maintenant() - debut < secondes {
+        // Un aller-retour plutôt qu'un défilement d'un seul côté : arrivé au bout du
+        // morceau, le recadrage retient l'image et l'on mesurerait alors une
+        // application qui ne bouge plus.
+        var molette = SDL_MouseWheelEvent()
+        molette.type = SDL_EVENT_MOUSE_WHEEL
+        molette.windowID = SDL_GetWindowID(fenetre)
+        molette.x = Float(sens)
+        molette.mouse_x = Float(points.largeur / 2)
+        molette.mouse_y = Float(points.hauteur / 2)
+        var pousse = SDL_Event()
+        pousse.wheel = molette
+        SDL_PushEvent(&pousse)
+
+        while SDL_PollEvent(&evenement) { _ = surface.repondre(evenement) }
+        viderLaFilePrincipale()
+        uneImage()
+        rendu.presenter()
+        compteur.uneImage()
+
+        // Le nombre de colonnes visibles se déduit de la largeur : le viewport ne
+        // porte que son origine et son échelle, la fenêtre porte le reste.
+        let visibles = points.largeur * modele.viewport.columnsPerPoint
+        if modele.viewport.startColumn <= 0 { sens = 1 }
+        if modele.viewport.startColumn + visibles
+            >= Double(modele.spectrogram.columnCount) { sens = -1 }
+    }
+    surface.gestes.mesures = nil
+    return compteur.rapport(carte: rendu.nomDeLaCarte)
+}
+
+if let demande = valeur("--fluidite"), let secondes = Double(demande) {
+    print(mesurerLaFluidite(secondes: secondes))
+    modele.applicationVaSeFermer()
+    exit(0)
+}
+
+// MARK: - La boucle
+
 var tourne = true
 var evenement = SDL_Event()
 while tourne {
     while SDL_PollEvent(&evenement) {
-        switch SDL_EventType(rawValue: evenement.type) {
-        case SDL_EVENT_QUIT:
-            tourne = false
-        case SDL_EVENT_KEY_DOWN:
-            // Les gestes sont l'étape 6 ; il n'y a ici que de quoi fermer, et de quoi
-            // ouvrir le panneau pour pouvoir le regarder.
-            switch evenement.key.key {
-            case SDLK_ESCAPE, SDLK_Q: tourne = false
-            case SDLK_R: panneau.ouvert.toggle()
-            default: break
-            }
-        default:
-            break
-        }
+        if !surface.repondre(evenement) { tourne = false }
     }
     viderLaFilePrincipale()
     uneImage()
     rendu.presenter()
+    // Une fois par image : les réglages ne s'écrivent que quand ils ont cessé de
+    // bouger — voir l'en-tête de `ReglagesEnregistres`.
+    PreferencesLinux.partagees.enregistrerSiBesoin()
 }
 modele.applicationVaSeFermer()
+PreferencesLinux.partagees.enregistrerMaintenant()

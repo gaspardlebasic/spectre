@@ -184,9 +184,9 @@ paquet et un fournisseur choisi à la compilation ; elle n'est pas dans ce plan.
 | 3. Le dessin | La frise, les accords, la batterie, le panneau, d'un coup — et sans une ligne de dessin écrite. | **faite** |
 | 4. Le son qui entre | On ouvre un MP3 de sept minutes et on voit sa décomposition. | **faite** |
 | 5. Le son qui sort | On l'entend, on le ralentit, on le transpose — quatorze contrôles. | **faite** |
-| 6. Les gestes, et la fluidité | Molette, boucle, aimantation ; et un relevé qui chiffre la fluidité. | à faire |
-| 7. Réglages, sessions, langues | Les réglages se retrouvent au morceau suivant, aux emplacements XDG ; l'interface prend la langue du système. | à faire |
-| 8. La séparation | Les quatre pistes sortent, et se cochent. | à faire |
+| 6. Les gestes, et la fluidité | Molette, boucle, aimantation ; et un relevé qui chiffre la fluidité. | **faite** |
+| 7. Réglages, sessions, langues | Les réglages se retrouvent au morceau suivant, aux emplacements XDG ; l'interface prend la langue du système. | **faite** |
+| 8. La séparation | Les quatre pistes sortent, et se cochent. | **faite** |
 | 9. La distribution | Un AppImage, l'épreuve complète en dossier propre, et le coureur Linux qui passe de « le noyau » à « l'application ». | à faire |
 
 L'ordre suit celui du portage Windows, dont il a été montré qu'il tenait : une
@@ -638,6 +638,209 @@ silence, et la lecture avance **à un tiers du temps réel sans qu'une seule err
 soit dite**. En microsecondes — dix pour la période, quarante pour le tampon — ils
 répondent 441 et 1 764, ce qui est exactement le compromis de WASAPI en mode
 partagé.
+
+## Étape 6 — les gestes, et la fluidité
+
+**Faite.** Le relevé annoncé était juste : de quatre cents lignes de
+`SpectreWindows/Gestes.swift`, **huit appels** touchaient Win32 — la forme du
+curseur, la capture de la souris, l'état de Ctrl et Majuscule, le délai du
+double-clic, le réglage « lignes par cran ». Ils sont devenus `SurfaceDeGestes`, un
+protocole de huit membres, et tout le reste est monté dans `SpectreDessin`.
+
+`Mesures.swift` en touchait **un** : `EnumDisplaySettingsW`, pour la cadence de
+l'écran. Elle se donne maintenant à l'initialisation, et le relevé de fluidité est
+commun aux trois plateformes.
+
+Ce qui reste dans chaque exécutable est la traduction des évènements — `WM_MOUSEWHEEL`
+d'un côté, `SDL_EVENT_MOUSE_WHEEL` de l'autre — et rien d'autre. Le fichier Linux
+fait cent soixante lignes.
+
+### Le harnais qu'on n'attendait pas
+
+Tant que les gestes vivaient dans la couche Windows, les mesurer aurait demandé une
+fenêtre, une souris et un écran. Une fois qu'ils ne touchent plus le système que par
+huit fonctions, **une surface de papier suffit** : `GestesCheck` les fait tourner
+sans fenêtre et sans carte graphique, sur les trois plateformes, et compte
+vingt-six contrôles.
+
+C'est le gain qu'on n'avait pas prévu du partage : *ce qui devient portable devient
+mesurable*. Et ce sont des choses qu'aucune image relue ne dirait — que le zoom reste
+ancré sous le curseur à deux points près, que déplacer une boucle conserve sa durée
+au millième, que Ctrl pendant le glisser donne bien un autre résultat que sans.
+
+### Le seul faux échec, et ce qu'il prouvait
+
+`GestesCheck` a d'abord échoué sur l'aimantation : « l'un des deux glissers n'a rien
+tracé ». Le harnais jouait les deux glissers en quelques microsecondes, au même
+endroit — ce qui, pour les gestes, est un double-clic, et le second effaçait la
+boucle au lieu de la tracer. Le code était juste ; c'est le harnais qui jouait
+quelque chose qu'aucune main ne peut produire. Il attend maintenant six dixièmes de
+seconde, en disant pourquoi.
+
+### Ce que la fluidité donne
+
+Le défilement est **posté à la fenêtre en vrais évènements de molette**, comme sous
+Windows : le geste traverse la traduction, le modèle, le recadrage, le nuanceur et la
+présentation. Piloter le viewport directement mesurerait le rendu, pas l'application.
+
+```
+Fluidité — virgl (Apple M2 Max (Compat))
+  écran annoncé à 60 Hz, cadence obtenue 92,4 Hz
+  547 images mesurées
+  intervalle : moyen 10,99 ms, médian 10,82 ms
+  la queue   : 95ᵉ 12,95 ms, 99ᵉ 13,17 ms, pire 16,21 ms
+  images qui ont manqué leur tour : 0 (0,00 %)
+  molette → affichage : médian 10,80 ms, 95ᵉ 12,93 ms, pire 16,19 ms (547 gestes)
+```
+
+Ce qui compte n'est pas la moyenne — elle est toujours bonne — mais **la queue** : le
+99ᵉ centile est à 13,17 ms contre 10,82 de médiane, soit un écart de deux
+millisecondes et demie, et pas une image n'a manqué son tour. C'est la forme qu'on
+voulait voir ; le chiffre absolu, lui, passe par virgl et ne vaut rien hors de cette
+machine.
+
+### Ce qui manque
+
+**Pas de menu au clic droit sous Linux.** Sur Windows c'est un menu du système, avec
+ses items dessinés par lui et sa boucle modale à lui ; SDL n'a pas d'équivalent, et
+il n'existe pas de menu « du bureau » qu'on puisse demander. Tout ce qu'il offre
+s'atteint autrement — la porte des réglages est sur la colonne flottante, l'ouverture
+par Ctrl+O — si bien qu'un clic droit sans effet ne retire rien. Le jour où il en
+faudra un, il se dessinera au `Pinceau` comme le reste, et sera alors partagé plutôt
+que porté.
+
+## Étape 7 — réglages, sessions, langues
+
+**Faite, et la moitié l'était déjà.** La lecture des langues préférées avait été
+écrite à l'étape 3 pour que le catalogue s'applique ; le reste tenait en trois
+pièces.
+
+### Le magasin de réglages est monté d'un étage, lui aussi
+
+`SpectreWin/Plateforme.swift` faisait trois cent quarante lignes, dont deux cents de
+magasin de réglages : le JSON, l'écriture différée, le décodage tolérant aux champs
+manquants. **Deux choses** y touchaient Windows — la liste des langues préférées, et
+le plafond du cache qu'il faut reposer sur le rangement des pistes. Les deux sont
+devenues des paramètres de l'initialiseur, et le magasin est dans
+`SpectreModele/ReglagesEnregistres.swift`.
+
+Ce qui reste de chaque côté : une énumération de vingt lignes.
+
+### Le piège annoncé, et sa réponse
+
+`Storage.root` s'appuie sur `applicationSupportDirectory`, et l'on ne savait pas où
+Foundation le faisait tomber sous Linux. La réponse est **`~/.local/share/Spectre`**,
+qui est l'emplacement XDG des données d'application. Rien à écrire, et `SessionCheck`
+passe sans un mot.
+
+### Le sélecteur de fichiers
+
+Par SDL, qui parle au **portail XDG** quand il est là : c'est le seul chemin qui
+marche sous Wayland comme sous X11, dans un Flatpak comme hors de lui, avec le
+sélecteur de GNOME chez qui a GNOME. Il se rabat sur `zenity` quand le portail manque.
+
+**La conversion d'asynchrone en synchrone se fait chez nous** : le protocole du modèle
+rend une URL, SDL rappelle une fonction plus tard, et l'on tourne la boucle
+d'évènements jusqu'à la réponse. Avec `SDL_PumpEvents` et non `SDL_PollEvent` : les
+évènements qui arrivent pendant ce temps doivent rester dans la file pour la boucle
+principale, sans quoi un redimensionnement fait pendant que le sélecteur est ouvert
+serait perdu.
+
+**Ce qui n'a pas été éprouvé, et il faut le dire :** personne n'a cliqué. Le portail
+est là sur la machine d'essai — `xdg-desktop-portal-gnome` répond, `zenity` est
+installé — et le chemin compile, mais aucune souris ne peut être pilotée sous Wayland
+depuis un terminal distant : GNOME n'implémente pas le protocole de clavier virtuel
+dont `wtype` a besoin. **C'est le seul morceau de ces trois étapes qui n'est pas
+mesuré.**
+
+### Les récents du bureau
+
+`~/.local/share/recently-used.xbel`, le fichier que GTK et KDE lisent tous les deux.
+Il n'y a pas de bibliothèque à appeler qui ne tire pas GTK entier derrière elle, et
+le format tient en vingt lignes.
+
+Le premier jet ne relisait que l'adresse et la date, et réécrivait le reste à partir
+d'elles. **Il a suffi d'un essai pour le voir** : GNOME écrit ses dates avec les
+fractions de seconde, que le lecteur ISO 8601 de Foundation refuse, et toutes les
+entrées des autres applications retombaient à 1970 — soit, pour un bureau qui trie
+par date, au fond de la liste. On garde donc le texte de chaque signet tel qu'il
+était écrit : ce qu'on n'a pas écrit, on ne le réécrit pas.
+
+Et un second piège aussitôt derrière : chercher « `/>` » dans ce qui suit `<bookmark`
+tombe sur le `<mime:mime-type …/>` que GNOME met **à l'intérieur** du signet, et coupe
+l'entrée en son milieu. Le seul « `/>` » qui compte est celui qui ferme la balise
+ouvrante.
+
+`effacer()` ne fait rien, délibérément : cette liste porte ce que d'autres
+applications y ont mis, et « vider mes récents » dans Spectre n'a pas à jeter ceux du
+navigateur de fichiers avec.
+
+### L'allemand, enfin regardé
+
+Le piège disait : « les cinq langues n'ont jamais été vues ailleurs que sur le Mac ».
+Le panneau a été photographié en allemand — la langue qui écrit le plus long.
+« Tempoerkennung », « Vertikaler Zoom », « Namen der schwarzen Tasten », « In Schleife
+spielen » : rien ne déborde, rien n'est coupé.
+
+## Étape 8 — la séparation
+
+**Faite, et c'était bien la moins chère des quatre.** Les deux fichiers Swift —
+`Demucs.swift` et `Pistes.swift`, six cent cinquante lignes — n'importaient pas
+`WinSDK`. Ils sont partis tels quels dans un module `SpectreSeparation`, partagé.
+
+### Un seul `onnx.c`, et pourquoi pas de jumeau
+
+Partout ailleurs dans le pont, Windows et Linux ont deux fichiers qui exportent les
+mêmes noms — `d3d11.c` et `gl.c`, `wasapi.c` et `alsa.c`. Ici, non : de deux cent
+cinquante lignes, **trois** diffèrent — ouvrir la bibliothèque, y chercher
+`OrtGetApiBase`, la refermer — plus `ORTCHAR_T`, qui vaut `wchar_t` là et `char` ici.
+
+Écrire un second fichier pour cela aurait fait deux moteurs d'inférence à tenir
+d'accord, ce qui est exactement le coût que les jumeaux servent à éviter **quand ils
+sont justifiés**. `LoadLibraryExW`/`GetProcAddress`/`FreeLibrary` d'un côté,
+`dlopen`/`dlsym`/`dlclose` de l'autre, dans trois fonctions de six lignes.
+
+### Le contrat a encore perdu un nom de système
+
+`spectre_reseau_ouvrir` prenait ses chemins en **UTF-16**, parce que `LoadLibraryW`
+les veut ainsi. Il les prend maintenant en UTF-8, comme tout le reste du pont, et
+c'est Windows qui convertit chez lui. C'est la même correction que `spectre_mf_*` →
+`spectre_decodage_*` à l'étape 4 : **un contrat dit ce qu'il fait, pas comment le
+premier système à l'avoir rempli s'y prenait.** Au passage, `withUTF16Terminé`
+disparaît.
+
+### `onnx.sh`
+
+Le jumeau d'`onnx.ps1`, et plus court : le paquet NuGet ne porte pas Linux, mais les
+archives des publications GitHub contiennent déjà l'arborescence qu'il faut. Il range
+son butin au même endroit — `build/onnxruntime/<architecture>` — pour que
+`Package.swift` n'ait qu'une règle à connaître, et copie **la chaîne entière des
+liens de version** : le fichier réel s'appelle `libonnxruntime.so.1.29.0`, et le
+charger par ce nom-là lierait le chemin à une version.
+
+### Ce que cela donne
+
+`PistesCheck` — **le même harnais que sous Windows, sur le même code** — passe
+entièrement sur Linux, séparation réelle comprise :
+
+```
+=== Demucs lui-même ===
+  ✓ les quatre pistes reviennent — 2.1 s de calcul
+  ✓ le moteur annonce la fréquence à laquelle il a travaillé — 44100 Hz
+  ✓ chacune fait la longueur du morceau, en stéréo
+  ✓ et ne porte aucune valeur non finie
+  ✓ elles ne sont pas muettes — crêtes cumulées 0.518
+  ✓ leur somme est bien le mélange, au timbre près — corrélation 0.997
+  ✓ et à la même échelle — ×0.961
+  ✓ la batterie ne garde pas les notes tenues — 24.8 % du niveau entre les frappes
+```
+
+**Le chronomètre, puisqu'il avait été promis :** trois secondes de musique coûtent
+2,1 secondes de calcul sur cette machine virtuelle, six cœurs, sur le processeur.
+Soit environ **sept dixièmes du temps réel** — séparer un morceau prend à peu près la
+durée du morceau. C'est lent, et c'est utilisable : on lance, on va faire autre chose,
+et le cache fait que cela n'arrive qu'une fois par morceau. Sur du matériel réel sans
+la couche de virtualisation, ce sera meilleur ; ce chiffre-ci est un plancher.
 
 ## Ce qui reste — le plan, écrit pour être repris à froid
 
