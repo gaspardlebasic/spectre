@@ -16,6 +16,15 @@ import SpectreSon
 // évènements. Il fait cent lignes contre quatre cents à Windows avant le partage,
 // et c'est tout ce que l'étape 6 aura coûté.
 //
+// LE PINCEMENT
+//
+// `SDL_EVENT_PINCH_UPDATE` porte une échelle relative, exactement comme le
+// `magnify` de macOS, et se rebranche donc sur le même geste partagé. Il arrive du
+// protocole `zwp_pointer_gestures_v1` de Wayland, ce qui veut dire deux choses : il
+// faut un vrai pavé tactile côté noyau, et il n'y en a pas dans une machine
+// virtuelle Parallels, qui ne présente au système invité qu'une souris. Le zoom s'y
+// fait donc à Ctrl + défilement à deux doigts, qui passe par `molette`.
+//
 // **Le menu du clic droit n'existe pas encore sous Linux.** Sur Windows c'est un
 // menu du système, avec ses items dessinés par lui ; SDL n'en a pas d'équivalent, et
 // il n'existe pas de menu contextuel « du bureau » qu'on puisse demander. Tout ce
@@ -115,6 +124,14 @@ final class SurfaceSDL: SurfaceDeGestes {
             if e.wheel.x != 0 {
                 gestes.molette(a: p, crans: Double(e.wheel.x), horizontale: true)
             }
+        case SDL_EVENT_PINCH_UPDATE:
+            // Le pincement n'a pas de position à lui — Wayland le rapporte comme un
+            // geste et non comme un point — alors on zoome sous le curseur, qui est
+            // là où les doigts sont posés.
+            var x: Float = 0, y: Float = 0
+            _ = SDL_GetMouseState(&x, &y)
+            gestes.pincement(a: CGPoint(x: Double(x), y: Double(y)),
+                             facteur: Double(e.pinch.scale))
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
             let p = CGPoint(x: Double(e.button.x), y: Double(e.button.y))
             if e.button.button == UInt8(SDL_BUTTON_RIGHT) {

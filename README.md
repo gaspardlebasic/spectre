@@ -110,6 +110,11 @@ tourne. Il faut donc **OpenGL 3.3**, et Wayland ou X11.
 Le fichier `.desktop` embarqué met Spectre au menu et dans le « Ouvrir avec » des
 fichiers audio, pour qui utilise `AppImageLauncher` ou `appimaged`.
 
+Les gestes sont ceux du tableau plus bas, Ctrl tenant la place de ⌘. Le pincement à
+deux doigts demande un vrai pavé tactile : il arrive du protocole de gestes de
+Wayland, qu'une machine virtuelle ne fournit pas — dedans, le zoom temporel se fait à
+Ctrl + défilement à deux doigts.
+
 Pas d'AppImage ARM64 dans les livraisons : GitHub n'offre pas de coureur Linux ARM
 gratuit. Sur une machine ARM, `./paquet.sh` le fabrique en quelques minutes.
 

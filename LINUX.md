@@ -653,12 +653,32 @@ Ce qui reste dans chaque exécutable est la traduction des évènements — `WM_
 d'un côté, `SDL_EVENT_MOUSE_WHEEL` de l'autre — et rien d'autre. Le fichier Linux
 fait cent soixante lignes.
 
+### Le pincement, ajouté après coup
+
+Il manquait, et l'oubli se voit bien dans le relevé qui a servi à partager les
+gestes : ce relevé partait de `SpectreWindows/Gestes.swift`, où le pincement
+n'apparaît pas — Windows le convertit lui-même en Ctrl + molette avant qu'on le voie.
+Le Mac, lui, a toujours eu son `magnify`. Le portage a donc reproduit fidèlement le
+geste de Windows, et perdu celui du Mac.
+
+`Gestes.pincement(a:facteur:)` est maintenant partagé, et reçoit un facteur d'échelle
+relatif : c'est ce que donne `NSEvent.magnification` à 1 près comme
+`SDL_PinchFingerEvent.scale`. Les trois plateformes finissent sur le même `zoomTime`
+par trois chemins différents.
+
+Une réserve, et elle est du matériel : le pincement arrive du protocole
+`zwp_pointer_gestures_v1` de Wayland, qui demande un vrai pavé tactile côté noyau.
+Une machine virtuelle Parallels ne présente au système invité qu'une souris — rien
+dans `/proc/bus/input/devices` qui ressemble à un pavé — et le pincement n'y arrive
+donc jamais. Le zoom s'y fait à Ctrl + défilement à deux doigts, et le geste tactile
+attend une vraie machine Linux pour être vu.
+
 ### Le harnais qu'on n'attendait pas
 
 Tant que les gestes vivaient dans la couche Windows, les mesurer aurait demandé une
 fenêtre, une souris et un écran. Une fois qu'ils ne touchent plus le système que par
 huit fonctions, **une surface de papier suffit** : `GestesCheck` les fait tourner
-sans fenêtre et sans carte graphique, et compte vingt-six contrôles.
+sans fenêtre et sans carte graphique, et compte trente et un contrôles.
 
 Windows et Linux seulement — ce sont eux qui partagent `Gestes`, le Mac ayant les
 siens dans `TimelineView`, où SwiftUI les reçoit. Le harnais tient donc les deux
@@ -1014,13 +1034,17 @@ chantiers que le portage a découverts, et qui valent pour les trois plateformes
 
 **Le rééchantillonnage dans le lecteur.** Quand le périphérique refuse la fréquence
 du fichier, on le note et l'on joue tout de même, donc à la mauvaise hauteur. Voir
-plus haut : c'est ce que la sortie audio de la machine d'essai a mis au jour. Sa
-place est dans le noyau, mesuré par un harnais, et non bricolé dans une couche de
-plateforme.
+plus haut : c'est l'enquête sur la sortie audio qui l'a mis au jour, même si ce
+n'était pas la panne qu'elle cherchait. Sa place est dans le noyau, mesuré par un
+harnais, et non bricolé dans une couche de plateforme.
 
 **Le menu du clic droit sous Linux.** Il n'y en a pas ; tout ce qu'il offrirait
 s'atteint autrement. Le jour où il en faudra un, il se dessinera au `Pinceau` et sera
 donc partagé plutôt que porté.
+
+**Le pincement à deux doigts, éprouvé par un vrai pavé tactile.** Le geste est écrit
+et mesuré sur papier ; il n'a jamais reçu d'évènement réel, faute d'un pavé tactile
+dans la machine virtuelle. Voir l'étape 6.
 
 **Le sélecteur de fichiers, éprouvé par une vraie main.** Le portail est là, le
 chemin compile, mais personne n'a cliqué : aucune souris ne se pilote sous Wayland
