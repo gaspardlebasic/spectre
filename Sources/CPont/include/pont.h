@@ -345,6 +345,18 @@ void spectre_sortie_jouer(SpectreSortie *sortie);
 void spectre_sortie_pause(SpectreSortie *sortie);
 int spectre_sortie_joue(const SpectreSortie *sortie);
 
+/// Jette ce que le périphérique tient encore, et repart d'un tampon vide.
+///
+/// À appeler quand la tête de lecture **saute** — un clic ailleurs, une boucle qu'on
+/// pose. Sans cela, on entend encore un tampon entier de l'endroit qu'on vient de
+/// quitter, et la position affichée, qui retranche ce tampon, annonce un instant qui
+/// n'a jamais été joué.
+///
+/// Le vidage est demandé, non fait : c'est le fil audio qui l'exécute à son tour
+/// suivant, parce qu'un périphérique ne se touche pas depuis deux fils à la fois. Il
+/// prend donc au plus une période — quelques dizaines de millisecondes.
+void spectre_sortie_vider(SpectreSortie *sortie);
+
 /// Images déjà remises au périphérique et pas encore entendues.
 ///
 /// C'est ce qu'il faut retirer de la position de lecture pour que la tête montre

@@ -306,20 +306,45 @@ import SpectreSocle
 
     public func seek(to time: Double) {
         verrou.lock()
+        let avant = chaine?.currentTime
         chaine?.seek(to: max(time, 0))
         // L'étireur garde en réserve le passage d'avant : le laisser sortir après un
         // saut ferait entendre un morceau de l'endroit qu'on vient de quitter.
         etireur.reinitialiser()
         positionBrute = chaine?.currentTime ?? 0
+        let saut = avant.map { abs(positionBrute - $0) } ?? 0
         verrou.unlock()
+        viderSiLaTeteASaute(de: saut)
     }
 
     public func setLoop(_ range: ClosedRange<Double>?) {
         loop = range
         verrou.lock()
+        let avant = chaine?.currentTime
         chaine?.setLoop(range)
         positionBrute = chaine?.currentTime ?? positionBrute
+        let saut = avant.map { abs(positionBrute - $0) } ?? 0
         verrou.unlock()
+        viderSiLaTeteASaute(de: saut)
+    }
+
+    /// Jette ce que le périphérique tient encore quand la tête a sauté plus loin
+    /// que ce qu'il tient.
+    ///
+    /// L'étireur, lui, est toujours vidé : sa réserve fait quelques dizaines de
+    /// millisecondes et ne coûte rien à refaire. Le périphérique, non — le vider
+    /// l'oblige à repartir d'un tampon plein, et le faire à chaque petit déplacement
+    /// transformerait un glisser sur la réglette en hachoir.
+    ///
+    /// Le seuil est donc **ce que le périphérique tient**, et non un nombre choisi :
+    /// en deçà, ce qui est en vol recouvre encore le passage où l'on arrive, et le
+    /// laisser sortir ne s'entend pas. Au-delà, c'est un autre endroit du morceau, et
+    /// on l'entendrait.
+    private func viderSiLaTeteASaute(de saut: Double) {
+        guard let sortie, frequence > 0 else { return }
+        let enVol = Double(spectre_sortie_en_vol(sortie)) / frequence
+        guard saut > enVol else { return }
+        spectre_sortie_vider(sortie)
     }
 
     public func setBand(_ range: ClosedRange<Double>?) {

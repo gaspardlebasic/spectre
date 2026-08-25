@@ -612,7 +612,7 @@ digne de ce nom aurait sa place dans le noyau, mesuré — pas ici.
 **ALSA plutôt que PipeWire.** PipeWire *et* PulseAudio exposent tous deux un
 périphérique ALSA nommé `default` : une seule écriture couvre tout le monde, y
 compris les machines qui n'ont ni l'un ni l'autre. Le jour où la latence gênerait,
-PipeWire se glisse derrière les mêmes sept fonctions sans que rien d'autre bouge.
+PipeWire se glisse derrière les mêmes huit fonctions sans que rien d'autre bouge.
 
 `default` et non `hw:0`, aussi : c'est le nom qui passe par le greffon `plug`, donc
 par le rééchantillonneur. Sans lui, un fichier en 44,1 kHz sur une carte figée à
@@ -927,48 +927,85 @@ Pas d'AppImage ARM64 dans la livraison : GitHub n'offre pas de coureur Linux ARM
 gratuit. `./paquet.sh` le fabrique en quelques minutes sur une machine ARM, et il se
 joint à la release comme le paquet macOS.
 
-## Ce qui échoue, et pourquoi ce n'est pas le code
+## Le son qui traînait, et ce que c'était vraiment
 
-**`SortieCheck` échoue sur la machine d'essai, et il a raison de le faire.**
+**Première conclusion, et elle était fausse.** `SortieCheck` mesurait la position de
+lecture avançant de 0,22 à 0,38 seconde par seconde. Un programme C de vingt lignes,
+sans une ligne de Spectre, reproduisait le même écart : 44 100 Hz draine au tiers du
+temps réel, 48 000 Hz est exact. J'en ai déduit que le codec émulé de la machine
+virtuelle acceptait 44 100 Hz sans savoir le tenir, et j'ai ajouté à `SortieCheck` une
+option `--frequence` pour le dire proprement plutôt que de contorsionner le code
+autour d'un périphérique cassé.
 
-Il mesure que la position de lecture avance d'une seconde par seconde. Elle avance de
-0,22 à 0,38 seconde par seconde, d'une exécution à l'autre. Le premier réflexe est
-d'accuser `alsa.c` — c'était le piège de l'étape 5, et il ressemble beaucoup à
-celui-ci.
+Ce n'était pas le périphérique. Voici ce qui l'a montré.
 
-Ce n'en est pas un, et voici ce qui le prouve. Un programme C de vingt lignes, sans
-une ligne de Spectre, qui ouvre le périphérique et écrit du silence pendant trois
-secondes :
+**`aplay` ne trébuche pas.** Le même fichier en 44 100 Hz, par le même `default`,
+joue en 5,16 s au lieu de 5,00 — c'est-à-dire juste, à chaque fois. Une machine où
+`aplay` tient la cadence et où nous ne la tenons pas n'est pas une machine cassée.
 
-```
-44 100 Hz :  44 982 images en 3,02 s =  14 887 Hz   ← un tiers du temps réel
-48 000 Hz : 146 400 images en 3,01 s =  48 713 Hz   ← exact
-```
+**Le balayage des fréquences dit lesquelles passent.** Cinq essais par fréquence :
 
-Le même écart par `default`, par `plughw` et par `sysdefault` : le codec émulé de
-cette machine virtuelle **accepte 44 100 Hz, l'annonce, et ne sait pas le tenir**.
-Et le même harnais, sur le même code, avec un morceau témoin à 48 000 Hz :
+| fréquence | rapport à 48 kHz | résultat            |
+|-----------|------------------|---------------------|
+| 32 000    | 2/3              | ×1,00 — toujours    |
+| 48 000    | 1                | ×1,00 — toujours    |
+| 96 000    | 2                | ×1,00 — toujours    |
+| 22 050    | —                | s'effondre 2 fois sur 3 |
+| 44 100    | —                | s'effondre 2 fois sur 3 |
+| 88 200    | —                | s'effondre 2 fois sur 3 |
 
-```
-✓ à ×1, la position avance en temps réel — ×1.001 (2.002 s pour 2.000 s)
-Tout est bon.
-```
+Ce ne sont pas les fréquences hautes ni les basses qui tombent : ce sont exactement
+celles qui **ne sont pas un rapport entier** de la fréquence du serveur de son. Autrement
+dit, celles qu'il doit réellement convertir.
 
-Spectre demande exactement ce qu'il faut — période 441, tampon 1 764, ce que
-`snd_pcm_hw_params` accorde — et le périphérique ne le respecte pas.
+**Et ce que la conversion réclamait, c'était de la place.** PipeWire travaille par blocs
+de 1 024 images, soit 21 ms à 48 kHz. Spectre demandait des périodes de 10 ms — deux
+fois plus courtes que son bloc. Tant qu'il n'y a rien à convertir, il s'en accommode ;
+dès qu'il convertit, il s'affame, et le flux part en cascade de sous-alimentations. Le
+format n'y était pour rien (S16, S32 et flottant tombent pareil), le seuil de départ
+non plus, `SND_PCM_NO_AUTO_RESAMPLE` non plus.
 
-`SortieCheck` porte donc une option `--frequence`, et `check.sh` s'en sert : quand le
-premier essai échoue, il refait le même à 48 000 Hz et dit ce qu'il en conclut. Sans
-de quoi essayer les deux, ce genre de panne se lit comme une faute du lecteur, et
-l'on cherche des jours du mauvais côté.
+| période | tampon  | 44 100 Hz, cinq essais                            |
+|---------|---------|---------------------------------------------------|
+| 10 ms   |  40 ms  | ×0,20 à ×1,01 — trois s'effondrent                |
+| 20 ms   | 100 ms  | ×0,92 à ×1,02 — un trébuche                       |
+| 25 ms   | 100 ms  | ×1,01 — cinq sur cinq, zéro sous-alimentation     |
 
-**La vraie lacune que cela découvre**, et elle vaut pour les trois plateformes : *le
-lecteur ne rééchantillonne pas*. Quand le périphérique refuse la fréquence du
-fichier, `Lecteur.swift` le **note** — la ligne est là depuis Windows — mais joue tout
-de même, donc à la mauvaise hauteur. Cela n'arrive jamais sur un matériel sain, où
-WASAPI et le greffon `plug` d'ALSA convertissent. Un rééchantillonneur digne de ce
-nom a sa place dans le noyau, mesuré, et non bricolé dans une couche de plateforme.
-C'est le premier chantier d'après ce portage.
+**Ce qui a changé**, dans `Sources/CPont/alsa.c` :
+
+- la période passe de 10 à 25 ms, choisie juste au-dessus du bloc du serveur, et le
+  tampon de 40 à 100 ms ;
+- le seuil de départ est posé — sans `snd_pcm_sw_params`, ALSA en prend un de 1 image,
+  et le flux démarre sur un tampon vide, donc en retard avant d'avoir commencé ;
+- la borne qui rognait une période trop grande était devenue nuisible : elle aurait
+  remis les écritures sous le bloc du serveur, c'est-à-dire recréé la panne.
+
+**Et le tampon plus grand a fallu le payer.** Cent millisecondes de son en réserve,
+c'est cent millisecondes de l'endroit qu'on vient de quitter qui s'entendent encore
+après un saut — et une position affichée qui, retranchant ce tampon, annonçait un
+instant qui n'avait jamais été joué. D'où `spectre_sortie_vider`, huitième fonction du
+contrat de sortie, jumelée dans `wasapi.c` : elle jette ce que le périphérique tient
+et le fait repartir plein. Le fil principal la **demande**, le fil audio l'exécute à
+son tour suivant — un périphérique ne se pilote pas depuis deux fils à la fois.
+
+`Lecteur.swift` ne l'appelle que si la tête a sauté plus loin que ce que le
+périphérique tient : en deçà, ce qui est en vol recouvre encore le passage où l'on
+arrive, et vider à chaque petit déplacement ferait d'un glisser sur la réglette un
+hachoir.
+
+**La leçon.** Le premier relevé était bon et la conclusion était mauvaise : j'avais
+mesuré que 44 100 Hz tombait et que 48 000 Hz tenait, et je me suis arrêté là. La
+question qui manquait était « et les autres fréquences ? », dont la réponse tenait le
+motif entier. Un programme témoin qui reproduit la panne prouve que le code appelant
+n'y est pour rien ; il ne prouve pas que le système soit en faute — il prouve
+seulement que le témoin fait la même erreur.
+
+**La lacune que cela a tout de même découverte** vaut toujours, et pour les trois
+plateformes : *le lecteur ne rééchantillonne pas*. Quand le périphérique refuse la
+fréquence du fichier, `Lecteur.swift` le **note** — la ligne est là depuis Windows —
+mais joue tout de même, donc à la mauvaise hauteur. Cela n'arrive pas ici, où le
+greffon `plug` d'ALSA convertit, ni sous Windows, où WASAPI convertit. C'est un
+chantier d'après le portage, pas un correctif.
 
 ## Ce qui reste après le portage
 

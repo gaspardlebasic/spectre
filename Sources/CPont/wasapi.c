@@ -83,6 +83,8 @@ struct SpectreSortie {
 
     volatile LONG joue;
     volatile LONG arret;
+    /// Posé par le fil principal quand la tête saute, relevé par le fil de rendu.
+    volatile LONG vider;
     volatile LONG enVol;            // images remises et pas encore entendues
 };
 
@@ -117,6 +119,19 @@ static DWORD WINAPI filDeRendu(LPVOID parametre) {
         DWORD attendu = WaitForSingleObject(s->evenement, 2000);
         if (attendu != WAIT_OBJECT_0) { continue; }
         if (InterlockedCompareExchange(&s->arret, 0, 0)) { break; }
+
+        if (InterlockedExchange(&s->vider, 0)) {
+            // `Reset` exige un flux arrêté, et c'est tout ce que ces trois lignes
+            // disent : arrêter, jeter, repartir. Elles sont ici et non dans
+            // `spectre_sortie_vider` parce qu'un client WASAPI ne se pilote pas
+            // depuis deux fils à la fois — le fil de rendu est en train de lui
+            // demander un tampon.
+            IAudioClient_Stop(s->client);
+            IAudioClient_Reset(s->client);
+            InterlockedExchange(&s->enVol, 0);
+            IAudioClient_Start(s->client);
+            continue;
+        }
 
         UINT32 occupe = 0;
         if (FAILED(IAudioClient_GetCurrentPadding(s->client, &occupe))) { continue; }
@@ -319,6 +334,10 @@ void spectre_sortie_jouer(SpectreSortie *s) {
 
 void spectre_sortie_pause(SpectreSortie *s) {
     if (s) { InterlockedExchange(&s->joue, 0); }
+}
+
+void spectre_sortie_vider(SpectreSortie *s) {
+    if (s) { InterlockedExchange(&s->vider, 1); }
 }
 
 int spectre_sortie_joue(const SpectreSortie *s) {
