@@ -230,6 +230,55 @@ controle("la molette horizontale déplace le temps",
          modele.viewport.startColumn != departAvant,
          String(format: "%.1f → %.1f", departAvant, modele.viewport.startColumn))
 
+// MARK: - Le pincement
+
+print("\n=== Le pincement ===")
+
+// Ce que le pavé tactile envoie : une suite de petits facteurs, et non un seul
+// grand. Les enchaîner est ce qui vérifie que le geste s'accumule au lieu de se
+// remplacer.
+let instantPince = modele.time(atPoint: ancre.x)
+let echelleAvantPincement = modele.viewport.columnsPerPoint
+for _ in 0..<10 { gestes.pincement(a: ancre, facteur: 1.05) }
+unTour()
+controle("écarter deux doigts resserre le temps",
+         modele.viewport.columnsPerPoint < echelleAvantPincement,
+         String(format: "%.4f → %.4f colonne par point",
+                echelleAvantPincement, modele.viewport.columnsPerPoint))
+controle("le pincement reste ancré sous les doigts",
+         abs(modele.point(ofTime: instantPince) - ancre.x) < 2,
+         String(format: "l'instant visé est à %.2f pt, les doigts à %.0f pt",
+                modele.point(ofTime: instantPince), ancre.x))
+
+let echelleRapprochee = modele.viewport.columnsPerPoint
+for _ in 0..<10 { gestes.pincement(a: ancre, facteur: 1 / 1.05) }
+unTour()
+controle("les rapprocher élargit le temps",
+         modele.viewport.columnsPerPoint > echelleRapprochee,
+         String(format: "%.4f → %.4f colonne par point",
+                echelleRapprochee, modele.viewport.columnsPerPoint))
+
+let casesAvantPincement = modele.viewport.binsPerPoint
+surface.majuscule = true
+for _ in 0..<10 { gestes.pincement(a: ancre, facteur: 1.05) }
+surface.majuscule = false
+unTour()
+controle("⇧ + pincement change l'échelle des fréquences",
+         modele.viewport.binsPerPoint != casesAvantPincement,
+         String(format: "%.4f → %.4f case par point",
+                casesAvantPincement, modele.viewport.binsPerPoint))
+
+// Le premier évènement d'un geste arrive parfois avec une échelle nulle, l'écart de
+// référence n'étant pas encore établi. Le laisser passer donnerait un zoom infini,
+// c'est-à-dire une image blanche dont on ne revient pas.
+let echelleAvantZero = modele.viewport.columnsPerPoint
+gestes.pincement(a: ancre, facteur: 0)
+gestes.pincement(a: ancre, facteur: -1)
+unTour()
+controle("un facteur nul ou négatif ne fait rien",
+         modele.viewport.columnsPerPoint == echelleAvantZero,
+         String(format: "%.4f inchangé", echelleAvantZero))
+
 // MARK: - La boucle
 
 print("\n=== La boucle ===")
@@ -372,6 +421,35 @@ gestes.touche(.gauche)
 surface.majuscule = false
 controle("⇧ + ← recule de cinq", abs(modele.playhead - 4) < 0.01,
          String(format: "%.2f s", modele.playhead))
+
+// Le zoom au clavier : le seul chemin vers le zoom qui ne demande ni molette ni
+// pavé tactile — et sur une machine virtuelle, le seul qui reste. La tête de lecture
+// est l'ancre, donc elle ne doit pas bouger d'un point sous nos yeux.
+modele.seek(to: 12)
+// Et la vue ramenée sur elle : les gestes précédents ont défilé loin, et une ancre
+// hors de l'écran est le cas de repli, qui se mesure ailleurs.
+modele.viewport.startColumn = modele.spectrogram.column(atTime: 12)
+    - surface.taillePoints.largeur * modele.viewport.columnsPerPoint / 2
+modele.clampViewport()
+unTour()
+let echelleAvantClavier = modele.viewport.columnsPerPoint
+let teteAvantLeZoom = modele.point(ofTime: modele.playhead)
+for _ in 0..<3 { _ = gestes.touche(.plus) }
+unTour()
+controle("« + » resserre le temps autour de la tête de lecture",
+         modele.viewport.columnsPerPoint < echelleAvantClavier,
+         String(format: "%.4f → %.4f colonne par point",
+                echelleAvantClavier, modele.viewport.columnsPerPoint))
+controle("et la tête de lecture ne bouge pas",
+         abs(modele.point(ofTime: modele.playhead) - teteAvantLeZoom) < 2,
+         String(format: "%.1f pt → %.1f pt", teteAvantLeZoom,
+                modele.point(ofTime: modele.playhead)))
+
+for _ in 0..<3 { _ = gestes.touche(.moins) }
+unTour()
+controle("« - » revient exactement d'où l'on venait",
+         abs(modele.viewport.columnsPerPoint - echelleAvantClavier) < 1e-6,
+         String(format: "%.4f colonne par point", modele.viewport.columnsPerPoint))
 
 controle("« R » ouvre le panneau des réglages",
          { let avant = panneau.ouvert; _ = gestes.touche(.r); return panneau.ouvert != avant }(),

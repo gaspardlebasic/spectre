@@ -110,6 +110,11 @@ tourne. Il faut donc **OpenGL 3.3**, et Wayland ou X11.
 Le fichier `.desktop` embarqué met Spectre au menu et dans le « Ouvrir avec » des
 fichiers audio, pour qui utilise `AppImageLauncher` ou `appimaged`.
 
+Les gestes sont ceux du tableau plus bas, Ctrl tenant la place de ⌘. Le pincement à
+deux doigts demande un vrai pavé tactile : il arrive du protocole de gestes de
+Wayland, qu'une machine virtuelle ne fournit pas — dedans, le zoom temporel se fait à
+Ctrl + défilement à deux doigts.
+
 Pas d'AppImage ARM64 dans les livraisons : GitHub n'offre pas de coureur Linux ARM
 gratuit. Sur une machine ARM, `./paquet.sh` le fabrique en quelques minutes.
 
@@ -312,6 +317,13 @@ regarde le morceau en entier.
 | `L` / `B` / échap | Boucler / caler sur les mesures / effacer |
 | `1` | Poser le premier temps ici |
 | ⌘⌥R | Déplier ou replier le panneau de réglages |
+
+**Sous Windows et sous Linux, « + » et « - » zooment le temps**, ancrés sur la tête de
+lecture. Ce n'est pas une commodité de plus : une application qui tourne dans une
+machine virtuelle ne reçoit ni le pincement ni le moindre défilement fait avec ⌃, ⌥ ou
+⌘ enfoncé, et ces deux touches y sont le seul chemin vers le zoom — donc, la vue
+partant à la butée, le seul chemin vers le défilement aussi. Voir
+[LINUX.md](LINUX.md).
 
 Les gestes marchent **aussi au-dessus de la ligne de batterie** : molette, pincement,
 clic, ⇧ + glisser pour tracer une boucle. Les deux vues partagent le même axe des

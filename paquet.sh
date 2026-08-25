@@ -132,6 +132,47 @@ else
     echo "   ⚠ greffon libdecor introuvable — la fenêtre n'aura pas de barre de titre"
 fi
 
+# ── La séparation des pistes ─────────────────────────────────────────────────
+#
+# Ni le moteur ni les poids ne sont dans la fermeture de `ldd` : le premier est
+# ouvert par `dlopen` à l'exécution — précisément pour que l'application s'ouvre
+# quand il n'est pas là — et les seconds sont un fichier de données. Il faut donc
+# les nommer, et c'est le jumeau exact de ce que `build.ps1` fait sous Windows.
+#
+# **À côté de l'exécutable**, et pas ailleurs : c'est le premier endroit où
+# `Reseau.fichier` et `Reseau.bibliotheque` regardent, si bien qu'il n'y a rien à
+# désigner dans `AppRun`.
+#
+# Sans eux, l'AppImage s'ouvre, joue, analyse — et le panneau dit « les poids ne
+# sont pas là » à qui demande une piste. C'est un paquet qui passe toutes les
+# épreuves de la fenêtre et à qui il manque la moitié de l'application.
+# `onnx.sh` ne range pas son butin sous le nom que porte le paquet : les archives
+# d'ONNX Runtime disent « arm64 » et « x64 » là où AppImage dit « aarch64 » et
+# « x86_64 ». Le nom se traduit donc ici plutôt que de renommer un dossier que
+# `Reseau.bibliotheque` va chercher tel quel pendant qu'on travaille.
+case "$ARCH" in
+    aarch64) TRANCHE="arm64" ;;
+    *)       TRANCHE="x64" ;;
+esac
+MOTEUR="build/onnxruntime/$TRANCHE/libonnxruntime.so"
+if [ -f "$MOTEUR" ]; then
+    cp -L "$MOTEUR" "$APPDIR/usr/bin/"
+    echo "   plus ONNX Runtime"
+else
+    echo "   (sans ONNX Runtime — lancer ./onnx.sh pour la séparation des pistes)"
+fi
+
+# Les poids ne sont pas dans le dépôt : leur licence ne permet pas de les
+# rediffuser, et `./modele.sh` les refabrique sur place. Leur absence n'empêche pas
+# de fabriquer le paquet — tout le reste de l'application s'en passe.
+POIDS="Resources/htdemucs.onnx"
+if [ -f "$POIDS" ]; then
+    cp "$POIDS" "$APPDIR/usr/bin/"
+    echo "   plus les poids de Demucs — $(du -h "$POIDS" | cut -f1)"
+else
+    echo "   (sans les poids de Demucs — voir ./modele.sh)"
+fi
+
 # ── Ce que le bureau lit ─────────────────────────────────────────────────────
 cp Resources/icone-256.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/spectre.png"
 cp Resources/icone-256.png "$APPDIR/spectre.png"

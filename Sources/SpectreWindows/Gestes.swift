@@ -150,6 +150,10 @@ final class GestesWindows: SurfaceDeGestes {
         case 0x31:      return .un
         case 0x52:      return .r
         case 0x4F:      return .o
+        // Le zoom au clavier. `VK_OEM_PLUS` est la touche « = » — celle qui porte
+        // « + » avec ⇧ — et les deux suivantes sont celles du pavé numérique.
+        case 0xBB, 0x6B: return .plus            // VK_OEM_PLUS, VK_ADD
+        case 0xBD, 0x6D: return .moins           // VK_OEM_MINUS, VK_SUBTRACT
         default:        return nil
         }
     }

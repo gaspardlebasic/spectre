@@ -135,18 +135,10 @@ else
   # bibliothèques distinctes, et deux jumeaux de `CPont`.
   "$BIN/DecodeCheck"
   echo
-  # Un périphérique peut n'être juste qu'à *sa* fréquence : il accepte 44 100 Hz,
-  # l'annonce, et draine ensuite au tiers du temps réel. Quand le premier essai
-  # échoue, on refait le même à 48 000 Hz — si celui-là passe, la panne est sous
-  # nous, et l'on évite de chercher des jours du côté du lecteur.
-  if ! "$BIN/SortieCheck"; then
-    echo
-    echo "  ↑ le même essai, à la fréquence que le périphérique préfère :"
-    if "$BIN/SortieCheck" --frequence 48000; then
-      echo
-      echo "  → à 48 000 Hz la sortie est exacte : c'est le périphérique qui accepte"
-      echo "    44 100 Hz sans savoir le tenir. Voir LINUX.md, étape 9."
-    fi
-    false
-  fi
+  # Le morceau témoin est en 44 100 Hz, et c'est délibéré : sur un système dont le
+  # serveur de son tourne à 48 000 Hz — c'est-à-dire à peu près tous — c'est la
+  # fréquence qui l'oblige à convertir, donc celle qui met la sortie à l'épreuve.
+  # `--frequence 48000` refait le même essai sans conversion, ce qui départage le
+  # lecteur du chemin qui est sous lui. Voir l'en-tête de `Sources/CPont/alsa.c`.
+  "$BIN/SortieCheck"
 fi

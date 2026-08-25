@@ -612,7 +612,7 @@ digne de ce nom aurait sa place dans le noyau, mesuré — pas ici.
 **ALSA plutôt que PipeWire.** PipeWire *et* PulseAudio exposent tous deux un
 périphérique ALSA nommé `default` : une seule écriture couvre tout le monde, y
 compris les machines qui n'ont ni l'un ni l'autre. Le jour où la latence gênerait,
-PipeWire se glisse derrière les mêmes sept fonctions sans que rien d'autre bouge.
+PipeWire se glisse derrière les mêmes huit fonctions sans que rien d'autre bouge.
 
 `default` et non `hw:0`, aussi : c'est le nom qui passe par le greffon `plug`, donc
 par le rééchantillonneur. Sans lui, un fichier en 44,1 kHz sur une carte figée à
@@ -653,12 +653,32 @@ Ce qui reste dans chaque exécutable est la traduction des évènements — `WM_
 d'un côté, `SDL_EVENT_MOUSE_WHEEL` de l'autre — et rien d'autre. Le fichier Linux
 fait cent soixante lignes.
 
+### Le pincement, ajouté après coup
+
+Il manquait, et l'oubli se voit bien dans le relevé qui a servi à partager les
+gestes : ce relevé partait de `SpectreWindows/Gestes.swift`, où le pincement
+n'apparaît pas — Windows le convertit lui-même en Ctrl + molette avant qu'on le voie.
+Le Mac, lui, a toujours eu son `magnify`. Le portage a donc reproduit fidèlement le
+geste de Windows, et perdu celui du Mac.
+
+`Gestes.pincement(a:facteur:)` est maintenant partagé, et reçoit un facteur d'échelle
+relatif : c'est ce que donne `NSEvent.magnification` à 1 près comme
+`SDL_PinchFingerEvent.scale`. Les trois plateformes finissent sur le même `zoomTime`
+par trois chemins différents.
+
+Une réserve, et elle est du matériel : le pincement arrive du protocole
+`zwp_pointer_gestures_v1` de Wayland, qui demande un vrai pavé tactile côté noyau.
+Une machine virtuelle Parallels ne présente au système invité qu'une souris — rien
+dans `/proc/bus/input/devices` qui ressemble à un pavé — et le pincement n'y arrive
+donc jamais. Le zoom s'y fait à Ctrl + défilement à deux doigts, et le geste tactile
+attend une vraie machine Linux pour être vu.
+
 ### Le harnais qu'on n'attendait pas
 
 Tant que les gestes vivaient dans la couche Windows, les mesurer aurait demandé une
 fenêtre, une souris et un écran. Une fois qu'ils ne touchent plus le système que par
 huit fonctions, **une surface de papier suffit** : `GestesCheck` les fait tourner
-sans fenêtre et sans carte graphique, et compte vingt-six contrôles.
+sans fenêtre et sans carte graphique, et compte trente et un contrôles.
 
 Windows et Linux seulement — ce sont eux qui partagent `Gestes`, le Mac ayant les
 siens dans `TimelineView`, où SwiftUI les reçoit. Le harnais tient donc les deux
@@ -927,48 +947,85 @@ Pas d'AppImage ARM64 dans la livraison : GitHub n'offre pas de coureur Linux ARM
 gratuit. `./paquet.sh` le fabrique en quelques minutes sur une machine ARM, et il se
 joint à la release comme le paquet macOS.
 
-## Ce qui échoue, et pourquoi ce n'est pas le code
+## Le son qui traînait, et ce que c'était vraiment
 
-**`SortieCheck` échoue sur la machine d'essai, et il a raison de le faire.**
+**Première conclusion, et elle était fausse.** `SortieCheck` mesurait la position de
+lecture avançant de 0,22 à 0,38 seconde par seconde. Un programme C de vingt lignes,
+sans une ligne de Spectre, reproduisait le même écart : 44 100 Hz draine au tiers du
+temps réel, 48 000 Hz est exact. J'en ai déduit que le codec émulé de la machine
+virtuelle acceptait 44 100 Hz sans savoir le tenir, et j'ai ajouté à `SortieCheck` une
+option `--frequence` pour le dire proprement plutôt que de contorsionner le code
+autour d'un périphérique cassé.
 
-Il mesure que la position de lecture avance d'une seconde par seconde. Elle avance de
-0,22 à 0,38 seconde par seconde, d'une exécution à l'autre. Le premier réflexe est
-d'accuser `alsa.c` — c'était le piège de l'étape 5, et il ressemble beaucoup à
-celui-ci.
+Ce n'était pas le périphérique. Voici ce qui l'a montré.
 
-Ce n'en est pas un, et voici ce qui le prouve. Un programme C de vingt lignes, sans
-une ligne de Spectre, qui ouvre le périphérique et écrit du silence pendant trois
-secondes :
+**`aplay` ne trébuche pas.** Le même fichier en 44 100 Hz, par le même `default`,
+joue en 5,16 s au lieu de 5,00 — c'est-à-dire juste, à chaque fois. Une machine où
+`aplay` tient la cadence et où nous ne la tenons pas n'est pas une machine cassée.
 
-```
-44 100 Hz :  44 982 images en 3,02 s =  14 887 Hz   ← un tiers du temps réel
-48 000 Hz : 146 400 images en 3,01 s =  48 713 Hz   ← exact
-```
+**Le balayage des fréquences dit lesquelles passent.** Cinq essais par fréquence :
 
-Le même écart par `default`, par `plughw` et par `sysdefault` : le codec émulé de
-cette machine virtuelle **accepte 44 100 Hz, l'annonce, et ne sait pas le tenir**.
-Et le même harnais, sur le même code, avec un morceau témoin à 48 000 Hz :
+| fréquence | rapport à 48 kHz | résultat            |
+|-----------|------------------|---------------------|
+| 32 000    | 2/3              | ×1,00 — toujours    |
+| 48 000    | 1                | ×1,00 — toujours    |
+| 96 000    | 2                | ×1,00 — toujours    |
+| 22 050    | —                | s'effondre 2 fois sur 3 |
+| 44 100    | —                | s'effondre 2 fois sur 3 |
+| 88 200    | —                | s'effondre 2 fois sur 3 |
 
-```
-✓ à ×1, la position avance en temps réel — ×1.001 (2.002 s pour 2.000 s)
-Tout est bon.
-```
+Ce ne sont pas les fréquences hautes ni les basses qui tombent : ce sont exactement
+celles qui **ne sont pas un rapport entier** de la fréquence du serveur de son. Autrement
+dit, celles qu'il doit réellement convertir.
 
-Spectre demande exactement ce qu'il faut — période 441, tampon 1 764, ce que
-`snd_pcm_hw_params` accorde — et le périphérique ne le respecte pas.
+**Et ce que la conversion réclamait, c'était de la place.** PipeWire travaille par blocs
+de 1 024 images, soit 21 ms à 48 kHz. Spectre demandait des périodes de 10 ms — deux
+fois plus courtes que son bloc. Tant qu'il n'y a rien à convertir, il s'en accommode ;
+dès qu'il convertit, il s'affame, et le flux part en cascade de sous-alimentations. Le
+format n'y était pour rien (S16, S32 et flottant tombent pareil), le seuil de départ
+non plus, `SND_PCM_NO_AUTO_RESAMPLE` non plus.
 
-`SortieCheck` porte donc une option `--frequence`, et `check.sh` s'en sert : quand le
-premier essai échoue, il refait le même à 48 000 Hz et dit ce qu'il en conclut. Sans
-de quoi essayer les deux, ce genre de panne se lit comme une faute du lecteur, et
-l'on cherche des jours du mauvais côté.
+| période | tampon  | 44 100 Hz, cinq essais                            |
+|---------|---------|---------------------------------------------------|
+| 10 ms   |  40 ms  | ×0,20 à ×1,01 — trois s'effondrent                |
+| 20 ms   | 100 ms  | ×0,92 à ×1,02 — un trébuche                       |
+| 25 ms   | 100 ms  | ×1,01 — cinq sur cinq, zéro sous-alimentation     |
 
-**La vraie lacune que cela découvre**, et elle vaut pour les trois plateformes : *le
-lecteur ne rééchantillonne pas*. Quand le périphérique refuse la fréquence du
-fichier, `Lecteur.swift` le **note** — la ligne est là depuis Windows — mais joue tout
-de même, donc à la mauvaise hauteur. Cela n'arrive jamais sur un matériel sain, où
-WASAPI et le greffon `plug` d'ALSA convertissent. Un rééchantillonneur digne de ce
-nom a sa place dans le noyau, mesuré, et non bricolé dans une couche de plateforme.
-C'est le premier chantier d'après ce portage.
+**Ce qui a changé**, dans `Sources/CPont/alsa.c` :
+
+- la période passe de 10 à 25 ms, choisie juste au-dessus du bloc du serveur, et le
+  tampon de 40 à 100 ms ;
+- le seuil de départ est posé — sans `snd_pcm_sw_params`, ALSA en prend un de 1 image,
+  et le flux démarre sur un tampon vide, donc en retard avant d'avoir commencé ;
+- la borne qui rognait une période trop grande était devenue nuisible : elle aurait
+  remis les écritures sous le bloc du serveur, c'est-à-dire recréé la panne.
+
+**Et le tampon plus grand a fallu le payer.** Cent millisecondes de son en réserve,
+c'est cent millisecondes de l'endroit qu'on vient de quitter qui s'entendent encore
+après un saut — et une position affichée qui, retranchant ce tampon, annonçait un
+instant qui n'avait jamais été joué. D'où `spectre_sortie_vider`, huitième fonction du
+contrat de sortie, jumelée dans `wasapi.c` : elle jette ce que le périphérique tient
+et le fait repartir plein. Le fil principal la **demande**, le fil audio l'exécute à
+son tour suivant — un périphérique ne se pilote pas depuis deux fils à la fois.
+
+`Lecteur.swift` ne l'appelle que si la tête a sauté plus loin que ce que le
+périphérique tient : en deçà, ce qui est en vol recouvre encore le passage où l'on
+arrive, et vider à chaque petit déplacement ferait d'un glisser sur la réglette un
+hachoir.
+
+**La leçon.** Le premier relevé était bon et la conclusion était mauvaise : j'avais
+mesuré que 44 100 Hz tombait et que 48 000 Hz tenait, et je me suis arrêté là. La
+question qui manquait était « et les autres fréquences ? », dont la réponse tenait le
+motif entier. Un programme témoin qui reproduit la panne prouve que le code appelant
+n'y est pour rien ; il ne prouve pas que le système soit en faute — il prouve
+seulement que le témoin fait la même erreur.
+
+**La lacune que cela a tout de même découverte** vaut toujours, et pour les trois
+plateformes : *le lecteur ne rééchantillonne pas*. Quand le périphérique refuse la
+fréquence du fichier, `Lecteur.swift` le **note** — la ligne est là depuis Windows —
+mais joue tout de même, donc à la mauvaise hauteur. Cela n'arrive pas ici, où le
+greffon `plug` d'ALSA convertit, ni sous Windows, où WASAPI convertit. C'est un
+chantier d'après le portage, pas un correctif.
 
 ## Ce qui reste après le portage
 
@@ -977,13 +1034,18 @@ chantiers que le portage a découverts, et qui valent pour les trois plateformes
 
 **Le rééchantillonnage dans le lecteur.** Quand le périphérique refuse la fréquence
 du fichier, on le note et l'on joue tout de même, donc à la mauvaise hauteur. Voir
-plus haut : c'est ce que la sortie audio de la machine d'essai a mis au jour. Sa
-place est dans le noyau, mesuré par un harnais, et non bricolé dans une couche de
-plateforme.
+plus haut : c'est l'enquête sur la sortie audio qui l'a mis au jour, même si ce
+n'était pas la panne qu'elle cherchait. Sa place est dans le noyau, mesuré par un
+harnais, et non bricolé dans une couche de plateforme.
 
 **Le menu du clic droit sous Linux.** Il n'y en a pas ; tout ce qu'il offrirait
 s'atteint autrement. Le jour où il en faudra un, il se dessinera au `Pinceau` et sera
 donc partagé plutôt que porté.
+
+**Le pincement à deux doigts, éprouvé par un vrai pavé tactile.** Le geste est écrit
+et mesuré sur papier ; il n'a jamais reçu d'évènement réel, faute d'un pavé tactile
+dans la machine virtuelle. Voir l'étape 6, et « Ce que Parallels laisse passer », plus
+bas, qui dit maintenant *pourquoi* il n'en recevra pas.
 
 **Le sélecteur de fichiers, éprouvé par une vraie main.** Le portail est là, le
 chemin compile, mais personne n'a cliqué : aucune souris ne se pilote sous Wayland
@@ -991,6 +1053,64 @@ depuis un terminal distant. C'est le seul morceau du portage qui ne soit pas mes
 
 **L'AppImage ARM64.** GitHub n'offre pas de coureur Linux ARM gratuit ; il se
 fabrique à la main, comme le paquet macOS.
+
+## Le paquet qui ne savait pas séparer
+
+L'AppImage s'ouvrait, jouait, analysait, relevait la batterie et les accords — et ne
+séparait rien, sans jamais le dire autrement que par un dossier de pistes vide dans
+le rangement.
+
+Elle n'emportait **ni les poids ni le moteur**. Ni l'un ni l'autre n'apparaît dans la
+fermeture de `ldd` sur laquelle `paquet.sh` construit sa liste : ONNX Runtime est
+ouvert par `dlopen` à l'exécution — précisément pour que l'application s'ouvre quand
+il n'est pas là — et les poids sont un fichier de données. Ce qu'aucun outil ne
+nomme, il faut le nommer soi-même ; `build.ps1` le fait sous Windows depuis toujours,
+et `paquet.sh` ne le faisait pas.
+
+Les deux vont **à côté de l'exécutable**, dans `usr/bin`, parce que c'est le premier
+endroit où `Reseau.fichier` et `Reseau.bibliotheque` regardent : rien à désigner dans
+`AppRun`, donc rien qui puisse mentir. Ils pèsent 167 et 24 Mo, contre 15 pour
+l'exécutable et 110 pour les cinquante bibliothèques : l'AppImage compressée fait
+141 Mo, dont les deux tiers sont le réseau.
+
+La leçon vaut au-delà de la séparation : **l'épreuve de la fenêtre ne prouve rien de
+ce qui se charge à la demande.** Un paquet qui s'ouvre, rend une image et annonce la
+bonne carte graphique peut n'avoir aucune des trois choses qu'on ouvre par `dlopen`.
+
+Ce qui est mesuré maintenant, sur le vrai morceau et par le paquet lui-même : sept
+minutes quarante-huit séparées en une minute quarante-quatre — 0,22 fois le temps
+réel, six cœurs, sans accélération matérielle.
+
+## Ce que Parallels laisse passer, et ce qu'il mange
+
+Le portage supposait que le zoom se ferait « à Ctrl + défilement, faute de pavé
+tactile ». Un journal des évènements de SDL, gestes faits à la main dans la machine
+virtuelle, dit que c'était faux :
+
+| ce qu'on fait sur le pavé du Mac | ce que le système invité reçoit |
+|---|---|
+| deux doigts verticalement | le défilement, cran par cran |
+| deux doigts horizontalement | **le défilement horizontal, lui aussi** |
+| un pincement | rien |
+| deux doigts avec ⌃, ⌥ ou ⇧ enfoncé | **rien du tout** |
+| ⌃, ⌥, ⇧ seuls | les touches, normalement |
+| ⌘ (donc Super) | rien : GNOME le garde pour l'aperçu des activités |
+
+Deux conséquences, et la seconde n'était pas devinable :
+
+1. **Aucun modificateur + défilement n'existe dans une machine virtuelle.** Le zoom a
+   donc des touches à lui, « + » et « - », dans `SpectreDessin/Gestes.swift`, ancrées
+   sur la tête de lecture. C'est du partagé : Windows les reçoit aussi.
+2. **Le défilement horizontal marchait déjà.** Il ne faisait rien parce qu'il n'y
+   avait rien à faire : à l'ouverture le morceau entier tient dans la fenêtre, et
+   `Viewport.clamp` retient la vue à sa butée. Sans zoom, pas de défilement — les deux
+   pannes n'en étaient qu'une.
+
+Une dernière chose, vue au journal et laissée telle quelle : le défilement vertical
+porte **un cran horizontal parasite toutes les quatre ou cinq encoches**, toujours du
+même côté. C'est le pilote de Parallels, pas l'application. Un verrouillage d'axe le
+couvrirait, au prix du défilement en diagonale que la lecture des deux axes sert
+justement à rendre — on ne le fait pas sans l'avoir vu gêner.
 
 ## Les pièges qui étaient annoncés, et ce qu'ils ont coûté
 
