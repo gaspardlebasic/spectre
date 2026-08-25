@@ -18,9 +18,14 @@ import SpectreTextes
 // suffit donc à les faire tourner, sans fenêtre et sans carte graphique.
 //
 // C'est le gain qu'on n'attendait pas du partage : ce qui devient portable devient
-// mesurable. Ce harnais tourne sur les trois plateformes, et c'est lui qui dira que
-// le zoom, la boucle et l'aimantation font la même chose partout — la divergence
-// silencieuse étant précisément ce qui a tué le premier portage.
+// mesurable.
+//
+// **Windows et Linux, et pas macOS** — parce que ce sont eux qui partagent `Gestes`,
+// tandis que le Mac a les siens dans `TimelineView`, où SwiftUI les reçoit. Ce
+// harnais est donc ce qui tient les deux portages d'accord ; le Mac l'est par la
+// discipline dite en tête de `SpectreDessin/Gestes.swift`, où chaque ligne a son
+// pendant exact. La divergence silencieuse est précisément ce qui a tué le premier
+// portage.
 //
 // Ce qui n'est pas mesuré ici, et qui ne peut pas l'être : la traduction des
 // évènements de chaque système. Qu'un `WM_MOUSEWHEEL` porte ses coordonnées en

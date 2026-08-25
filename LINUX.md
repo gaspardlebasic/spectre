@@ -187,7 +187,7 @@ paquet et un fournisseur choisi à la compilation ; elle n'est pas dans ce plan.
 | 6. Les gestes, et la fluidité | Molette, boucle, aimantation ; et un relevé qui chiffre la fluidité. | **faite** |
 | 7. Réglages, sessions, langues | Les réglages se retrouvent au morceau suivant, aux emplacements XDG ; l'interface prend la langue du système. | **faite** |
 | 8. La séparation | Les quatre pistes sortent, et se cochent. | **faite** |
-| 9. La distribution | Un AppImage, l'épreuve complète en dossier propre, et le coureur Linux qui passe de « le noyau » à « l'application ». | à faire |
+| 9. La distribution | Un AppImage, l'épreuve complète en dossier propre, et le coureur Linux qui passe de « le noyau » à « l'application ». | **faite** |
 
 L'ordre suit celui du portage Windows, dont il a été montré qu'il tenait : une
 fenêtre avant un son, le son qui entre avant celui qui sort, les gestes une fois
@@ -660,8 +660,12 @@ fait cent soixante lignes.
 Tant que les gestes vivaient dans la couche Windows, les mesurer aurait demandé une
 fenêtre, une souris et un écran. Une fois qu'ils ne touchent plus le système que par
 huit fonctions, **une surface de papier suffit** : `GestesCheck` les fait tourner
-sans fenêtre et sans carte graphique, sur les trois plateformes, et compte
-vingt-six contrôles.
+sans fenêtre et sans carte graphique, et compte vingt-six contrôles.
+
+Windows et Linux seulement — ce sont eux qui partagent `Gestes`, le Mac ayant les
+siens dans `TimelineView`, où SwiftUI les reçoit. Le harnais tient donc les deux
+portages d'accord ; le Mac l'est par la discipline dite en tête du fichier partagé,
+où chaque ligne a son pendant exact.
 
 C'est le gain qu'on n'avait pas prévu du partage : *ce qui devient portable devient
 mesurable*. Et ce sont des choses qu'aucune image relue ne dirait — que le zoom reste
@@ -842,173 +846,178 @@ durée du morceau. C'est lent, et c'est utilisable : on lance, on va faire autre
 et le cache fait que cela n'arrive qu'une fois par morceau. Sur du matériel réel sans
 la couche de virtualisation, ce sera meilleur ; ce chiffre-ci est un plancher.
 
-## Ce qui reste — le plan, écrit pour être repris à froid
+## Étape 9 — la distribution
 
-Les cinq premières étapes ont toutes donné la même leçon, et elle commande la
-suite : **avant d'écrire un jumeau Linux, regarder ce que la version Windows touche
-vraiment du système.** À chaque fois la réponse a été « moins qu'on ne croit » — le
-dessin ne touchait que `Pinceau`, le rendu treize fonctions C, le lecteur six, le
-décodeur quatre — et à chaque fois le Swift est monté dans un module partagé pendant
-que seul du C descendait. C'est pourquoi `SpectreLin` fait cent trente lignes.
+**Faite.** Un AppImage de 38 Mo, qui s'ouvre sur une machine où Swift et tout ce que
+l'atelier a posé sous `/usr/local` sont cachés — et qui voit quand même la carte
+graphique du système.
 
-Le relevé est déjà fait pour les quatre étapes qui restent, et il est donné ici
-pour n'avoir pas à le refaire.
+### Pourquoi un AppImage
 
-### Étape 6 — les gestes, et la fluidité
+Un `.deb` demande une distribution : celui qu'on construit sur une 24.04 ne
+s'installe pas sur une Fedora, et il faudrait en tenir un par famille. Un Flatpak
+demande un *runtime* installé, que beaucoup de machines n'ont pas et que
+l'utilisateur ne peut pas deviner. Un AppImage ne demande rien : on le télécharge, on
+le rend exécutable, on le double-clique.
 
-**Ce que ça donne à l'usage.** Aujourd'hui la fenêtre Linux montre le morceau
-entier, figé. Après cette étape : la molette zoome, le glissé déplace, le clic pose
-la tête de lecture, un second clic tend une boucle, les touches font ce qu'elles
-font ailleurs, et le curseur change de forme au bord d'une boucle. C'est l'étape
-qui fait passer d'une image à une application.
+### Ce qu'on embarque, et ce qu'on n'embarque surtout pas
 
-**Le relevé.** `SpectreWindows/Gestes.swift` fait 406 lignes ; ce qui touche Win32
-tient en huit appels : `SetCursor`/`LoadCursorW` (la forme du curseur),
-`SetCapture`/`ReleaseCapture` (garder la souris pendant un glissé),
-`GetKeyState` (Ctrl et Majuscule), `TrackMouseEvent` (savoir que la souris est
-sortie), `GetDoubleClickTime`, et `ScreenToClient`. Tout le reste — l'aimantation,
-la boucle, le zoom, le panneau, la table du clavier — est du calcul sur le modèle.
+On embarque ce que le dépôt et l'atelier apportent : la bibliothèque standard de
+Swift, SDL3, Cairo, Pango, libsndfile, libmpg123, libepoxy — vingt-huit
+bibliothèques, suivies transitivement par `ldd`.
 
-**Donc.** `Gestes` monte dans `SpectreDessin`, derrière un petit protocole
-`SurfacePointeur` : forme du curseur, capture, touches mortes, délai du double-clic.
-Windows le remplit avec les huit appels ci-dessus ; Linux avec `SDL_SetCursor`,
-`SDL_CaptureMouse`, `SDL_GetModState`, et un délai de double-clic en dur (X11 n'en
-publie pas ; 500 ms est la valeur que tout le monde utilise). Le `repondre(message,
-w, l)` de Win32 devient une entrée neutre — un `enum Evenement` — que la boucle SDL
-et la procédure de fenêtre traduisent chacune.
+On **n'embarque pas** ce qui parle au matériel ou au serveur d'affichage : `libGL`,
+`libEGL`, les pilotes Mesa, ALSA, X11, Wayland, la bibliothèque C. Ceux-là doivent
+venir du système d'accueil, sous peine que l'application ne voie pas la carte de la
+machine sur laquelle elle tourne — c'est la faute classique de l'empaquetage Linux,
+et elle donne un rendu logiciel à trois images par seconde sans dire pourquoi.
 
-`SpectreWindows/Mesures.swift` (169 lignes, le relevé de fluidité) ne touche le
-système qu'en **un** endroit : `EnumDisplaySettingsW`, pour connaître la fréquence
-de l'écran. `SDL_GetCurrentDisplayMode` la donne. Le module monte donc entier, et
-le relevé chiffré — centiles des images, des entrées — devient commun aux trois
-plateformes du même coup.
+C'est pourquoi l'épreuve ne se contente pas de « le paquet s'ouvre » : elle lit la
+carte que le paquet annonce et **échoue si c'est `llvmpipe`**. Sur la machine
+d'essai, elle lit « virgl (Apple M2 Max) », qui est la vraie.
 
-**Le barème.** Le relevé de `Mesures` sur le vrai morceau, comparé au relevé
-Windows. Attention : la VM passe par virgl, et le chiffre absolu n'y voudra pas dire
-grand-chose ; ce qui se juge est **la forme** — pas de queue au 99ᵉ centile, pas
-d'image perdue au glissé.
+### L'épreuve du dossier propre, en trois montages
 
-### Étape 7 — réglages, sessions, langues
+Le pendant exact de celle de `build.ps1`. `unshare -m` donne un espace de montage à
+soi, et l'on y couvre `/opt/swift`, `/usr/local/lib` et `/usr/local/include` d'un
+dossier vide avant de lancer le paquet. S'il s'ouvre quand même, c'est qu'il porte
+vraiment ce dont il a besoin.
 
-**Ce que ça donne à l'usage.** Les réglages se retrouvent au lancement suivant ; le
-menu des fichiers récents est peuplé ; l'interface parle la langue du système ; le
-sélecteur de fichiers est celui du bureau, pas un chemin tapé en argument.
+Sans elle, un AppImage qui emprunte une bibliothèque de la machine qui l'a construit
+passe toutes les vérifications et ne s'ouvre chez personne.
 
-**Le relevé.** `SpectreWin/Plateforme.swift` fait 341 lignes et touche le système en
-quatre endroits : `GetOpenFileNameW` (le sélecteur), `SHAddToRecentDocs` (les
-récents), `GetUserPreferredUILanguages` (la langue), et la sérialisation JSON des
-réglages — qui, elle, n'est pas du système du tout. Les cinq classes de
-`SpectreLin/Plateforme.swift` sont aujourd'hui des façades qui disent chacune
-laquelle de ces étapes les rendra vraies.
+### Le piège de l'étape : la barre de titre
 
-**Donc.**
-- **Le sélecteur** : le portail XDG (`org.freedesktop.portal.FileChooser`) par D-Bus,
-  parce que c'est le seul chemin qui marche sous Wayland comme sous X11 et sous
-  Flatpak. Si le portail est absent — une machine sans bureau — se rabattre sur
-  `zenity`, et si celui-ci manque aussi, dire pourquoi en français plutôt que de ne
-  rien ouvrir.
-- **Les récents** : `~/.local/share/recently-used.xbel`, la liste que GTK et KDE
-  lisent tous les deux. C'est un fichier XML à écrire à la main ; le portail en
-  ajoute une entrée tout seul quand c'est lui qui a ouvert le fichier, donc n'écrire
-  soi-même que pour les fichiers ouverts autrement.
-- **Les réglages** : `$XDG_CONFIG_HOME/spectre`, en repli `~/.config/spectre`. Le
-  JSON est déjà écrit et partagé.
-- **La langue** : `NSLocale.preferredLanguages` sous Foundation-Linux suit `LC_ALL`
-  et `LANG` ; à mesurer avant de croire qu'il suffit, `LangueCheck` étant là pour ça.
+SDL disait, à chaque lancement, une ligne qu'on lit comme un avertissement bénin :
 
-**Le piège annoncé à vérifier ici, pas à supposer.** `Storage.root` s'appuie sur
-`applicationSupportDirectory` ; Foundation le fait tomber sur `~/.local/share`, ce
-qui est le bon endroit XDG — mais cela n'a jamais été mesuré. `SessionCheck` le dira.
+```
+Couldn't open plugin directory: No such file or directory
+No plugins found, falling back on no decorations
+```
 
-**Le barème.** `SessionCheck` et `LangueCheck` sur Linux, plus une ouverture par le
-portail à l'œil. Et l'allemand, la langue qui écrit le plus long, regardé à l'écran :
-il n'a été éprouvé que par la compilation sur les deux portages.
+Elle ne l'est pas. Sous Wayland, c'est le **client** qui dessine sa propre barre de
+titre, et SDL confie ce travail à libdecor — qui va chercher un *greffon* dans un
+dossier compilé en dur. Sans lui : pas de barre, pas de croix, rien pour déplacer la
+fenêtre. Le paquet `libdecor-0-dev` ne suffit pas, c'est le greffon qui dessine :
+`libdecor-0-plugin-1-cairo`. Ce n'est pas une dépendance de compilation mais
+d'exécution, d'où l'oubli facile — et il est maintenant dans `machine.sh`, embarqué
+dans l'AppImage, et désigné par `LIBDECOR_PLUGIN_DIR` dans le lanceur.
 
-### Étape 8 — la séparation
+### Les scripts, deux-faces plutôt que triplés
 
-**Ce que ça donne à l'usage.** Les quatre pistes — voix, basse, batterie, reste —
-sortent d'un morceau et se cochent dans le panneau.
+`essai.sh` et `check.sh` ne sont pas recopiés : ils choisissent d'après `uname`. Tout
+ce qui précède l'épreuve de la fenêtre est identique — c'est le noyau, la ligne de
+commande, le morceau témoin — et seule la dernière section diffère, parce qu'ouvrir
+une application et la photographier ne se demandent pas de la même façon aux deux
+systèmes. Un troisième script de trois cents lignes aurait divergé en un mois.
 
-**Le relevé.** C'est l'étape la moins chère des quatre, et c'est contre-intuitif.
-`SpectreWin/Pistes.swift` (423 lignes) et `SpectreWin/Demucs.swift` (223) n'importent
-**pas** `WinSDK` : tout passe par `CPont/onnx.c`, 247 lignes dont **trois** sont de
-Windows — `LoadLibraryExW`, `GetProcAddress`, et `ORTCHAR_T` qui vaut `wchar_t` là et
-`char` ici.
+### Le coureur, et ce que son commentaire disait
 
-**Donc.** Pas de jumeau `onnx-linux.c` : `onnx.c` devient deux-faces avec un
-`#ifdef _WIN32` sur ces trois points (`dlopen`/`dlsym`, chemins en UTF-8). Écrire un
-second fichier de 247 lignes pour en changer trois serait le contraire de ce que ce
-portage a fait partout ailleurs. Les deux fichiers Swift montent dans un module
-partagé — `SpectreSeparation`, ou `SpectreSon` si la taille ne le justifie pas.
+`verification.yml` portait un travail « Linux — le noyau » avec ce commentaire : « il
+n'existe pas encore de version Linux, et c'est justement en la préparant tous les
+jours qu'elle coûtera un pilote et non une application ». **Le portage rend ce
+commentaire faux**, et un commentaire qu'on laisse mentir coûte plus cher que pas de
+commentaire.
 
-Reste à trouver la bibliothèque : `libonnxruntime.so` voisine de l'exécutable
-d'abord, puis `build/onnxruntime/<architecture>`, comme sur Windows — donc un
-`onnx.sh`, jumeau d'`onnx.ps1`. Les poids sont déjà attachés à la publication
-`modele-htdemucs-v4` depuis l'étape 1 ; `modele.sh` les descend.
+Le travail s'appelle maintenant « Linux — l'application », construit tout le paquet,
+passe treize harnais, et fabrique l'AppImage. `livraison.yml` gagne un travail Linux
+qui joint l'AppImage à la release, dans un conteneur **jammy** : un paquet construit
+contre une glibc récente ne s'ouvre pas sur une distribution plus ancienne, tandis
+que l'inverse marche toujours.
 
-**Le barème.** `SeparationCheck` et `PistesCheck`, et la séparation du vrai morceau
-écoutée. Chronométrer : sur cette VM le réseau tournera sur le processeur, et si
-c'est trop lent pour être utilisable il faut le *dire* dans ce document plutôt que
-de laisser croire le contraire.
+Pas d'AppImage ARM64 dans la livraison : GitHub n'offre pas de coureur Linux ARM
+gratuit. `./paquet.sh` le fabrique en quelques minutes sur une machine ARM, et il se
+joint à la release comme le paquet macOS.
 
-**Le piège de toujours** : tout harnais pose son propre `SPECTRE_RANGEMENT`, sans
-quoi séparer un morceau de synthèse efface les pistes des vrais morceaux — et des
-minutes de calcul avec elles.
+## Ce qui échoue, et pourquoi ce n'est pas le code
 
-### Étape 9 — la distribution
+**`SortieCheck` échoue sur la machine d'essai, et il a raison de le faire.**
 
-**Ce que ça donne à l'usage.** Un fichier qu'on télécharge, qu'on rend exécutable et
-qui s'ouvre — sans Swift, sans SDL, sans rien installer.
+Il mesure que la position de lecture avance d'une seconde par seconde. Elle avance de
+0,22 à 0,38 seconde par seconde, d'une exécution à l'autre. Le premier réflexe est
+d'accuser `alsa.c` — c'était le piège de l'étape 5, et il ressemble beaucoup à
+celui-ci.
 
-**Donc.** Un AppImage : c'est le format qui ne demande rien à la machine d'accueil,
-là où le `.deb` demande une distribution et le Flatpak un runtime. Il faut y
-embarquer les bibliothèques de Swift, SDL3, Cairo, Pango, libsndfile, libmpg123 —
-mais **pas** ALSA ni les pilotes GL, qui doivent venir du système sous peine de ne
-pas voir la carte. Plus un `.desktop`, une icône, et l'association MIME sur les
-formats audio : c'est le pendant de ce que fait `Spectre.iss` dans la base de
-registres.
+Ce n'en est pas un, et voici ce qui le prouve. Un programme C de vingt lignes, sans
+une ligne de Spectre, qui ouvre le périphérique et écrit du silence pendant trois
+secondes :
 
-D'où un `paquet.sh`, jumeau de `paquet.ps1`, et un `essai.sh` complet sur Linux —
-avec l'épreuve du dossier propre, celle qui dit qu'il tourne sur une machine qui n'a
-jamais vu Swift.
+```
+44 100 Hz :  44 982 images en 3,02 s =  14 887 Hz   ← un tiers du temps réel
+48 000 Hz : 146 400 images en 3,01 s =  48 713 Hz   ← exact
+```
 
-**Et le coureur.** `verification.yml` a un travail « Linux — le noyau » qui ne
-construit aujourd'hui que neuf harnais numériques, avec un commentaire qui dit
-pourquoi : « il n'existe pas encore de version Linux ». Cette étape rend ce
-commentaire faux. Le travail passe à « Linux — l'application », `livraison.yml`
-gagne l'AppImage, et **le commentaire se réécrit** — un commentaire qu'on laisse
-mentir coûte plus cher que pas de commentaire.
+Le même écart par `default`, par `plughw` et par `sysdefault` : le codec émulé de
+cette machine virtuelle **accepte 44 100 Hz, l'annonce, et ne sait pas le tenir**.
+Et le même harnais, sur le même code, avec un morceau témoin à 48 000 Hz :
 
-**La fusion de `linux-portage` dans `main` se fait ici**, une fois le coureur vert.
+```
+✓ à ×1, la position avance en temps réel — ×1.001 (2.002 s pour 2.000 s)
+Tout est bon.
+```
 
-### L'ordre, et pourquoi celui-là
+Spectre demande exactement ce qu'il faut — période 441, tampon 1 764, ce que
+`snd_pcm_hw_params` accorde — et le périphérique ne le respecte pas.
 
-6 avant 7 parce qu'une application qu'on ne peut pas manœuvrer ne se juge pas :
-tant que la molette ne fait rien, on ne voit pas si les réglages ont servi. 7 avant
-8 parce que la séparation écrit dans le rangement, et que le rangement est ce que
-l'étape 7 met en place. 9 en dernier, évidemment — mais **pas plus tard** : un
-portage qui ne se distribue pas n'est pas fini, et c'est l'étape que tous les
-portages repoussent.
+`SortieCheck` porte donc une option `--frequence`, et `check.sh` s'en sert : quand le
+premier essai échoue, il refait le même à 48 000 Hz et dit ce qu'il en conclut. Sans
+de quoi essayer les deux, ce genre de panne se lit comme une faute du lecteur, et
+l'on cherche des jours du mauvais côté.
 
-## Les pièges prévus
+**La vraie lacune que cela découvre**, et elle vaut pour les trois plateformes : *le
+lecteur ne rééchantillonne pas*. Quand le périphérique refuse la fréquence du
+fichier, `Lecteur.swift` le **note** — la ligne est là depuis Windows — mais joue tout
+de même, donc à la mauvaise hauteur. Cela n'arrive jamais sur un matériel sain, où
+WASAPI et le greffon `plug` d'ALSA convertissent. Un rééchantillonneur digne de ce
+nom a sa place dans le noyau, mesuré, et non bricolé dans une couche de plateforme.
+C'est le premier chantier d'après ce portage.
 
-Ceux-ci sont annoncés, pas encore payés. Ils seront corrigés — ou démentis — au
-fur et à mesure.
+## Ce qui reste après le portage
 
-- ~~**Le GLSL est écrit à l'envers du HLSL, et c'est voulu.**~~ **Payé à l'étape 2,
-  et supprimé plutôt que documenté** — voir plus bas. `gl_FragCoord` compte depuis le
-  bas, mais `origin_upper_left` le fait compter depuis le haut comme les deux autres,
-  et les trois nuanceurs redeviennent la même formule.
-- **Wayland et la mise à l'échelle fractionnaire.** SDL3 choisit son dos tout seul,
-  mais un facteur de 1,25 ou 1,5 sous Wayland est le genre de détail qui ne se voit
-  qu'à l'usage, et qui décolle une zone sensible de la zone dessinée.
-- **`applicationSupportDirectory` sous Linux.** `Storage.root` s'appuie dessus ;
-  Foundation le fait tomber sur `~/.local/share`, ce qui est le bon endroit XDG mais
-  n'a jamais été vérifié. À mesurer à l'étape 7, pas à supposer.
+Les neuf étapes sont faites. Ce qui suit n'est plus du portage — ce sont des
+chantiers que le portage a découverts, et qui valent pour les trois plateformes.
+
+**Le rééchantillonnage dans le lecteur.** Quand le périphérique refuse la fréquence
+du fichier, on le note et l'on joue tout de même, donc à la mauvaise hauteur. Voir
+plus haut : c'est ce que la sortie audio de la machine d'essai a mis au jour. Sa
+place est dans le noyau, mesuré par un harnais, et non bricolé dans une couche de
+plateforme.
+
+**Le menu du clic droit sous Linux.** Il n'y en a pas ; tout ce qu'il offrirait
+s'atteint autrement. Le jour où il en faudra un, il se dessinera au `Pinceau` et sera
+donc partagé plutôt que porté.
+
+**Le sélecteur de fichiers, éprouvé par une vraie main.** Le portail est là, le
+chemin compile, mais personne n'a cliqué : aucune souris ne se pilote sous Wayland
+depuis un terminal distant. C'est le seul morceau du portage qui ne soit pas mesuré.
+
+**L'AppImage ARM64.** GitHub n'offre pas de coureur Linux ARM gratuit ; il se
+fabrique à la main, comme le paquet macOS.
+
+## Les pièges qui étaient annoncés, et ce qu'ils ont coûté
+
+Ils avaient été écrits avant de commencer. Voici lesquels ont mordu.
+
+- ~~**Le GLSL est écrit à l'envers du HLSL, et c'est voulu.**~~ **Payé à l'étape 2, et
+  supprimé plutôt que documenté.** `gl_FragCoord` compte depuis le bas, mais
+  `origin_upper_left` le fait compter depuis le haut comme les deux autres, et les
+  trois nuanceurs redeviennent la même formule.
+- ~~**`applicationSupportDirectory` sous Linux.**~~ **Démenti à l'étape 7.**
+  Foundation le fait tomber sur `~/.local/share/Spectre`, qui est le bon endroit XDG.
+  Rien à écrire, et `SessionCheck` le mesure.
+- ~~**Les cinq langues n'ont pas encore été vues ailleurs que sur le Mac.**~~ **Payé
+  à l'étape 7** : le panneau a été photographié en allemand, la langue qui écrit le
+  plus long. Rien ne déborde.
+- **Wayland et la mise à l'échelle fractionnaire.** Toujours ouvert. SDL3 choisit son
+  dos tout seul, mais un facteur de 1,25 ou 1,5 est le genre de détail qui ne se voit
+  qu'à l'usage, et qui décolle une zone sensible de la zone dessinée. L'écran de la
+  machine d'essai est à 1.
 - **Le cache des pistes séparées**, comme partout : tout harnais pose son propre
-  `SPECTRE_RANGEMENT`, sans quoi séparer un morceau de synthèse efface les pistes
-  des vrais morceaux et des minutes de calcul avec elles.
-- **Les cinq langues n'ont pas encore été vues ailleurs que sur le Mac.** Le
-  catalogue est portable et `LangueCheck` tourne partout, mais l'allemand — la
-  langue qui écrit le plus long — n'a été éprouvé que par la compilation, sous
-  Windows comme ici.
+  `SPECTRE_RANGEMENT`, sans quoi séparer un morceau de synthèse efface les pistes des
+  vrais morceaux et des minutes de calcul avec elles.
+
+Et deux qui n'avaient pas été prévus, qui ont coûté le plus cher, et qui se
+ressemblent : **la cadence d'ALSA se demande en microsecondes** (étape 5), et **la
+barre de titre de Wayland demande un greffon** (étape 9). Dans les deux cas le
+système répond « d'accord » à une demande qu'il ne tiendra pas, et le dit d'une ligne
+qu'on lit comme un détail.

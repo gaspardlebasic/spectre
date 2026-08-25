@@ -35,6 +35,7 @@ sudo apt-get install -y --no-install-recommends \
     libsndfile1-dev libmpg123-dev \
     libgl1-mesa-dev libglu1-mesa-dev libegl1-mesa-dev mesa-utils libepoxy-dev \
     libwayland-dev wayland-protocols libxkbcommon-dev libdecor-0-dev \
+    libdecor-0-plugin-1-cairo \
     libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxfixes-dev \
     libxss-dev libxtst-dev libibus-1.0-dev libsamplerate0-dev \
     libaudio-dev libjack-dev libsndio-dev libgles2-mesa-dev \
@@ -42,6 +43,12 @@ sudo apt-get install -y --no-install-recommends \
     fonts-dejavu-core fonts-noto-core
 
 # Ce que chacun sert, pour qui relit :
+#   libdecor-0-plugin  — la barre de titre sous Wayland. Le paquet `-dev` ne suffit
+#                        pas : c'est le **greffon** qui dessine, et sans lui SDL dit
+#                        « falling back on no decorations » et la fenêtre s'ouvre
+#                        sans barre de titre, sans croix, sans rien pour la
+#                        déplacer. Ce n'est pas une dépendance de compilation, c'est
+#                        une dépendance d'exécution — d'où l'oubli facile.
 #   cairo, pango       — le dessin de l'interface et la composition du texte
 #   asound             — la sortie audio ; PipeWire et PulseAudio l'exposent aussi
 #   sndfile, mpg123    — le décodage, et l'écriture FLAC des pistes séparées

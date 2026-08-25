@@ -21,6 +21,11 @@
 #   --sans-fenetre  saute l'étape qui ouvre vraiment l'application. À utiliser là
 #                   où il n'y a pas de session graphique — une intégration
 #                   continue, une connexion à distance.
+#
+# Il tourne sur macOS et sous Linux. Tout ce qui précède la dernière section est
+# identique — c'est le noyau, la ligne de commande, le morceau témoin — et seule
+# l'épreuve de l'application diffère, parce qu'ouvrir une fenêtre et la
+# photographier ne se demandent pas de la même façon aux deux systèmes.
 set -uo pipefail
 cd "$(dirname "$0")"
 
@@ -34,6 +39,7 @@ for option in "$@"; do
   esac
 done
 
+SYSTEME="$(uname)"
 OUT="build/essai"
 mkdir -p "$OUT"
 ECHECS=0
@@ -63,7 +69,13 @@ titre() { printf '\n\033[1m=== %s ===\033[0m\n' "$1"; }
 # L'application ouverte doit être refermée, quoi qu'il arrive — sans quoi une
 # épreuve qui échoue laisse une fenêtre derrière elle, et la suivante s'ouvre sur
 # un état qui n'est pas le sien.
-fermer() { osascript -e 'tell application "Spectre" to quit' >/dev/null 2>&1; }
+fermer() {
+  if [ "$SYSTEME" = "Darwin" ]; then
+    osascript -e 'tell application "Spectre" to quit' >/dev/null 2>&1
+  else
+    pkill -x Spectre >/dev/null 2>&1
+  fi
+}
 trap fermer EXIT
 
 titre "Compilation"
@@ -114,6 +126,8 @@ if "$BIN/SpectreCLI" "$OUT/temoin.wav" "$OUT/spectrogramme.ppm" --taille 1200x70
   if command -v sips >/dev/null && sips -s format png "$OUT/spectrogramme.ppm" \
        --out "$OUT/spectrogramme.png" >/dev/null 2>&1; then
     gris "image à regarder : $OUT/spectrogramme.png"
+  else
+    gris "image à regarder : $OUT/spectrogramme.ppm"
   fi
 else
   rouge "le spectrogramme ne se dessine pas"
@@ -121,9 +135,14 @@ else
 fi
 
 titre "Relevé d'accords"
+# Par la sous-commande `--accords` de l'application, qui n'existe que sur le Mac :
+# les deux autres portages n'ont pas de ligne de commande, et le même relevé y est
+# éprouvé par `HarmonyCheck`, que `check.sh` passe partout.
+if [ "$SYSTEME" != "Darwin" ]; then
+  gris "sauté — la sous-commande d'accords n'existe que sur le Mac ; voir HarmonyCheck"
 # `--mixage` : sans lui, le relevé lirait les pistes séparées si elles sont en
 # cache, et l'épreuve ne dirait pas la même chose selon ce qui s'est passé avant.
-if "$BIN/Spectre" --accords "$OUT/temoin.wav" --mixage > "$OUT/accords.txt" 2>&1; then
+elif "$BIN/Spectre" --accords "$OUT/temoin.wav" --mixage > "$OUT/accords.txt" 2>&1; then
   gris "$(head -1 "$OUT/accords.txt")"
   # La grille jouée est Do → La- → Fa → Sol, deux fois. On ne compare pas les
   # instants : le premier temps de la grille métrique peut tomber ailleurs qu'au
@@ -162,7 +181,7 @@ fi
 if [ "$FENETRE" -eq 0 ]; then
   titre "L'application"
   gris "sautée (--sans-fenetre)"
-else
+elif [ "$SYSTEME" = "Darwin" ]; then
   titre "L'application"
   if ./build.sh > "$OUT/bundle.log" 2>&1; then
     vert "le paquet .app s'assemble"
@@ -282,6 +301,127 @@ else
       echo "$RAPPORTS" | sed 's/^/      /'
     else
       vert "aucun rapport de plantage"
+    fi
+  fi
+
+else
+  titre "L'application"
+  # ── L'épreuve du paquet ────────────────────────────────────────────────────
+  #
+  # C'est **l'AppImage** qu'on éprouve, et non l'exécutable de `.build` : ce qui est
+  # distribué est ce qui doit marcher. Un exécutable qui trouve SDL3 dans
+  # `/usr/local/lib` parce que la machine l'y a compilé ne prouve rien de ce que
+  # reçoit quelqu'un qui télécharge le paquet.
+  if ./paquet.sh > "$OUT/paquet.log" 2>&1; then
+    vert "l'AppImage s'assemble — $(du -h build/Spectre-*.AppImage | cut -f1)"
+  else
+    rouge "paquet.sh échoue — voir $OUT/paquet.log"
+    tail -10 "$OUT/paquet.log"
+  fi
+
+  PAQUET="$(ls build/Spectre-*.AppImage 2>/dev/null | head -1)"
+  if [ -z "$PAQUET" ]; then
+    rouge "pas d'AppImage à éprouver"
+  elif [ -z "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]; then
+    gris "pas de session graphique — la fenêtre n'est pas éprouvée"
+  else
+    DEPUIS="$(date +%s)"
+    # ── L'épreuve du dossier propre ──────────────────────────────────────────
+    #
+    # Le pendant exact de celle de `build.ps1` : on cache **Swift et tout ce que
+    # l'atelier a posé sous `/usr/local`**, et l'on relance. Si le paquet s'ouvre
+    # quand même, c'est qu'il porte vraiment ce dont il a besoin. Sans cette
+    # épreuve, un AppImage qui emprunte une bibliothèque de la machine qui l'a
+    # construit passe toutes les vérifications et ne s'ouvre chez personne.
+    #
+    # Elle demande `unshare`, donc les droits d'administrateur — qu'on ne peut pas
+    # supposer. Absents, on éprouve le paquet tel quel, en disant que la moitié qui
+    # compte n'a pas été faite.
+    #
+    # Les valeurs sont **écrites dans le script** plutôt que passées par
+    # l'environnement : `sudo` remet l'environnement à zéro, et une variable
+    # exportée ici arriverait vide de l'autre côté. `$SUDO_UID` et `$SUDO_GID`, eux,
+    # sont échappés — c'est `sudo` qui les pose, et ils doivent survivre à
+    # l'écriture.
+    PROPRE="$OUT/propre.sh"
+    cat > "$PROPRE" <<ENCLOS
+#!/bin/bash
+mkdir -p /tmp/spectre-vide
+for chemin in /opt/swift /usr/local/lib /usr/local/include; do
+  [ -d "\$chemin" ] && mount --bind /tmp/spectre-vide "\$chemin"
+done
+setpriv --reuid="\$SUDO_UID" --regid="\$SUDO_GID" --init-groups \\
+  env HOME="$HOME" PATH=/usr/bin:/bin \\
+      XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-}" WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-}" \\
+      DISPLAY="${DISPLAY:-}" SPECTRE_LANGUE="$SPECTRE_LANGUE" \\
+      SPECTRE_RANGEMENT="$SPECTRE_RANGEMENT" \\
+      "$PWD/$PAQUET" "$PWD/$OUT/temoin.wav" --photo "$PWD/$OUT/fenetre.ppm"
+ENCLOS
+    chmod +x "$PROPRE"
+    rm -f "$OUT/fenetre.ppm"
+
+    if sudo -n true 2>/dev/null && command -v unshare >/dev/null; then
+      sudo -n unshare -m "$PWD/$PROPRE" > "$OUT/fenetre.log" 2>&1 || true
+      PROPREMENT=1
+    else
+      env SPECTRE_RANGEMENT="$SPECTRE_RANGEMENT" SPECTRE_LANGUE="$SPECTRE_LANGUE" \
+        "$PWD/$PAQUET" "$PWD/$OUT/temoin.wav" --photo "$PWD/$OUT/fenetre.ppm" \
+        > "$OUT/fenetre.log" 2>&1 || true
+      PROPREMENT=0
+    fi
+
+    if [ -s "$OUT/fenetre.ppm" ]; then
+      if [ "$PROPREMENT" -eq 1 ]; then
+        vert "le paquet s'ouvre et rend une image, Swift et /usr/local cachés"
+      else
+        vert "le paquet s'ouvre et rend une image"
+        gris "sans l'épreuve du dossier propre — il y faut sudo et unshare"
+      fi
+      CARTE="$(grep -m1 'Carte' "$OUT/fenetre.log" | sed 's/^Spectre : //')"
+      # La carte du système, et non un rendu logiciel de secours : c'est ce que
+      # l'exclusion de libGL du paquet sert à obtenir, et le seul moyen de savoir
+      # qu'elle a marché.
+      if [ -z "$CARTE" ]; then
+        gris "le paquet n'a pas dit quelle carte il a trouvée"
+      elif grep -qi 'llvmpipe\|softpipe\|swrast' <<< "$CARTE"; then
+        rouge "il est tombé sur un rendu logiciel — $CARTE"
+      else
+        vert "et il voit la carte du système — $CARTE"
+      fi
+      gris "image à regarder : $OUT/fenetre.ppm"
+    else
+      rouge "le paquet n'a pas rendu d'image — voir $OUT/fenetre.log"
+      tail -8 "$OUT/fenetre.log"
+    fi
+
+    # Les gestes et la fluidité, par le paquet lui-même : le relevé traverse la
+    # traduction des évènements, le modèle et le nuanceur, ce qu'aucun harnais hors
+    # écran ne fait.
+    if env SPECTRE_RANGEMENT="$SPECTRE_RANGEMENT" "$PWD/$PAQUET" \
+         "$PWD/$OUT/temoin.wav" --fluidite 3 > "$OUT/fluidite.log" 2>&1; then
+      IMAGES="$(grep -oE '[0-9]+ images mesurées' "$OUT/fluidite.log" | head -1)"
+      if [ -n "$IMAGES" ]; then
+        vert "le relevé de fluidité a bien eu lieu — $IMAGES"
+        gris "$(grep -m1 'manqué leur tour' "$OUT/fluidite.log" | sed 's/^ *//')"
+      else
+        rouge "le relevé n'a rien mesuré — voir $OUT/fluidite.log"
+      fi
+    else
+      rouge "le relevé de fluidité échoue — voir $OUT/fluidite.log"
+    fi
+
+    # Un fichier de cœur écrit pendant l'épreuve dit ce qu'aucune de ces
+    # vérifications ne dirait : que l'application est tombée en silence, dans un fil
+    # que personne ne regardait.
+    MOTIF="$(cat /proc/sys/kernel/core_pattern 2>/dev/null)"
+    if [[ "$MOTIF" == /* ]]; then
+      COEURS="$(find "$(dirname "$MOTIF")" -name '*Spectre*' -newermt "@$DEPUIS" 2>/dev/null)"
+      if [ -n "$COEURS" ]; then
+        rouge "fichier de cœur écrit pendant l'épreuve :"
+        echo "$COEURS" | sed 's/^/      /'
+      else
+        vert "aucun plantage"
+      fi
     fi
   fi
 fi
