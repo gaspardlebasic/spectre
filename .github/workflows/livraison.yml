@@ -1,8 +1,9 @@
 # Ce que la livraison fabrique, et où elle le pose.
 #
-# Trois chaînes d'un coup : les installeurs Windows (x64 et ARM64), l'archive
-# macOS et l'AppImage Linux, et une release qui reçoit ce qu'elles produisent. On
-# pousse une étiquette, et l'affaire est faite :
+# Cinq coureurs d'un coup : les installeurs Windows (x64 et ARM64), l'archive
+# macOS, et les paquets Linux (x86_64 et aarch64, en AppImage et en `.deb`) — puis
+# une release qui reçoit ce qu'ils produisent. On pousse une étiquette, et l'affaire
+# est faite :
 #
 #     git tag v0.4 && git push origin v0.4
 #
@@ -249,22 +250,36 @@ jobs:
 
   linux:
     name: Linux ${{ matrix.arch }}
-    # Un seul coureur, et c'est une limite qu'il faut dire — mais plus celle qu'on
-    # croyait. Ce commentaire a longtemps porté « GitHub n'offre pas de coureur
-    # Linux ARM64 gratuit », et **c'est faux depuis janvier 2025** :
-    # `ubuntu-22.04-arm` et `ubuntu-24.04-arm` sont gratuits pour les dépôts
-    # publics, et généralement disponibles depuis août 2025. C'est la même annonce
-    # que `windows-11-arm`, dont ce fichier se sert deux travaux plus haut.
+    # Deux coureurs, pour la même raison que sous Windows : un exécutable Linux est
+    # d'une architecture et d'une seule, et chacun éprouve ce qu'il vient de produire.
     #
-    # L'AppImage livré reste x86_64 seulement, et c'est maintenant un travail à
-    # faire plutôt qu'une impossibilité — voir `docs/PAQUETS.md`. En attendant,
-    # celui d'ARM se fabrique par `./paquet.sh` sur une machine ARM, et se joint à
-    # la release comme le paquet macOS.
+    # Ce travail n'en a longtemps eu qu'un, et le commentaire qui l'expliquait portait
+    # « GitHub n'offre pas de coureur Linux ARM64 gratuit ». **C'était faux depuis
+    # janvier 2025** : `ubuntu-22.04-arm` et `ubuntu-24.04-arm` sont gratuits pour les
+    # dépôts publics, et généralement disponibles depuis août 2025 — la même annonce
+    # que `windows-11-arm`, dont ce fichier se sert deux travaux plus haut. Une
+    # impossibilité affirmée trois fois dans le dépôt était une simple ligne à écrire,
+    # et personne n'était allé regarder.
+    #
+    # Ce n'est pas une commodité : la machine d'essai Linux du projet **est** en
+    # aarch64, si bien que la seule machine où l'on regardait vraiment le paquet Linux
+    # était celle qui ne pouvait pas l'ouvrir. Voir `docs/PAQUETS.md`.
     strategy:
+      # Comme sous Windows : si l'ARM64 casse, on veut quand même savoir si le x86_64
+      # passe. Deux échecs disent où est la faute ; un seul ne dit rien.
+      fail-fast: false
       matrix:
         include:
           - arch: x86_64
             runner: ubuntu-latest
+            # `onnx.sh` va chercher les archives d'ONNX Runtime, qui disent « x64 » et
+            # « arm64 » là où AppImage dit « x86_64 » et « aarch64 ». D'où cette
+            # colonne, plutôt qu'une traduction cachée dans une expression — même
+            # choix que la colonne `chaine` du travail Windows.
+            tranche: x64
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
+            tranche: arm64
     runs-on: ${{ matrix.runner }}
     # `-jammy` : Ubuntu 22.04, et c'est le choix qui décide de tout. Un AppImage
     # construit contre une glibc récente ne s'ouvre pas sur une distribution plus
@@ -307,7 +322,7 @@ jobs:
       # l'édition de liens. Ici on la veut, donc on l'installe — le jumeau exact de
       # ce que fait la chaîne Windows deux travaux plus haut.
       - name: ONNX Runtime
-        run: ./onnx.sh --arch x64
+        run: ./onnx.sh --arch ${{ matrix.tranche }}
 
       # Cherchés, pas exigés — même règle que sous Windows : un coureur ne peut pas
       # fabriquer 166 Mo de réseau entraîné, et l'application sait se passer de lui.
@@ -331,6 +346,15 @@ jobs:
         run: |
           swift build -c release
           BIN="$(swift build -c release --show-bin-path)"
+          # Les poids, à côté des harnais. `Reseau.fichier` les cherche d'abord auprès
+          # de l'exécutable, et sans cette ligne `PistesCheck` imprime « réseau absent,
+          # séparation sautée » puis passe au vert : le seul contrôle qui fasse tourner
+          # Demucs pour de vrai est **sauté depuis toujours** sur ce coureur, alors même
+          # que l'étape précédente vient de télécharger les 166 Mo. Un contrôle qui se
+          # saute sans le faire remarquer ne vaut pas mieux que pas de contrôle — et
+          # c'est ce qui rendait invérifiable la seule question que pose l'arrivée du
+          # coureur ARM64 : est-ce que la séparation marche là aussi ?
+          cp -f Resources/htdemucs.onnx "$BIN/" 2>/dev/null || true
           for harnais in LangueCheck JournalCheck DSPCheck WAVCheck SessionCheck FilterCheck \
                          ChainCheck GaplessCheck AnalysisCheck PercussionCheck \
                          HarmonyCheck GestesCheck DecodeCheck PistesCheck; do
@@ -338,18 +362,24 @@ jobs:
             "$BIN/$harnais"
           done
 
-      - name: L'AppImage
+      # L'AppImage **et** le paquet Debian, assemblés depuis le même AppDir : voir la
+      # note en tête de `paquet.sh`. `dpkg-deb` est là parce que `build-essential`,
+      # installé plus haut, tire `dpkg-dev` — le second paquet ne coûte donc rien de
+      # plus au coureur que les quelques secondes de sa compression.
+      - name: Les paquets
         env:
           SPECTRE_RANGEMENT: ${{ runner.temp }}/spectre
         run: ./paquet.sh --version "${GITHUB_REF_NAME#v}"
 
       - name: Ce qui a été produit
-        run: ls -lh build/Spectre-*.AppImage
+        run: ls -lh build/Spectre-*.AppImage build/Spectre-*.deb
 
       - uses: actions/upload-artifact@v4
         with:
           name: spectre-linux-${{ matrix.arch }}
-          path: build/Spectre-*.AppImage
+          path: |
+            build/Spectre-*.AppImage
+            build/Spectre-*.deb
           if-no-files-found: error
 
   macos:
@@ -470,27 +500,39 @@ jobs:
 
           ## Linux
 
+          Sur Ubuntu et Debian, prendre le \`.deb\` : c'est le seul des deux qui
+          s'installe vraiment d'un double-clic, qui met Spectre au menu, et qui fait
+          qu'un double-clic sur un fichier audio ouvre Spectre.
+
           | fichier | pour |
           |---|---|
-          | \`Spectre-x86_64.AppImage\` | PC Intel et AMD |
+          | \`Spectre-amd64.deb\` | Ubuntu et Debian, PC Intel et AMD |
+          | \`Spectre-arm64.deb\` | Ubuntu et Debian, machines ARM |
+          | \`Spectre-x86_64.AppImage\` | toutes les autres distributions, Intel et AMD |
+          | \`Spectre-aarch64.AppImage\` | toutes les autres distributions, ARM |
 
-          Un AppImage ne s'installe pas : \`chmod +x Spectre-x86_64.AppImage\` puis on le
-          lance. Il porte tout ce dont il a besoin — SDL3, Cairo, Pango, la
-          bibliothèque standard de Swift — et prend du système ce qui doit en venir :
-          les pilotes graphiques et le son.
+          \`\`\`
+          sudo apt install ./Spectre-amd64.deb
+          \`\`\`
+
+          L'AppImage, lui, ne s'installe pas : \`chmod +x Spectre-x86_64.AppImage\` puis
+          on le lance.
 
           **Ce \`chmod\` n'est pas facultatif, et l'oublier ne dit rien.** Tout
           navigateur retire le bit d'exécution au téléchargement. Un double-clic
           proposera alors d'ouvrir le fichier avec « Disk Image Mounter », ou ne fera
           rien du tout — un AppImage est une image disque tant qu'il n'est pas
-          exécutable, et le bureau ne voit que l'image.
+          exécutable, et le bureau ne voit que l'image. C'est la raison d'être du
+          \`.deb\`, qui n'a pas ce défaut.
 
-          Il faut une carte qui sache OpenGL 3.3, et Wayland ou X11. Le fichier
-          \`.desktop\` embarqué met Spectre au menu et dans le « Ouvrir avec » des
-          fichiers audio, si l'on utilise \`AppImageLauncher\` ou \`appimaged\`.
+          Les deux portent exactement la même application, assemblée une seule fois :
+          SDL3, Cairo, Pango, la bibliothèque standard de Swift, et ce qui doit venir
+          du système en vient — les pilotes graphiques et le son. Il faut une carte
+          qui sache OpenGL 3.3, et Wayland ou X11.
 
-          **Pas encore d'AppImage ARM64** dans cette livraison. Sur un Raspberry Pi
-          ou une machine ARM, \`./paquet.sh\` le fabrique en quelques minutes.
+          Le fichier \`.desktop\` embarqué dans l'AppImage met Spectre au menu et dans
+          le « Ouvrir avec » des fichiers audio, mais seulement si l'on utilise
+          \`AppImageLauncher\` ou \`appimaged\` ; le \`.deb\` le fait tout seul.
 
           La séparation des pistes est dans cette livraison : les poids de Demucs v4
           y sont embarqués. **Ils ne sont pas sous GPL et ne sont pas licenciés par

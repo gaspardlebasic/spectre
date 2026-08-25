@@ -115,13 +115,20 @@ public enum Journal {
     /// ─────────────────────────────────────────────────────────────────────────
     private static func ecrire(_ ligne: String, surLErreur: Bool) {
         let octets = Array((ligne + "\n").utf8)
-        let flux = surLErreur ? stderr : stdout
-        _ = fwrite(octets, 1, octets.count, flux)
-        // Vidé à chaque ligne. `FileHandle` écrivait sans tampon, et les épreuves
-        // lisent cette sortie-là au fil de l'eau : la sortie ordinaire, elle, est
-        // tamponnée, et sans ce vidage un relevé n'arriverait qu'à la fermeture —
-        // ou jamais, si l'application tombe avant.
-        fflush(flux)
+        // Optionnel, et il faut l'écrire ainsi : la Glibc déclare `stderr` et `stdout`
+        // comme pouvant être nuls, là où Darwin les donne pour acquis. Sans
+        // l'annotation, le même fichier compile sur le Mac et refuse de compiler sous
+        // Linux — ce qui est passé une fois, faute d'avoir construit les trois
+        // systèmes avant de commettre.
+        let flux: UnsafeMutablePointer<FILE>? = surLErreur ? stderr : stdout
+        if let flux {
+            _ = fwrite(octets, 1, octets.count, flux)
+            // Vidé à chaque ligne. `FileHandle` écrivait sans tampon, et les épreuves
+            // lisent cette sortie-là au fil de l'eau : la sortie ordinaire, elle, est
+            // tamponnée, et sans ce vidage un relevé n'arriverait qu'à la fermeture —
+            // ou jamais, si l'application tombe avant.
+            fflush(flux)
+        }
         // Le double dans le fichier n'a lieu d'être que si la sortie d'erreur ne
         // s'y déverse pas déjà : sinon chaque ligne y figurerait deux fois.
         if !detourne { ecrireDansLeFichier(ligne + "\n") }

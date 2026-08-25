@@ -88,13 +88,27 @@ côté : le dossier se suffit à lui-même, et `Spectre.exe` s'y lance tel quel.
 
 ### Sur Linux
 
-Un AppImage, dans les [releases](../../releases) :
+Deux paquets, dans les [releases](../../releases). **Sur Ubuntu et Debian, prendre le
+`.deb`** : c'est le seul des deux qui s'installe d'un double-clic, qui met Spectre au
+menu, et qui fait qu'un double-clic sur un morceau ouvre Spectre.
 
 | à télécharger | pour |
 |---|---|
-| [`Spectre-x86_64.AppImage`](../../releases/latest/download/Spectre-x86_64.AppImage) | les PC Intel et AMD |
+| [`Spectre-amd64.deb`](../../releases/latest/download/Spectre-amd64.deb) | Ubuntu et Debian, PC Intel et AMD |
+| [`Spectre-arm64.deb`](../../releases/latest/download/Spectre-arm64.deb) | Ubuntu et Debian, machines ARM |
+| [`Spectre-x86_64.AppImage`](../../releases/latest/download/Spectre-x86_64.AppImage) | les autres distributions, Intel et AMD |
+| [`Spectre-aarch64.AppImage`](../../releases/latest/download/Spectre-aarch64.AppImage) | les autres distributions, ARM |
 
-Il ne s'installe pas : on le rend exécutable et on le lance.
+```bash
+sudo apt install ./Spectre-amd64.deb
+spectre ~/Musique/morceau.mp3
+```
+
+Il pose l'application dans `/opt/spectre`, met `spectre` dans le `PATH`, et inscrit
+au bureau ce qu'un dossier ne peut pas déclarer lui-même : l'entrée de menu, l'icône,
+et les types de fichiers que Spectre sait ouvrir. La désinstallation ne laisse rien.
+
+L'AppImage, lui, ne s'installe pas : on le rend exécutable et on le lance.
 
 ```bash
 chmod +x Spectre-x86_64.AppImage
@@ -104,24 +118,25 @@ chmod +x Spectre-x86_64.AppImage
 **Ce `chmod` n'est pas facultatif, et l'oublier ne dit rien.** Tout navigateur retire
 le bit d'exécution au téléchargement. Un double-clic proposera alors « Disk Image
 Mounter », ou ne fera rien : un AppImage est une image disque tant qu'il n'est pas
-exécutable, et le bureau ne voit que l'image.
+exécutable, et le bureau ne voit que l'image. C'est la raison d'être du `.deb`, qui
+n'a pas ce défaut.
 
-Rien à installer à côté : la bibliothèque standard de Swift, SDL3, Cairo, Pango,
+Les deux portent exactement la même application, assemblée une seule fois. Rien à
+installer à côté : la bibliothèque standard de Swift, SDL3, Cairo, Pango,
 libsndfile et libmpg123 voyagent avec l'application. Ce qui parle au matériel —
 pilotes graphiques, ALSA — vient du système, et c'est délibéré : un paquet qui
 embarquerait sa propre `libGL` ne verrait pas la carte de la machine sur laquelle il
 tourne. Il faut donc **OpenGL 3.3**, et Wayland ou X11.
 
-Le fichier `.desktop` embarqué met Spectre au menu et dans le « Ouvrir avec » des
-fichiers audio, pour qui utilise `AppImageLauncher` ou `appimaged`.
+Le fichier `.desktop` embarqué dans l'AppImage met Spectre au menu et dans le
+« Ouvrir avec » des fichiers audio, mais seulement pour qui utilise
+`AppImageLauncher` ou `appimaged`. Le `.deb` le fait tout seul.
 
 Les gestes sont ceux du tableau plus bas, Ctrl tenant la place de ⌘. Le pincement à
 deux doigts demande un vrai pavé tactile : il arrive du protocole de gestes de
 Wayland, qu'une machine virtuelle ne fournit pas — dedans, le zoom temporel se fait à
 Ctrl + défilement à deux doigts.
 
-Pas encore d'AppImage ARM64 dans les livraisons. Sur une machine ARM, `./paquet.sh`
-le fabrique en quelques minutes.
 
 ### La séparation des pistes
 
@@ -193,6 +208,11 @@ livrant que la 2. Ensuite :
 ```bash
 ./paquet.sh
 ```
+
+Il assemble un `AppDir` une fois et l'empaquette deux fois : en AppImage, qui
+s'ouvre partout sans rien installer, et en `.deb`, qui s'installe pour de bon sur
+Ubuntu et Debian. Le corps de l'application est **le même dans les deux** — un
+second paquet qui divergerait du premier serait un second logiciel à éprouver.
 
 Il compile, suit les dépendances au `ldd`, embarque ce qui doit l'être, écarte ce
 qui doit venir du système, et assemble l'AppImage. `./essai.sh` l'éprouve ensuite
@@ -767,7 +787,9 @@ Il télécharge les paquets de la release, déplie l'archive macOS ailleurs, lè
 quarantaine comme les notes de version le disent, et ouvre l'application. Il envoie
 l'AppImage à la machine Linux — **sans le bit d'exécution**, comme un navigateur le
 livre — vérifie qu'il refuse alors de s'ouvrir, puis le rend exécutable et le
-photographie. Sous Windows il pose l'installeur sur le bureau de la machine d'essai
+photographie ; il y installe ensuite le `.deb` et regarde ce que lui seul promet :
+que `spectre` soit dans le `PATH`, et que le bureau propose Spectre pour un fichier
+audio. Sous Windows il pose l'installeur sur le bureau de la machine d'essai
 et s'arrête là : un accès distant tombe dans la session 0, qui n'a pas de bureau, et
 l'application s'y arrête bien avant ce qu'on veut éprouver. Ce dernier clic est
 donné par quelqu'un, et le prétendre automatique serait refaire l'erreur qu'on

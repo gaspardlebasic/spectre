@@ -248,6 +248,56 @@ dépôt affirmait le contraire à trois endroits ; c'est corrigé.
 FUSE. Le runtime récent d'`appimagetool` s'en passe, mais cela se vérifie plutôt que
 cela ne se suppose.
 
+#### Ce que le chantier a rendu, le 25 août 2026
+
+**Fait.** La livraison produit quatre paquets Linux — AppImage et `.deb`, en x86_64 et
+en aarch64. La matrice du travail Linux a gagné `ubuntu-22.04-arm` ; c'était une ligne.
+
+Le `.deb` sort du **même `AppDir`** que l'AppImage, assemblé une fois et empaqueté
+deux fois : le corps de l'application est octet pour octet le même dans les deux, et
+il n'y a donc jamais deux logiciels à éprouver. Il pose `/opt/spectre`, met `spectre`
+dans le `PATH`, et inscrit au bureau ce qu'un dossier ne peut pas déclarer lui-même.
+Ce qu'il exige du système n'est pas écrit à la main mais **calculé** : c'est la liste
+des bibliothèques que l'AppImage a refusé d'embarquer, retrouvées par `dpkg -S`. Les
+deux listes ne peuvent donc pas s'écarter l'une de l'autre.
+
+FUSE ne pose pas de problème : l'AppImage aarch64 se monte tout seul sur la 24.04, et
+il voit la vraie carte — « virgl (Apple M2 Max) », pas `llvmpipe`.
+
+##### Et trois choses que ce chantier a trouvées sans les chercher
+
+**L'AppImage partait sans Cairo ni le décodeur mp3.** La liste d'exclusion de
+`paquet.sh` s'écrivait sans ancrage à droite : « libc » attrapait `libcairo`, « libm »
+attrapait `libmpg123`, `libmp3lame`, `libmd` et `libmount`. Le paquet embarquait donc
+`libpangocairo` tout en laissant `libcairo` au système. Cela ne s'est jamais vu parce
+que toute machine de bureau les a déjà — et parce que l'épreuve du dossier propre ne
+cache que `/opt/swift` et `/usr/local`, jamais les bibliothèques de la distribution.
+C'est le paquet Debian qui l'a dit, en énumérant ce qu'il devait exiger : une liste de
+dépendances où figurent `libcairo2` et `libmpg123-0` n'est pas la liste d'un paquet
+qui se suffit à lui-même.
+
+**Le correctif du chantier 2 ne compilait pas sous Linux.** La Glibc déclare `stderr`
+et `stdout` comme pouvant être nuls, là où Darwin les donne pour acquis ; le `fwrite`
+qui remplaçait `FileHandle` était donc refusé par le compilateur. La faute est la même
+que celle du chantier 2, en plus petit : avoir jugé une correction sur la machine où
+on l'a écrite. Elle a été trouvée en construisant sur la machine d'essai Linux avant
+de commettre — c'est-à-dire à l'endroit exact où ce chantier dit qu'il faut regarder.
+
+**Le seul contrôle qui fasse tourner Demucs pour de vrai était sauté sur Linux, depuis
+toujours.** `PistesCheck` cherche les poids auprès de son exécutable ; le coureur les
+télécharge dans `Resources/`. Il imprimait donc « réseau absent, séparation sautée »
+puis passait au vert. Une ligne de copie, et la séparation est enfin éprouvée sur les
+deux architectures — ce qui est la seule question que pose l'arrivée du coureur ARM64.
+
+##### Une fausse alerte, notée pour qu'on ne la recherche pas deux fois
+
+Lancée avec `--photo`, l'application laisse parfois dans son journal une ligne rouge
+d'ONNX Runtime — « GetElementType is not implemented », sur un nœud différent à chaque
+fois. Ce n'est pas une panne : `--photo` rend l'image et s'arrête pendant que la
+séparation tourne encore, et le moteur se plaint d'être démonté en plein travail.
+Vérifié en la laissant aller jusqu'au bout, fenêtre ouverte, sur le morceau témoin :
+les quatre pistes sont écrites et le journal ne dit rien.
+
 ### 4. macOS : descendre le plancher à 15, avec un repli sans verre
 
 `Package.swift` pose `platforms: [.macOS("26.0")]`, et la note qui l'accompagne dit
@@ -279,6 +329,6 @@ commencent une fois le chantier 1 en place, puisqu'elles en sont la suite.
 |---|---|---|
 | 1. Le journal sur disque | Rien à l'écran. Mais l'application dit enfin où elle tombe, sur les trois systèmes. | **faite** |
 | 2. Les deux pannes, et la recette | Les paquets livrés s'ouvrent, et une commande le vérifie sur les deux machines virtuelles avant chaque livraison. | **faite** — sauf l'AppImage ARM, qui est l'étape 3 |
-| 3. AppImage ARM64, puis le `.deb` | Linux servi sur les deux architectures, et un paquet qui se double-clique. | à faire |
+| 3. AppImage ARM64, puis le `.deb` | Linux servi sur les deux architectures, et un paquet qui se double-clique. | **faite** |
 | 4. Le plancher macOS à 15 | Les Mac d'avant macOS 26 ouvrent Spectre, sans verre et sans le dire. | à faire |
 | 5. Sentry | Voir [RAPPORTS.md](RAPPORTS.md). | à faire |

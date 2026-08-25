@@ -177,6 +177,10 @@ gras "=== Linux — l'AppImage, sur la machine d'essai ==="
 if ! ssh -o ConnectTimeout=10 -o BatchMode=yes "$MACHINE_LINUX" true 2>/dev/null; then
   gris "$MACHINE_LINUX ne répond pas — sauté"
 else
+  # Le morceau témoin part une bonne fois, avant tout choix de paquet : les deux
+  # épreuves qui suivent en ont besoin, et l'envoyer depuis l'une d'elles laisserait
+  # l'autre sans rien à ouvrir le jour où la première est sautée.
+  scp -q "$TEMOIN" "$MACHINE_LINUX:/tmp/temoin.wav" 2>/dev/null
   TRANCHE="$(ssh "$MACHINE_LINUX" uname -m)"
   APPIMAGE="$(ls "$OUT"/Spectre-*.AppImage 2>/dev/null | grep -- "-$TRANCHE\." | head -1)"
   if [ -z "$APPIMAGE" ]; then
@@ -188,7 +192,7 @@ else
     # que fait tout navigateur au téléchargement, et l'oublier est la première chose
     # qui arrive à qui essaie. On veut éprouver ce que les notes de version disent,
     # `chmod +x` compris.
-    scp -q "$APPIMAGE" "$TEMOIN" "$MACHINE_LINUX:/tmp/" 2>/dev/null
+    scp -q "$APPIMAGE" "$MACHINE_LINUX:/tmp/" 2>/dev/null
     NOM="$(basename "$APPIMAGE")"
     ssh "$MACHINE_LINUX" "chmod -x /tmp/$NOM"
     if ssh "$MACHINE_LINUX" "/tmp/$NOM --version >/dev/null 2>&1"; then
@@ -223,6 +227,66 @@ else
     else
       rouge "l'AppImage téléchargé ne rend pas d'image"
       ssh "$MACHINE_LINUX" "cat /tmp/recette/sortie.log 2>/dev/null" | sed 's/^/        /' | head -20
+    fi
+  fi
+
+  # ── Le paquet Debian ───────────────────────────────────────────────────────
+  #
+  # L'AppImage vient d'être éprouvé sur ce qu'il promet : se lancer sans rien
+  # installer. Le `.deb` promet autre chose, et c'est cela qu'on regarde ici — qu'il
+  # s'installe avec les dépendances que la machine a déjà, et qu'une fois installé le
+  # bureau connaisse Spectre. C'est toute sa raison d'être ; un `.deb` qui s'installe
+  # sans entrer au menu ne vaut pas mieux que l'AppImage.
+  #
+  # `dpkg --print-architecture` et non `uname -m` : le paquet porte le vocabulaire de
+  # dpkg — « arm64 », « amd64 » — là où l'AppImage porte celui du noyau.
+  DEB_ARCH="$(ssh "$MACHINE_LINUX" "dpkg --print-architecture 2>/dev/null" | tr -d '\r')"
+  DEB="$(ls "$OUT"/Spectre-*.deb 2>/dev/null | grep -- "-$DEB_ARCH\.deb" | head -1)"
+  if [ -z "$DEB_ARCH" ]; then
+    gris "la machine d'essai n'est pas une Debian — paquet .deb non éprouvé"
+  elif [ -z "$DEB" ]; then
+    rouge "aucun paquet .deb pour $DEB_ARCH"
+  elif ! ssh "$MACHINE_LINUX" "sudo -n true" 2>/dev/null; then
+    gris "pas de sudo sans mot de passe sur $MACHINE_LINUX — .deb non installé"
+  else
+    scp -q "$DEB" "$MACHINE_LINUX:/tmp/" 2>/dev/null
+    NOMDEB="$(basename "$DEB")"
+    if ssh "$MACHINE_LINUX" "sudo -n apt-get install -y /tmp/$NOMDEB" >/dev/null 2>&1; then
+      vert "le .deb s'installe avec ce que la machine a déjà"
+    else
+      rouge "le .deb ne s'installe pas — dépendances manquantes ?"
+      ssh "$MACHINE_LINUX" "sudo -n apt-get install -y /tmp/$NOMDEB 2>&1 | tail -8" \
+        | sed 's/^/        /'
+    fi
+
+    # `spectre`, tout court : c'est le nom que le paquet met dans le `PATH`, et le
+    # seul que quelqu'un tapera.
+    #
+    # La ligne rouge d'ONNX Runtime que `--photo` laisse parfois dans le journal n'est
+    # pas une panne : l'application rend son image et s'arrête pendant que la
+    # séparation tourne encore, et le moteur se plaint d'être démonté en plein
+    # travail. Vérifié en la laissant aller jusqu'au bout — les quatre pistes sont
+    # écrites, et le journal ne dit rien.
+    ssh "$MACHINE_LINUX" "rm -rf /tmp/recette-deb && mkdir -p /tmp/recette-deb && \
+      XDG_RUNTIME_DIR=/run/user/\$(id -u) WAYLAND_DISPLAY=\${WAYLAND_DISPLAY:-wayland-0} \
+      SPECTRE_RANGEMENT=/tmp/recette-deb \
+      spectre /tmp/temoin.wav --photo /tmp/recette-deb/fenetre.ppm \
+      > /tmp/recette-deb/sortie.log 2>&1; true"
+    if ssh "$MACHINE_LINUX" "[ -s /tmp/recette-deb/fenetre.ppm ]"; then
+      vert "« spectre » s'ouvre depuis le PATH et rend une image"
+    else
+      rouge "« spectre » installé ne rend pas d'image"
+      ssh "$MACHINE_LINUX" "cat /tmp/recette-deb/sortie.log 2>/dev/null" \
+        | sed 's/^/        /' | head -20
+    fi
+
+    # Et la moitié qui n'existe que dans ce paquet : le bureau. Sans cette
+    # inscription, double-cliquer un mp3 ne propose pas Spectre — c'est-à-dire que le
+    # `.deb` n'aurait servi à rien.
+    if ssh "$MACHINE_LINUX" "gio mime audio/mpeg 2>/dev/null | grep -q spectre.desktop"; then
+      vert "le bureau propose Spectre pour un fichier audio"
+    else
+      rouge "le bureau ne connaît pas Spectre — le .deb n'a pas fait son travail"
     fi
   fi
 fi

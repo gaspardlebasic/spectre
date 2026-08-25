@@ -878,11 +878,34 @@ demande un *runtime* installé, que beaucoup de machines n'ont pas et que
 l'utilisateur ne peut pas deviner. Un AppImage ne demande rien : on le télécharge, on
 le rend exécutable, on le double-clique.
 
+**Cette dernière phrase était fausse, et il a fallu qu'on la vérifie chez quelqu'un
+pour l'apprendre.** On ne le double-clique pas : tout navigateur retire le bit
+d'exécution au téléchargement, et le bureau ne voit plus qu'une image disque à
+monter. Le raisonnement ci-dessus reste juste sur ce qu'il comparait — la portabilité
+—, mais il tranchait une question qu'il n'avait pas posée : celle de ce qui se passe
+au moment où quelqu'un reçoit le fichier.
+
+Un `.deb` a donc été ajouté après coup, à côté de l'AppImage et non à sa place : sur
+Ubuntu et Debian il s'installe pour de bon, met `spectre` dans le `PATH` et inscrit
+Spectre au menu et dans le « Ouvrir avec » d'un fichier audio. Il sort du **même
+AppDir**, si bien qu'il n'y a jamais deux applications à éprouver. Voir
+`docs/PAQUETS.md` et l'en-tête de `paquet.sh`.
+
 ### Ce qu'on embarque, et ce qu'on n'embarque surtout pas
 
 On embarque ce que le dépôt et l'atelier apportent : la bibliothèque standard de
-Swift, SDL3, Cairo, Pango, libsndfile, libmpg123, libepoxy — vingt-huit
+Swift, SDL3, Cairo, Pango, libsndfile, libmpg123, libepoxy — une cinquantaine de
 bibliothèques, suivies transitivement par `ldd`.
+
+**Cairo et libmpg123 n'y étaient pas, malgré cette phrase.** La liste d'exclusion
+s'écrivait sans ancrage à droite : « libc » attrapait `libcairo`, « libm » attrapait
+`libmpg123`, `libmp3lame`, `libmd` et `libmount`. Le paquet partait donc sans le
+décodeur mp3 et sans Cairo — tout en embarquant `libpangocairo`, qui allait chercher
+le Cairo du système. Cela ne s'est jamais vu parce que toute machine de bureau les a
+déjà, et l'épreuve du dossier propre ne cache que `/opt/swift` et `/usr/local` : les
+bibliothèques de la distribution, elle, restent visibles. Il aurait fallu une
+installation nue pour l'apprendre — c'est le paquet Debian qui l'a dit, en énumérant
+ce qu'il devait exiger du système.
 
 On **n'embarque pas** ce qui parle au matériel ou au serveur d'affichage : `libGL`,
 `libEGL`, les pilotes Mesa, ALSA, X11, Wayland, la bibliothèque C. Ceux-là doivent
@@ -945,6 +968,9 @@ que l'inverse marche toujours.
 
 Pas d'AppImage ARM64 dans la livraison : `./paquet.sh` le fabrique en quelques
 minutes sur une machine ARM, et il se joint à la release comme le paquet macOS.
+
+**Ce n'est plus vrai** : la matrice du travail Linux porte `ubuntu-22.04-arm` depuis
+le chantier des paquets, et la livraison produit les deux architectures.
 
 **La raison écrite ici était fausse.** Elle disait « GitHub n'offre pas de coureur
 Linux ARM gratuit », et cela ne vaut plus depuis janvier 2025 : `ubuntu-22.04-arm`
@@ -1058,9 +1084,9 @@ bas, qui dit maintenant *pourquoi* il n'en recevra pas.
 chemin compile, mais personne n'a cliqué : aucune souris ne se pilote sous Wayland
 depuis un terminal distant. C'est le seul morceau du portage qui ne soit pas mesuré.
 
-**L'AppImage ARM64.** Il se fabrique à la main, comme le paquet macOS — et rien
-n'oblige à ce qu'il en reste là : le coureur ARM64 de GitHub existe et est gratuit
-pour les dépôts publics. Voir `docs/PAQUETS.md`.
+**L'AppImage ARM64. Fait.** Le coureur `ubuntu-22.04-arm` est dans la matrice, et la
+livraison produit les quatre paquets Linux — AppImage et `.deb`, sur les deux
+architectures. Voir `docs/PAQUETS.md`.
 
 ## Le paquet qui ne savait pas séparer
 
