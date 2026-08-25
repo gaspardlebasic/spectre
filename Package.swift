@@ -168,6 +168,12 @@ var cibles: [Target] = [
                       path: "Tools/DSPCheck"),
     .executableTarget(name: "WAVCheck", dependencies: ["SpectreCore"],
                       path: "Tools/WAVCheck"),
+    // Le journal, éprouvé sur sa propre mort : le harnais se relance en fils, le
+    // fait tomber, et regarde si la dernière phrase est arrivée sur le disque. Il
+    // vaut pour les trois systèmes, et c'est précisément là qu'il sert — le manque
+    // qu'il couvre a coûté une livraison Windows.
+    .executableTarget(name: "JournalCheck", dependencies: ["SpectreCore"],
+                      path: "Tools/JournalCheck"),
     // Les sessions, la liste des morceaux récents et le dossier de rangement. Tout
     // cela vit dans le noyau, donc à l'identique sur les trois plateformes : le
     // harnais les mesure là où elles n'avaient jamais tourné, plutôt que de les
@@ -220,6 +226,7 @@ var produits: [Product] = [
     .executable(name: "LangueCheck", targets: ["LangueCheck"]),
     .executable(name: "DSPCheck", targets: ["DSPCheck"]),
     .executable(name: "WAVCheck", targets: ["WAVCheck"]),
+    .executable(name: "JournalCheck", targets: ["JournalCheck"]),
     .executable(name: "SessionCheck", targets: ["SessionCheck"]),
     .executable(name: "FilterCheck", targets: ["FilterCheck"]),
     .executable(name: "ChainCheck", targets: ["ChainCheck"]),

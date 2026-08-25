@@ -48,6 +48,14 @@ echo "=== Les cinq langues ==="
 "$BIN/LangueCheck"
 
 echo
+echo "=== Le journal ==="
+# Juste après les langues, et pour une raison voisine : ce harnais couvre un manque
+# qui ne se voit pas non plus. Un journal qui s'ouvre, porte son en-tête et n'attrape
+# pas la dernière phrase a l'air de marcher — on ne s'en aperçoit qu'au moment où
+# l'on en a besoin, chez quelqu'un d'autre. Voir `docs/PAQUETS.md`.
+"$BIN/JournalCheck"
+
+echo
 echo "=== Couche numérique ==="
 "$BIN/DSPCheck"
 

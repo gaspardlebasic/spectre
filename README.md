@@ -115,8 +115,8 @@ deux doigts demande un vrai pavé tactile : il arrive du protocole de gestes de
 Wayland, qu'une machine virtuelle ne fournit pas — dedans, le zoom temporel se fait à
 Ctrl + défilement à deux doigts.
 
-Pas d'AppImage ARM64 dans les livraisons : GitHub n'offre pas de coureur Linux ARM
-gratuit. Sur une machine ARM, `./paquet.sh` le fabrique en quelques minutes.
+Pas encore d'AppImage ARM64 dans les livraisons. Sur une machine ARM, `./paquet.sh`
+le fabrique en quelques minutes.
 
 ### La séparation des pistes
 

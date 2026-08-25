@@ -4,6 +4,7 @@ import SpectreToile
 import SpectreWin
 import WinSDK
 import SpectreSocle
+import SpectreCore
 
 // La fenêtre, en Win32 sans intermédiaire.
 //

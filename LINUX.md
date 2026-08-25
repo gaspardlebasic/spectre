@@ -943,9 +943,16 @@ qui joint l'AppImage à la release, dans un conteneur **jammy** : un paquet cons
 contre une glibc récente ne s'ouvre pas sur une distribution plus ancienne, tandis
 que l'inverse marche toujours.
 
-Pas d'AppImage ARM64 dans la livraison : GitHub n'offre pas de coureur Linux ARM
-gratuit. `./paquet.sh` le fabrique en quelques minutes sur une machine ARM, et il se
-joint à la release comme le paquet macOS.
+Pas d'AppImage ARM64 dans la livraison : `./paquet.sh` le fabrique en quelques
+minutes sur une machine ARM, et il se joint à la release comme le paquet macOS.
+
+**La raison écrite ici était fausse.** Elle disait « GitHub n'offre pas de coureur
+Linux ARM gratuit », et cela ne vaut plus depuis janvier 2025 : `ubuntu-22.04-arm`
+et `ubuntu-24.04-arm` sont gratuits pour les dépôts publics, généralement
+disponibles depuis août 2025, par la même annonce qui a donné `windows-11-arm` — que
+la livraison Windows utilise déjà. Une contrainte de plateforme qu'on ne réexamine
+pas devient une habitude, et c'est ce qui est arrivé ici : il ne manquait qu'une
+ligne dans la matrice. Voir `docs/PAQUETS.md`.
 
 ## Le son qui traînait, et ce que c'était vraiment
 
@@ -1051,8 +1058,9 @@ bas, qui dit maintenant *pourquoi* il n'en recevra pas.
 chemin compile, mais personne n'a cliqué : aucune souris ne se pilote sous Wayland
 depuis un terminal distant. C'est le seul morceau du portage qui ne soit pas mesuré.
 
-**L'AppImage ARM64.** GitHub n'offre pas de coureur Linux ARM gratuit ; il se
-fabrique à la main, comme le paquet macOS.
+**L'AppImage ARM64.** Il se fabrique à la main, comme le paquet macOS — et rien
+n'oblige à ce qu'il en reste là : le coureur ARM64 de GitHub existe et est gratuit
+pour les dépôts publics. Voir `docs/PAQUETS.md`.
 
 ## Le paquet qui ne savait pas séparer
 

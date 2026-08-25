@@ -2,6 +2,7 @@ import CPont
 import Foundation
 import SpectreToile
 import SpectreSocle
+import SpectreCore
 
 // Ce qui attache le pinceau à Direct2D. Le pinceau lui-même est dans
 // `SpectreToile`, où Linux le partage — voir l'en-tête qui y est écrit.

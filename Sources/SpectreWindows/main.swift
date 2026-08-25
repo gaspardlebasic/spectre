@@ -31,6 +31,15 @@ import SpectreSon
 // impriment n'arriverait jusqu'au terminal — voir `Sources/CPont/console.c`.
 rattacherLaConsole()
 
+// Et juste après lui, le journal — dans cet ordre, parce que `rattacherLaConsole()`
+// est ce qui décide s'il y a un terminal, et que le journal ne prend la place de la
+// sortie d'erreur que lorsqu'il n'y en a pas.
+//
+// C'est ici que le manque a coûté le plus cher : la v0.4 est partie avec un
+// installeur qui ne s'ouvrait pas, l'application écrivait pourquoi, et le message
+// n'arrivait nulle part. Voir `docs/PAQUETS.md`.
+Journal.ouvrir()
+
 // L'application est assemblée ici, et nulle part ailleurs : le comportement vit
 // dans `SpectreModele`, les pièces de Windows dans `SpectreWin`, et ce fichier ne
 // fait que les brancher les unes aux autres, puis tourner.

@@ -60,6 +60,14 @@ extension SpectreModele.AppModel where Lecteur == LecteurSurLePont {
     }
 }
 
+// MARK: - Le journal
+
+// Avant tout le reste : ce qu'on cherche est toujours ce qui s'est dit avant que
+// l'application ne se taise. Lancée depuis un terminal, elle continue de parler à
+// celui-ci ; lancée depuis le bureau — ce que fait un AppImage double-cliqué — sa
+// sortie d'erreur va dans le journal du rangement. Voir `docs/RAPPORTS.md`.
+Journal.ouvrir()
+
 // MARK: - Les arguments
 
 let arguments = Array(CommandLine.arguments.dropFirst())

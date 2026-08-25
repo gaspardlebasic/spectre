@@ -197,7 +197,7 @@ jobs:
           swift build -c release
           if ($LASTEXITCODE -ne 0) { throw "La construction a echoue." }
           $bin = (swift build -c release --show-bin-path | Select-Object -Last 1).Trim()
-          foreach ($harnais in @("DSPCheck", "WAVCheck", "SessionCheck", "FilterCheck",
+          foreach ($harnais in @("JournalCheck", "DSPCheck", "WAVCheck", "SessionCheck", "FilterCheck",
                                  "ChainCheck", "GaplessCheck", "AnalysisCheck",
                                  "PercussionCheck", "HarmonyCheck", "EtirementCheck",
                                  "LangueCheck")) {
@@ -249,10 +249,17 @@ jobs:
 
   linux:
     name: Linux ${{ matrix.arch }}
-    # Un seul coureur, et c'est une limite qu'il faut dire : GitHub n'offre pas de
-    # coureur Linux ARM64 gratuit. L'AppImage livré est donc x86_64 seulement ;
-    # celui d'ARM se fabrique à la main par `./paquet.sh` sur une machine ARM, et se
-    # joint à la release comme le paquet macOS.
+    # Un seul coureur, et c'est une limite qu'il faut dire — mais plus celle qu'on
+    # croyait. Ce commentaire a longtemps porté « GitHub n'offre pas de coureur
+    # Linux ARM64 gratuit », et **c'est faux depuis janvier 2025** :
+    # `ubuntu-22.04-arm` et `ubuntu-24.04-arm` sont gratuits pour les dépôts
+    # publics, et généralement disponibles depuis août 2025. C'est la même annonce
+    # que `windows-11-arm`, dont ce fichier se sert deux travaux plus haut.
+    #
+    # L'AppImage livré reste x86_64 seulement, et c'est maintenant un travail à
+    # faire plutôt qu'une impossibilité — voir `docs/PAQUETS.md`. En attendant,
+    # celui d'ARM se fabrique par `./paquet.sh` sur une machine ARM, et se joint à
+    # la release comme le paquet macOS.
     strategy:
       matrix:
         include:
@@ -324,7 +331,7 @@ jobs:
         run: |
           swift build -c release
           BIN="$(swift build -c release --show-bin-path)"
-          for harnais in LangueCheck DSPCheck WAVCheck SessionCheck FilterCheck \
+          for harnais in LangueCheck JournalCheck DSPCheck WAVCheck SessionCheck FilterCheck \
                          ChainCheck GaplessCheck AnalysisCheck PercussionCheck \
                          HarmonyCheck GestesCheck DecodeCheck PistesCheck; do
             echo "── $harnais"
@@ -476,9 +483,8 @@ jobs:
           \`.desktop\` embarqué met Spectre au menu et dans le « Ouvrir avec » des
           fichiers audio, si l'on utilise \`AppImageLauncher\` ou \`appimaged\`.
 
-          **Pas d'AppImage ARM64** : GitHub n'offre pas de coureur Linux ARM gratuit.
-          Sur un Raspberry Pi ou une machine ARM, \`./paquet.sh\` le fabrique en
-          quelques minutes.
+          **Pas encore d'AppImage ARM64** dans cette livraison. Sur un Raspberry Pi
+          ou une machine ARM, \`./paquet.sh\` le fabrique en quelques minutes.
 
           La séparation des pistes est dans cette livraison : les poids de Demucs v4
           y sont embarqués. **Ils ne sont pas sous GPL et ne sont pas licenciés par

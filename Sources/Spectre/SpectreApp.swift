@@ -6,18 +6,17 @@ import SpectreTextes
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Trace de diagnostic : le journal unifié masque les chaînes interpolées.
+/// Trace de diagnostic : le journal unifié d'Apple masque les chaînes interpolées.
+///
+/// Elle écrivait dans `/tmp/spectre.log`, qui n'existait que sur le Mac et que
+/// personne d'autre n'allait lire. Elle passe maintenant par `Journal`, comme
+/// Windows et Linux — c'est l'étape 1 de `docs/RAPPORTS.md` : **un seul endroit où
+/// ça s'écrit**, sur les trois systèmes. Ce qui reste d'ici est la porte
+/// `SPECTRE_TRACE`, parce que ces lignes-là sont bavardes et n'ont d'intérêt que
+/// pour qui les cherche.
 func trace(_ message: String) {
     guard ProcessInfo.processInfo.environment["SPECTRE_TRACE"] != nil else { return }
-    let line = "\(Date()) \(message)\n"
-    if let data = line.data(using: .utf8) {
-        let path = "/tmp/spectre.log"
-        if let handle = FileHandle(forWritingAtPath: path) {
-            handle.seekToEndOfFile(); handle.write(data); try? handle.close()
-        } else {
-            try? data.write(to: URL(fileURLWithPath: path))
-        }
-    }
+    Journal.note(message)
 }
 
 /// Ouverture depuis le Finder (double-clic, glisser sur l'icône, `open -a`).
@@ -66,7 +65,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct Entry {
     static func main() {
-        // La langue d'abord, avant tout ce qui s'affiche — y compris les deux
+        // Le journal avant tout le reste : ce qu'on cherche est toujours ce qui
+        // s'est dit avant que l'application ne se taise. Le numéro de version vient
+        // du paquet, seule des trois plateformes à en porter un que le programme
+        // puisse lire — voir `docs/PAQUETS.md`.
+        Journal.ouvrir(version: Bundle.main.infoDictionary?["CFBundleShortVersionString"]
+                                as? String)
+        // La langue ensuite, avant tout ce qui s'affiche — y compris les deux
         // commandes en ligne ci-dessous, dont les messages sortent du même
         // catalogue que la fenêtre. `Preferences.shared` la pose en s'ouvrant.
         _ = Preferences.shared

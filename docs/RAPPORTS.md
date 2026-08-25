@@ -4,9 +4,18 @@ Ce document dit **comment** Spectre racontera ses pannes, et ce qu'il en coûte.
 est le pendant, pour cette fonctionnalité-là, de ce que [LANGUES.md](LANGUES.md)
 est pour les cinq langues : écrit avant le travail, tenu à jour à mesure.
 
-**Rien n'est fait.** Le chantier vient après le portage Linux — voir
-[LINUX.md](LINUX.md) — parce qu'ajouter une plateforme pendant qu'on apprend à
-écouter les trois autres ferait deux chantiers dans le même endroit.
+**L'étape 1 est faite.** Le reste ne l'est pas. Le chantier venait après le portage
+Linux — voir [LINUX.md](LINUX.md) — parce qu'ajouter une plateforme pendant qu'on
+apprend à écouter les trois autres ferait deux chantiers dans le même endroit ; il a
+été rouvert par le premier bout, et pas par choix. Une livraison Windows est partie
+sans s'ouvrir, l'application disait pourquoi, et personne ne pouvait le lire. Voir
+[PAQUETS.md](PAQUETS.md).
+
+Ce que l'étape 1 a donné, concrètement : `journal.txt` dans le rangement, à côté des
+sessions et des pistes ; la sortie d'erreur du processus y est **déplacée** quand il
+n'y a pas de terminal, si bien que la dernière phrase du runtime de Swift y arrive
+aussi ; la chute elle-même y laisse son numéro de signal ; et `JournalCheck`
+l'éprouve en se tuant lui-même, sur les trois systèmes.
 
 ## Pourquoi, et pourquoi automatique
 
@@ -132,7 +141,7 @@ cosmétique : c'est la seule qui rende la phrase du premier lancement tenable.
 
 | étape | ce qu'elle rend visible | état |
 |---|---|---|
-| 1. Un journal commun aux trois | Rien à l'écran. Ce qui casse est déjà su, mais Windows a son `Journal`, le Mac et Linux n'ont rien : il faut un seul endroit où ça s'écrit. | à faire |
+| 1. Un journal commun aux trois | Rien à l'écran. Ce qui casse est déjà su, mais Windows a son `Journal`, le Mac et Linux n'ont rien : il faut un seul endroit où ça s'écrit. | **faite** |
 | 2. L'envoi, et le message du premier lancement | Les pannes détectées arrivent chez Sentry. C'est l'étape qui rapporte le plus pour le moins de travail. | à faire |
 | 3. Les vrais plantages | Le rapport écrit au moment de la chute, envoyé au lancement suivant, sur les trois systèmes. | à faire |
 | 4. Les symboles publiés | Les rapports deviennent lisibles : des noms de fonctions au lieu d'adresses. | à faire |
