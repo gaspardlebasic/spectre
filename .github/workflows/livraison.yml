@@ -1,9 +1,10 @@
 # Ce que la livraison fabrique, et où elle le pose.
 #
-# Deux coureurs Windows, un par architecture, et une release qui reçoit ce qu'ils
-# produisent. On pousse une étiquette, et l'affaire est faite :
+# Trois chaînes d'un coup : les installeurs Windows (x64 et ARM64), l'archive
+# macOS et l'AppImage Linux, et une release qui reçoit ce qu'elles produisent. On
+# pousse une étiquette, et l'affaire est faite :
 #
-#     git tag v0.3 && git push origin v0.3
+#     git tag v0.4 && git push origin v0.4
 #
 # `workflow_dispatch` fait la même chose sans étiquette, et sans rien publier : c'est
 # ainsi qu'on éprouve ce fichier sans salir la page des releases.
@@ -339,9 +340,60 @@ jobs:
           path: build/Spectre-*.AppImage
           if-no-files-found: error
 
+  macos:
+    name: macOS — l'application
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version de la chaîne
+        run: swift --version
+
+      # Cherchés, parce qu'un coureur ne peut pas fabriquer 166 Mo de réseau
+      # entraîné — même règle que sous Windows et sous Linux. Mais `livraison.sh`,
+      # lui, les **exige** : il refuse d'assembler l'archive sans eux. C'est cette
+      # exigence qui garantit que ce qui part contient la séparation.
+      - name: Les poids de Demucs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p Resources
+          gh release download modele-htdemucs-v4 --pattern htdemucs.onnx \
+            --dir Resources --clobber 2>/dev/null || true
+          ls -lh Resources/
+          [ -f Resources/htdemucs.onnx ] || echo "poids absents — la livraison échouera"
+
+      - name: Les harnais hors écran
+        run: ./check.sh
+
+      - name: L'épreuve sans la fenêtre
+        # Le morceau témoin et ce qu'on en tire sans écran ; un coureur n'a pas de
+        # session graphique. L'application elle-même se juge à la main, sur
+        # `build/essai/fenetre.png`. `--rapide` évite de repasser les harnais que
+        # l'étape précédente vient de faire tourner.
+        run: ./essai.sh --rapide --sans-fenetre
+
+      # `livraison.sh` compile les deux tranches en un exécutable, y embarque les
+      # poids, zippe le paquet avec `ditto` (seul à garder la signature), puis rouvre
+      # l'archive ailleurs et y lance chaque tranche sur un morceau : l'épreuve du
+      # dossier propre, côté macOS. Il échoue si les poids manquent.
+      - name: L'installeur
+        env:
+          SPECTRE_RANGEMENT: ${{ runner.temp }}/spectre
+        run: ./livraison.sh
+
+      - name: Ce qui a été produit
+        run: ls -lh build/Spectre.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spectre-macos
+          path: build/Spectre.zip
+          if-no-files-found: error
+
   release:
     name: La release
-    needs: [windows, linux]
+    needs: [windows, linux, macos]
     # Seulement sur une étiquette : un essai lancé à la main construit et s'arrête
     # là. C'est ce qui permet d'éprouver ce fichier sans rien publier.
     if: github.ref_type == 'tag'
@@ -368,6 +420,18 @@ jobs:
           # document d'entrée dont le délimiteur est indenté ne se ferme pas, et le
           # shell avale alors tout le reste du script sans se plaindre.
           cat > notes.md <<NOTES
+          ## macOS
+
+          \`Spectre.zip\` — l'application, pour Mac Apple Silicon **et** Mac Intel
+          (un seul fichier, les deux tranches). macOS 26 ou plus récent.
+
+          Elle n'est pas signée par un identifiant Apple : macOS la met en quarantaine
+          au téléchargement. Une fois glissée dans Applications :
+
+          \`\`\`
+          xattr -dr com.apple.quarantine /Applications/Spectre.app
+          \`\`\`
+
           ## Windows
 
           | fichier | pour |
@@ -410,6 +474,11 @@ jobs:
           **Pas d'AppImage ARM64** : GitHub n'offre pas de coureur Linux ARM gratuit.
           Sur un Raspberry Pi ou une machine ARM, \`./paquet.sh\` le fabrique en
           quelques minutes.
+
+          La séparation des pistes est dans cette livraison : les poids de Demucs v4
+          y sont embarqués. **Ils ne sont pas sous GPL et ne sont pas licenciés par
+          l'auteur de Spectre** — leur auteur les réserve à un usage scientifique, voir
+          [NOTICE.md](https://github.com/gaspardlebasic/spectre/blob/main/NOTICE.md).
           NOTES
 
           # `--clobber` remplace un fichier de même nom : ce flux doit pouvoir être
@@ -417,8 +486,9 @@ jobs:
           # deux exemplaires de chaque installeur.
           #
           # La release est créée si elle n'existe pas, et **laissée telle quelle** si
-          # elle existe déjà : le paquet macOS y est souvent posé à la main avant, et
-          # un flux qui réécrirait les notes de version l'effacerait du même coup.
+          # elle existe déjà : quelqu'un a pu y poser quelque chose à la main — un
+          # AppImage ARM, un paquet d'essai — et un flux qui réécrirait les notes de
+          # version l'effacerait du même coup.
           if ! gh release view "$etiquette" >/dev/null 2>&1; then
             gh release create "$etiquette" --title "Spectre $version" --notes-file notes.md
           fi

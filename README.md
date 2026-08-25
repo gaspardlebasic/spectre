@@ -120,11 +120,12 @@ gratuit. Sur une machine ARM, `./paquet.sh` le fabrique en quelques minutes.
 
 ### La séparation des pistes
 
-**Elle n'est pas dans les livraisons Windows ni Linux.** Les poids de Demucs pèsent
-166 Mo, ne sont pas dans le dépôt et ne se refabriquent qu'avec PyTorch — voir
-`modele.sh` et [NOTICE.md](NOTICE.md) — si bien qu'aucune machine d'intégration
-continue ne peut les produire. Tout le reste est là : l'analyse, le relevé
-d'accords, la batterie, la lecture, les réglages.
+**Elle est dans les trois livraisons.** Les poids de Demucs pèsent 166 Mo et ne sont
+pas dans le dépôt — GitHub refuse un fichier de plus de 100 Mo, et ils ne se
+refabriquent qu'avec PyTorch, voir `modele.sh` et [NOTICE.md](NOTICE.md). La chaîne
+de livraison les tire d'une release qui ne sert qu'à cela, `modele-htdemucs-v4`, et
+les embarque dans chaque paquet — d'où leur taille. Celui qui construit soi-même les
+obtient par `./modele.sh`.
 
 ## Construire soi-même
 
