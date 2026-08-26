@@ -370,7 +370,18 @@ jobs:
       - name: Les paquets
         env:
           SPECTRE_RANGEMENT: ${{ runner.temp }}/spectre
-        run: ./paquet.sh --version "${GITHUB_REF_NAME#v}"
+        run: |
+          # Sur une étiquette, le numéro vient d'elle et `paquet.sh` vérifie qu'il
+          # s'accorde au code. Sur un essai — `workflow_dispatch` — il n'y a pas
+          # d'étiquette, et « deb-en-ci » n'est pas un numéro de version : le paquet
+          # refusait alors de se fabriquer, ce qui rendait inutilisable la porte de
+          # secours que ce fichier annonce en tête. On laisse donc `paquet.sh`
+          # prendre le numéro du code, qui est le seul endroit où il s'écrit.
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            ./paquet.sh --version "${GITHUB_REF_NAME#v}"
+          else
+            ./paquet.sh
+          fi
 
       - name: Ce qui a été produit
         run: ls -lh build/Spectre-*.AppImage build/Spectre-*.deb
