@@ -24,5 +24,5 @@ public enum Spectre {
     /// et ce qu'on lit dans des notes de version. Windows, qui exige quatre nombres
     /// dans son bloc de ressources, complète avec des zéros ; c'est son affaire, et
     /// `paquet.ps1` la traite déjà.
-    public static let version = "0.4"
+    public static let version = "0.5"
 }

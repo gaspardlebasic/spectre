@@ -463,6 +463,22 @@ jobs:
           # document d'entrée dont le délimiteur est indenté ne se ferme pas, et le
           # shell avale alors tout le reste du script sans se plaindre.
           cat > notes.md <<NOTES
+          ## Cette version signale ses pannes toute seule
+
+          Quand quelque chose casse, Spectre en envoie le rapport sans rien demander,
+          pour que ce soit corrigé. Elle le dit au premier lancement, au milieu de la
+          fenêtre, une fois.
+
+          **N'en font jamais partie : le nom de vos fichiers, vos dossiers, ni ce que
+          vous écoutez.** Rien d'autre n'est mesuré — ni ce que vous faites de
+          l'application, ni combien de temps vous l'ouvrez. Ce qui part est la version
+          de Spectre, le système, l'architecture, la carte graphique, et la panne. Le
+          détail est dans
+          [docs/RAPPORTS.md](https://github.com/gaspardlebasic/spectre/blob/main/docs/RAPPORTS.md).
+
+          Et le plancher macOS descend à **macOS 15** : les Mac d'avant macOS 26
+          ouvrent Spectre, sans le verre et sans le dire.
+
           ## macOS
 
           \`Spectre.zip\` — l'application, pour Mac Apple Silicon **et** Mac Intel
