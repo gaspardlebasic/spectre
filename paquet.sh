@@ -309,10 +309,6 @@ if [ "$DEB" = 1 ] && command -v dpkg-deb >/dev/null 2>&1; then
     esac
 
     echo "── Le paquet Debian"
-    # DIAGNOSTIC — à retirer
-    df -h . || true
-    ls -la "$APPDIR" || true
-    set -x
     RACINE="$OUT/deb"
     rm -rf "$RACINE"
     mkdir -p "$RACINE/DEBIAN" "$RACINE/opt/spectre" "$RACINE/usr/bin" \
@@ -370,8 +366,34 @@ DROITS
     # proposés en alternative — dpkg s'en accommode dans un sens comme dans l'autre.
     jumeaux="libasound2"
     for lib in $systeme; do
-        nom="$(dpkg -S "$(readlink -f "$lib")" 2>/dev/null | head -1 | cut -d: -f1)"
-        [ -n "$nom" ] || continue
+        # ─────────────────────────────────────────────────────────────────────
+        # DEUX FORMES DU MÊME CHEMIN, ET UNE MORT SILENCIEUSE
+        #
+        # Ubuntu a fusionné `/lib` dans `/usr/lib` en posant des liens, et les deux
+        # versions n'ont pas fait le pas en même temps : la base de dpkg d'une 22.04
+        # connaît « /lib/x86_64-linux-gnu/libm.so.6 », celle d'une 24.04
+        # « /usr/lib/… ». `readlink -f` rend toujours la seconde. N'interroger que
+        # celle-là marche sur une machine de développement à jour et **échoue sur le
+        # conteneur du coureur**, qui est en 22.04 — ce qui est arrivé, à la
+        # livraison, et sur les deux architectures d'un coup.
+        #
+        # Et cela n'a rien dit, pour deux raisons qui se renforcent : `2>/dev/null`
+        # taisait la plainte de dpkg, et **une affectation depuis un tube qui échoue
+        # tue un script en `set -euo pipefail`**. La section mourait donc juste après
+        # avoir écrit son titre, sans une ligne, et le journal du coureur montrait un
+        # AppImage réussi suivi d'un code de sortie nu.
+        #
+        # D'où les deux essais, le `|| true` qui rend la main, et le mot qu'on écrit
+        # quand aucun des deux n'aboutit. Une dépendance qu'on ne sait pas nommer est
+        # une chose à dire, pas une chose à taire.
+        # ─────────────────────────────────────────────────────────────────────
+        nom="$(dpkg -S "$lib" 2>/dev/null | head -1 | cut -d: -f1 || true)"
+        [ -n "$nom" ] || nom="$(dpkg -S "$(readlink -f "$lib")" 2>/dev/null \
+                                | head -1 | cut -d: -f1 || true)"
+        if [ -z "$nom" ]; then
+            echo "   (aucun paquet ne fournit $lib — exigence non déclarée)"
+            continue
+        fi
         court="${nom%t64}"
         case " $jumeaux " in *" $court "*) nom="$court | ${court}t64" ;; esac
         # Une exigence par ligne, et le tri fait le dédoublonnage : « | » sépare deux
@@ -380,7 +402,6 @@ DROITS
         paquets="$paquets$nom
 "
     done
-    set +x
     DEPEND="$(printf '%s' "$paquets" | sort -u | paste -sd, - | sed 's/,/, /g')"
 
     # La seconde est **écrite à la main**, et il n'y a pas moyen de faire autrement :
