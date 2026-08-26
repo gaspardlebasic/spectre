@@ -309,6 +309,10 @@ if [ "$DEB" = 1 ] && command -v dpkg-deb >/dev/null 2>&1; then
     esac
 
     echo "── Le paquet Debian"
+    # DIAGNOSTIC — à retirer
+    df -h . || true
+    ls -la "$APPDIR" || true
+    set -x
     RACINE="$OUT/deb"
     rm -rf "$RACINE"
     mkdir -p "$RACINE/DEBIAN" "$RACINE/opt/spectre" "$RACINE/usr/bin" \
@@ -376,6 +380,7 @@ DROITS
         paquets="$paquets$nom
 "
     done
+    set +x
     DEPEND="$(printf '%s' "$paquets" | sort -u | paste -sd, - | sed 's/,/, /g')"
 
     # La seconde est **écrite à la main**, et il n'y a pas moyen de faire autrement :
