@@ -674,15 +674,18 @@ if surLinux {
 
 let package = Package(
     name: "Spectre",
-    // macOS 26 : l'interface est bâtie sur Liquid Glass — `glassEffect`,
-    // `GlassEffectContainer`, `glassEffectUnion` — qui n'existe pas avant. On
-    // aurait pu garder macOS 14 et tout envelopper dans `if #available`, mais
-    // cela ferait vivre deux interfaces dont une seule serait regardée, et il
-    // faudrait de toute façon le SDK 26 pour compiler. Autant l'assumer.
-    // `.v26` demanderait un manifeste en tools-version 6.2, qui bascule du même
-    // coup tout le paquet en mode langage Swift 6 : on écrit donc la version à la
-    // main, ce que SwiftPM accepte depuis toujours.
-    platforms: [.macOS("26.0")],
+    // macOS 15, et non 26 : l'interface est bâtie sur Liquid Glass — `glassEffect`,
+    // `GlassEffectContainer` — qui n'existe qu'à partir de 26, mais le verre est
+    // confiné à six appels dans `Sources/Spectre/Controls.swift` et chacun passe
+    // par une enveloppe qui sait quoi poser en dessous. Six `#available` dans un
+    // seul fichier ne font pas vivre deux interfaces ; ils descendent le plancher
+    // de onze ans de Mac.
+    // Compiler demande toujours le SDK 26, puisque le chemin du verre doit être
+    // compilé. Seul l'ouvrir descend à 15.
+    // `.v15` s'écrirait tel quel, mais on garde la forme littérale : elle dit la
+    // version sans dépendre de ce que l'énumération de SwiftPM connaît le jour où
+    // on la lit.
+    platforms: [.macOS("15.0")],
     products: produits,
     dependencies: dependances,
     targets: cibles,

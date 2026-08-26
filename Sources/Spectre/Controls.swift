@@ -28,13 +28,13 @@ struct ControlOverlay: View {
     @Namespace private var glass
 
     var body: some View {
-        GlassEffectContainer(spacing: 14) {
+        ConteneurDeVerre(espacement: 14) {
             HStack(alignment: .top, spacing: 10) {
                 if panelOpen {
                     ControlPanel(model: model) { close() }
                         .frame(width: 320)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 24))
-                        .glassEffectID("reglages", in: glass)
+                        .verre(.regulier, in: .rect(cornerRadius: 24))
+                        .identiteDeVerre("reglages", in: glass)
                         .transition(.opacity)
                         .onHover { model.pointerOverControls = $0 }
                 }
@@ -53,8 +53,8 @@ struct ControlOverlay: View {
                             .contentShape(.capsule)
                         }
                         .buttonStyle(.plain)
-                        .glassEffect(.clear.interactive(), in: .capsule)
-                        .glassEffectID("reglages", in: glass)
+                        .verre(.clairInteractif, in: .capsule)
+                        .identiteDeVerre("reglages", in: glass)
                         .onHover { model.pointerOverControls = $0 }
                         .help(T(.panneauOuvrirAide))
                     }
@@ -130,7 +130,7 @@ struct StemColumn: View {
             }
         }
         .padding(Self.inset)
-        .glassEffect(.clear, in: .capsule)
+        .verre(.clair, in: .capsule)
         .onHover { model.pointerOverControls = $0 }
     }
 
@@ -489,5 +489,89 @@ struct ControlPanel: View {
             Slider(value: value, in: range).controlSize(.small)
         }
         .help(help)
+    }
+}
+
+// MARK: Le verre, et ce qui le remplace en dessous de macOS 26
+
+// Spectre s'ouvre depuis macOS 15, et Liquid Glass n'existe qu'à partir de 26.
+// Les six appels au verre passent donc par les trois enveloppes ci-dessous, qui
+// sont **le seul endroit du dépôt où `#available` parle d'interface**. Les vues
+// au-dessus ne savent pas sur quel système elles tournent, et c'est ce qui évite
+// d'entretenir deux interfaces au lieu d'une.
+//
+// Le repli n'imite pas le verre — il n'y arriverait pas, et un faux verre se
+// remarque plus qu'une surface franche. Il garde ce à quoi le verre sert ici :
+// **laisser voir le spectrogramme qu'il couvre**. D'où deux traitements et non
+// un seul, exactement comme au-dessus : le panneau des réglages dépolit ce qu'il
+// couvre (un matériau translucide), le sélecteur de pistes ne fait que se poser
+// dessus (un voile clair et un liseré, les raies continuent de passer).
+
+/// Les trois verres employés dans ce fichier. Un simple `enum` parce que le type
+/// `Glass` de SwiftUI n'existe pas avant macOS 26 : il ne peut donc pas figurer
+/// dans une signature que le système d'en dessous doit lire.
+enum Verre {
+    /// Le panneau : il dépolit, on ne lit pas au travers.
+    case regulier
+    /// Le sélecteur de pistes : posé sur l'image sans la troubler.
+    case clair
+    /// Le bouton des réglages : du verre clair qui répond au survol.
+    case clairInteractif
+}
+
+extension View {
+    /// Pose l'un des trois verres, ou ce qui le remplace en dessous de macOS 26.
+    @ViewBuilder
+    func verre<S: InsettableShape>(_ style: Verre, in forme: S) -> some View {
+        if #available(macOS 26, *) {
+            switch style {
+            case .regulier: glassEffect(.regular, in: forme)
+            case .clair: glassEffect(.clear, in: forme)
+            case .clairInteractif: glassEffect(.clear.interactive(), in: forme)
+            }
+        } else {
+            // Le liseré est ce qui donne un bord à une surface sans ombre portée.
+            // Sans lui, un voile à 8 % sur du noir n'a pas de contour du tout.
+            background(fond(style), in: forme)
+                .overlay(forme.strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5))
+                .clipShape(forme)
+        }
+    }
+
+    /// Ce que le verre devient : un matériau pour le panneau, un voile pour ce qui
+    /// se pose sur l'image.
+    private func fond(_ style: Verre) -> AnyShapeStyle {
+        switch style {
+        case .regulier: AnyShapeStyle(.ultraThinMaterial)
+        case .clair, .clairInteractif: AnyShapeStyle(Color.white.opacity(0.10))
+        }
+    }
+
+    /// Le lien qui fait qu'ouvrir le panneau déplie le bouton au lieu d'ajouter une
+    /// seconde forme. En dessous de macOS 26 il n'y a pas de morphose : la
+    /// transition d'opacité déjà posée sur le panneau suffit à ce que l'échange se
+    /// lise.
+    @ViewBuilder
+    func identiteDeVerre(_ nom: String, in espace: Namespace.ID) -> some View {
+        if #available(macOS 26, *) {
+            glassEffectID(nom, in: espace)
+        } else {
+            self
+        }
+    }
+}
+
+/// L'espace où plusieurs morceaux de verre se reconnaissent comme un seul. En
+/// dessous de macOS 26, il ne reste que ce que le conteneur contenait.
+struct ConteneurDeVerre<Contenu: View>: View {
+    let espacement: CGFloat
+    @ViewBuilder let contenu: Contenu
+
+    var body: some View {
+        if #available(macOS 26, *) {
+            GlassEffectContainer(spacing: espacement) { contenu }
+        } else {
+            contenu
+        }
     }
 }

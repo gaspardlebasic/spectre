@@ -19,7 +19,7 @@ Un spectrogramme qui donne à chaque note sa couleur, relève les accords et sé
 les quatre pistes.
 
 **[ Télécharger pour macOS ]**
-Libre et gratuit · macOS 26 ou plus récent · 104 Mo
+Libre et gratuit · macOS 15 ou plus récent · 104 Mo
 
 ---
 
@@ -110,7 +110,7 @@ dessous : grosse caisse, caisse claire, cymbales.
 
 ## Installer
 
-**[ Télécharger pour macOS ]** · 104 Mo · macOS 26 ou plus récent
+**[ Télécharger pour macOS ]** · 104 Mo · macOS 15 ou plus récent
 
 L'application n'est pas signée par un identifiant Apple : macOS la met en
 quarantaine au téléchargement. Après l'avoir glissée dans `Applications` :
@@ -160,7 +160,7 @@ A spectrogram that gives every note its own colour, reads out the chords, and
 separates the four stems.
 
 **[ Download for macOS ]**
-Free and open source · macOS 26 or later · 104 MB
+Free and open source · macOS 15 or later · 104 MB
 
 *The interface is in French for now.*
 
@@ -243,7 +243,7 @@ kick, snare, cymbals.
 
 ## Install
 
-**[ Download for macOS ]** · 104 MB · macOS 26 or later
+**[ Download for macOS ]** · 104 MB · macOS 15 or later
 
 The app is not signed with an Apple developer ID, so macOS quarantines it on
 download. Once it is in `Applications`:
@@ -292,7 +292,7 @@ Un espectrograma que da a cada nota su color, detecta los acordes y separa las
 cuatro pistas.
 
 **[ Descargar para macOS ]**
-Libre y gratuito · macOS 26 o posterior · 104 MB
+Libre y gratuito · macOS 15 o posterior · 104 MB
 
 *La interfaz está en francés por ahora.*
 
@@ -375,7 +375,7 @@ bombo, caja, platos.
 
 ## Instalar
 
-**[ Descargar para macOS ]** · 104 MB · macOS 26 o posterior
+**[ Descargar para macOS ]** · 104 MB · macOS 15 o posterior
 
 La aplicación no está firmada con un identificador de desarrollador de Apple, así
 que macOS la pone en cuarentena al descargarla. Una vez en `Aplicaciones`:
@@ -424,7 +424,7 @@ Ein Spektrogramm, das jedem Ton seine Farbe gibt, die Akkorde erkennt und die
 vier Spuren trennt.
 
 **[ Für macOS herunterladen ]**
-Frei und quelloffen · macOS 26 oder neuer · 104 MB
+Frei und quelloffen · macOS 15 oder neuer · 104 MB
 
 *Die Oberfläche ist vorerst auf Französisch.*
 
@@ -509,7 +509,7 @@ darunter: Bassdrum, Snare, Becken.
 
 ## Installieren
 
-**[ Für macOS herunterladen ]** · 104 MB · macOS 26 oder neuer
+**[ Für macOS herunterladen ]** · 104 MB · macOS 15 oder neuer
 
 Die App ist nicht mit einer Apple-Entwickler-ID signiert, deshalb stellt macOS sie
 beim Herunterladen unter Quarantäne. Sobald sie in `Programme` liegt:
@@ -558,7 +558,7 @@ Spektrogram, który nadaje każdemu dźwiękowi kolor, rozpoznaje akordy i rozdz
 cztery ścieżki.
 
 **[ Pobierz na macOS ]**
-Wolne i otwarte · macOS 26 lub nowszy · 104 MB
+Wolne i otwarte · macOS 15 lub nowszy · 104 MB
 
 *Interfejs jest na razie po francusku.*
 
@@ -640,7 +640,7 @@ stopa, werbel, talerze.
 
 ## Instalacja
 
-**[ Pobierz na macOS ]** · 104 MB · macOS 26 lub nowszy
+**[ Pobierz na macOS ]** · 104 MB · macOS 15 lub nowszy
 
 Aplikacja nie jest podpisana identyfikatorem dewelopera Apple, więc macOS poddaje
 ją kwarantannie po pobraniu. Gdy znajdzie się w `Aplikacje`:

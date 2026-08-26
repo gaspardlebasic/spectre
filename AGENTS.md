@@ -65,9 +65,11 @@ en tient le plan, les décisions déjà prises et les pièges qu'on peut nommer 
 | `swift build -c release` | Compile tout, sans assembler le paquet. |
 | `Chrono morceau.mp3` | Chronomètre l'ouverture et la séparation étape par étape (`Tools/Chrono`). Travaille dans un rangement à part : `SPECTRE_RANGEMENT=/tmp/mesure SPECTRE_MODELE=$PWD/Resources/htdemucs.onnx`. |
 
-Xcode n'est pas nécessaire ; SwiftPM suffit. Il faut **macOS 26 ou plus récent** :
-l'interface est bâtie sur Liquid Glass, qui n'existe pas avant, et le SDK 26 est
-exigé pour compiler.
+Xcode n'est pas nécessaire ; SwiftPM suffit. **Construire** demande macOS 26 : le
+chemin du verre doit être compilé, et le SDK 26 est le seul qui le connaisse.
+**Ouvrir** l'application demande macOS 15, qui est le plancher du paquet — le verre
+a un repli en dessous de 26, et `recette.sh` l'éprouve sur une machine virtuelle
+macOS 15 avant chaque livraison.
 
 **Livrer sous Windows ne se fait pas à la main.** Une étiquette poussée suffit :
 

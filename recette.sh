@@ -51,10 +51,13 @@ set -uo pipefail
 cd "$(dirname "$0")"
 
 ETIQUETTE="${1:-}"
-# Les deux machines d'essai. Ce sont celles de l'auteur — voir `machine.sh` — et
+# Les trois machines d'essai. Ce sont celles de l'auteur — voir `machine.sh` — et
 # elles se remplacent par l'environnement plutôt que par une modification du script.
+# La machine macOS n'est pas un doublon de celle qui construit : c'est un Mac
+# d'avant macOS 26, le seul endroit où le repli sans verre se regarde.
 MACHINE_LINUX="${SPECTRE_VM_LINUX:-spectre-linux}"
 MACHINE_WINDOWS="${SPECTRE_VM_WINDOWS:-Windows 11}"
+MACHINE_MACOS="${SPECTRE_VM_MACOS:-macOS 15}"
 
 OUT="build/recette"
 ECHECS=0
@@ -165,6 +168,138 @@ else
       sed 's/^/        /' "$RANGEMENT/journal.txt" | head -5
     else
       rouge "aucun journal écrit — voir docs/RAPPORTS.md"
+    fi
+  fi
+fi
+
+# ── macOS 15 — le plancher ───────────────────────────────────────────────────
+#
+# La section précédente ouvre l'archive sur **ce** Mac, qui est celui de l'auteur
+# et qui est à jour. Elle ne dit donc rien du seul Mac qui compte ici : celui de
+# quelqu'un qui n'a pas macOS 26. Le paquet y annonce un plancher, et un plancher
+# qu'on n'a jamais éprouvé n'est qu'une phrase dans un `Info.plist`.
+#
+# Deux choses s'y regardent, et la première est gratuite : le plancher annoncé
+# doit être au-dessous de la version de la machine d'essai. C'est ce qui aurait
+# dit, en une ligne et sans rien lancer, que la v0.4 ne pouvait pas s'y ouvrir.
+#
+# La seconde est ce que l'interface devient sans Liquid Glass. Le repli est
+# derrière la fenêtre — donc dans la moitié du chemin qu'aucune chaîne n'exerce —
+# et il n'y a qu'une façon de le voir : ouvrir, et photographier.
+#
+# **Contrairement à Windows, l'accès distant suffit ici.** `prlctl exec` tombe
+# bien dans une session sans bureau, mais `launchctl asuser` rend la main à la
+# session graphique de la personne : l'application s'ouvre alors sur le vrai
+# bureau, avec une vraie fenêtre. C'est ce que Windows ne sait pas faire, et c'est
+# pour cela que ces deux sections-là ne se ressemblent pas.
+#
+# La photographie, elle, est prise **du dehors** — `prlctl capture`, depuis le Mac
+# hôte. `screencapture` dans la machine d'essai demanderait « Enregistrement de
+# l'écran », c'est-à-dire un mot de passe d'administrateur à chaque machine
+# neuve ; l'hyperviseur, lui, voit l'écran sans rien demander à personne.
+
+echo
+gras "=== macOS 15 — l'archive, sur un Mac d'avant le verre ==="
+
+if [ ! -f "$ARCHIVE" ]; then
+  gris "Spectre.zip n'est pas dans la release — sauté"
+elif ! command -v prlctl >/dev/null || ! prlctl list -a 2>/dev/null | grep -q "$MACHINE_MACOS"; then
+  gris "$MACHINE_MACOS est introuvable — sauté"
+elif ! prlctl exec "$MACHINE_MACOS" true >/dev/null 2>&1; then
+  gris "$MACHINE_MACOS ne répond pas — l'allumer, et attendre son bureau"
+else
+  VERSION_VM="$(prlctl exec "$MACHINE_MACOS" sw_vers -productVersion 2>/dev/null | tr -d '\r\n')"
+  gris "machine d'essai : macOS $VERSION_VM"
+  # L'archive est dépliée ici pour elle-même, et non reprise de la section
+  # précédente : celle-ci est sautée dès qu'on ne construit pas sur un Mac, et
+  # l'épreuve du plancher n'a aucune raison de tomber avec elle.
+  PLANCHE="$OUT/macos15"
+  rm -rf "$PLANCHE"; mkdir -p "$PLANCHE"
+  ditto -x -k "$ARCHIVE" "$PLANCHE" 2>/dev/null
+  PLANCHER="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' \
+              "$PLANCHE/Spectre.app/Contents/Info.plist" 2>/dev/null)"
+  # `sort -V` compare deux numéros de version comme des numéros de version, et non
+  # comme du texte — sans quoi « 15.6 » passerait pour plus récent que « 9.0 ».
+  if [ -z "$PLANCHER" ] || [ -z "$VERSION_VM" ]; then
+    rouge "impossible de comparer le plancher du paquet à la machine d'essai"
+  elif [ "$(printf '%s\n%s\n' "$PLANCHER" "$VERSION_VM" | sort -V | head -1)" != "$PLANCHER" ]; then
+    # C'est la panne de la v0.4 côté Mac, et elle se lit ici sans rien ouvrir.
+    rouge "le paquet exige macOS $PLANCHER — la machine d'essai est en $VERSION_VM"
+  else
+    vert "le plancher annoncé — macOS $PLANCHER — passe sur cette machine"
+
+    # Le transport. Parallels ne monte pas de dossier partagé dans une machine
+    # macOS, contrairement à Windows et à Linux : on sert donc les trois fichiers
+    # en HTTP le temps de l'épreuve, sur l'adresse que l'hôte porte dans le réseau
+    # de la machine d'essai — jamais sur toutes ses interfaces.
+    swift build -c release --product Fenetre >/dev/null 2>&1
+    cp "$(swift build -c release --show-bin-path 2>/dev/null)/Fenetre" "$OUT/" 2>/dev/null
+    IP_VM="$(prlctl exec "$MACHINE_MACOS" "ipconfig getifaddr en0" 2>/dev/null | tr -d '\r\n')"
+    IP_HOTE="$(ifconfig 2>/dev/null \
+               | awk -v r="${IP_VM%.*}." '$1=="inet" && index($2,r)==1 {print $2; exit}')"
+    PORT=8756
+    if [ -z "$IP_HOTE" ]; then
+      rouge "l'hôte n'a pas d'adresse dans le réseau de $MACHINE_MACOS"
+    else
+      python3 -m http.server "$PORT" --bind "$IP_HOTE" --directory "$OUT" >/dev/null 2>&1 &
+      SERVEUR=$!
+      # Le compte de la session graphique, et non celui sous lequel `prlctl exec`
+      # entre — qui est root, et dont le bureau n'existe pas.
+      COMPTE="$(prlctl exec "$MACHINE_MACOS" "stat -f '%Su' /dev/console" 2>/dev/null | tr -d '\r\n')"
+      NUMERO="$(prlctl exec "$MACHINE_MACOS" "id -u $COMPTE" 2>/dev/null | tr -d '\r\n')"
+      DEPOT=/Users/Shared/recette
+      prlctl exec "$MACHINE_MACOS" "
+        rm -rf $DEPOT && mkdir -p $DEPOT/rangement && cd $DEPOT || exit 1
+        for f in Spectre.zip temoin.wav Fenetre; do
+          curl -s -f -o \$f http://$IP_HOTE:$PORT/\$f || exit 1
+        done
+        chmod +x Fenetre
+        ditto -x -k Spectre.zip . || exit 1
+        # La quarantaine, comme chez quelqu'un qui vient de télécharger, retirée
+        # exactement comme les notes de version le disent.
+        xattr -dr com.apple.quarantine Spectre.app 2>/dev/null
+        chown -R $COMPTE:staff $DEPOT
+        pkill -x Spectre 2>/dev/null
+        launchctl asuser $NUMERO sudo -u $COMPTE \
+          open --env SPECTRE_RANGEMENT=$DEPOT/rangement \
+               --env SPECTRE_LANGUE=${SPECTRE_LANGUE:-fr} \
+               -a $DEPOT/Spectre.app $DEPOT/temoin.wav
+      " >/dev/null 2>&1
+      FENETRE=""
+      for _ in $(seq 1 30); do
+        sleep 1
+        FENETRE="$(prlctl exec "$MACHINE_MACOS" \
+                   "launchctl asuser $NUMERO sudo -u $COMPTE $DEPOT/Fenetre Spectre" \
+                   2>/dev/null | tr -d '\r')"
+        [ -n "$FENETRE" ] && break
+      done
+      if [ -z "$FENETRE" ]; then
+        rouge "l'archive ne s'ouvre pas sur macOS $VERSION_VM"
+      else
+        vert "elle s'ouvre sur macOS $VERSION_VM — fenêtre de $(cut -d' ' -f2 <<< "$FENETRE") points"
+        # Laisser le temps au spectrogramme d'arriver : une fenêtre vide
+        # photographiée ne dit pas si l'interface tient sans le verre.
+        sleep 8
+        if prlctl capture "$MACHINE_MACOS" -f "$OUT/fenetre-macos15.png" >/dev/null 2>&1 \
+             && [ -s "$OUT/fenetre-macos15.png" ]; then
+          gris "image — le repli sans verre est là-dedans : $OUT/fenetre-macos15.png"
+        else
+          gris "capture impossible depuis l'hyperviseur"
+        fi
+      fi
+      # `osascript` demanderait l'autorisation d'envoyer des événements ; on ferme
+      # donc à la main. Le journal est écrit ligne à ligne, rien ne s'y perd.
+      prlctl exec "$MACHINE_MACOS" "pkill -x Spectre" >/dev/null 2>&1
+      JOURNAL="$(prlctl exec "$MACHINE_MACOS" "cat $DEPOT/rangement/journal.txt 2>/dev/null" 2>/dev/null | tr -d '\r')"
+      if [ -n "$JOURNAL" ]; then
+        vert "et elle tient son journal"
+        sed 's/^/        /' <<< "$JOURNAL" | head -3
+      else
+        rouge "aucun journal écrit sur macOS $VERSION_VM — voir docs/RAPPORTS.md"
+      fi
+      # `wait` juste après : sans lui, le shell annonce « Terminated » au milieu
+      # de la section suivante, ce qui a tout l'air d'une panne et n'en est pas une.
+      kill "$SERVEUR" 2>/dev/null; wait "$SERVEUR" 2>/dev/null
     fi
   fi
 fi

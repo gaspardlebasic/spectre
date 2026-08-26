@@ -61,8 +61,10 @@ concurrency:
 jobs:
   macos:
     name: macOS — tout
-    # macOS 26 : le paquet vise cette version depuis que l'interface est en
-    # Liquid Glass. Un coureur plus ancien n'a pas le SDK qui la connaît.
+    # macOS 26 pour **construire**, alors que le paquet s'ouvre depuis macOS 15 :
+    # le chemin du verre doit être compilé, et seul le SDK 26 le connaît. Ce que
+    # le repli devient plus bas ne se voit pas ici — il n'y a pas de coureur
+    # macOS 15 — mais sur la machine virtuelle de `recette.sh`.
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4

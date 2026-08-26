@@ -38,7 +38,7 @@ L'adresse du téléchargement est
 venir, il n'y aura pas à retoucher la page à chaque publication.
 
 Sous le bouton, trois choses que macOS impose et qu'il vaut mieux dire avant le
-téléchargement plutôt qu'après l'échec : **macOS 26 ou plus récent**, l'application
+téléchargement plutôt qu'après l'échec : **macOS 15 ou plus récent**, l'application
 n'est **pas signée**, et la commande `xattr` qui lève la quarantaine — avec un
 bouton « copier ».
 

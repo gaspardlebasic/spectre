@@ -465,7 +465,7 @@ jobs:
           ## macOS
 
           \`Spectre.zip\` — l'application, pour Mac Apple Silicon **et** Mac Intel
-          (un seul fichier, les deux tranches). macOS 26 ou plus récent.
+          (un seul fichier, les deux tranches). macOS 15 ou plus récent.
 
           Elle n'est pas signée par un identifiant Apple : macOS la met en quarantaine
           au téléchargement. Une fois glissée dans Applications :

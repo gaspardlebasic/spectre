@@ -158,8 +158,11 @@ quelqu'un qui n'a pas Swift — cela n'a jamais eu lieu avant que ce ne soit un
 utilisateur qui le fasse.
 
 D'où **la recette** : une commande qui prend l'artefact de la release — pas le
-dossier local — le pose sur les deux machines virtuelles, et l'ouvre avec une vraie
+dossier local — le pose sur les machines virtuelles, et l'ouvre avec une vraie
 fenêtre. Manuelle au début. C'est le seul contrôle qui aurait vu les deux pannes.
+Elles sont trois depuis le chantier 4 : Linux, Windows, et un Mac d'avant le verre —
+celui-ci parce que le Mac qui construit est à jour et ne dit donc rien du plancher
+qu'on annonce.
 
 ## Les chantiers, dans l'ordre
 
@@ -228,7 +231,9 @@ est de changer ce fichier, dans le commit de l'étiquette.
 **La recette.** `recette.sh` — voir plus haut, et le README. Passée sur la v0.4
 telle qu'elle est en ligne, elle relève trois défauts : le paquet macOS annonce 0.2,
 il n'écrit aucun journal, et il n'existe aucun AppImage pour la machine d'essai. Les
-trois sont vrais, et les trois sont réparés pour la prochaine livraison.
+trois sont vrais, et les trois sont réparés pour la prochaine livraison. Un
+quatrième s'y est ajouté au chantier 4, que la recette ne savait pas encore voir :
+le paquet exige macOS 26.
 
 ### 3. Linux : quelles constructions il faut
 
@@ -300,10 +305,10 @@ les quatre pistes sont écrites et le journal ne dit rien.
 
 ### 4. macOS : descendre le plancher à 15, avec un repli sans verre
 
-`Package.swift` pose `platforms: [.macOS("26.0")]`, et la note qui l'accompagne dit
-pourquoi : l'interface est bâtie sur Liquid Glass, et faire vivre deux interfaces
-dont une seule serait regardée coûte plus que cela ne rapporte. L'arbitrage change
-quand l'application sort de la machine de son auteur.
+`Package.swift` posait `platforms: [.macOS("26.0")]`, et la note qui l'accompagnait
+disait pourquoi : l'interface est bâtie sur Liquid Glass, et faire vivre deux
+interfaces dont une seule serait regardée coûte plus que cela ne rapporte.
+L'arbitrage change quand l'application sort de la machine de son auteur.
 
 **Le verre est confiné** : six appels, tous dans `Sources/Spectre/Controls.swift`.
 Le repli tient dans un `if #available(macOS 26)` et un matériau translucide dans les
@@ -318,6 +323,78 @@ tout chiffrage serait inventé.
 virtuelle macOS 15 sur Apple Silicon est faisable, et c'est ce qu'il faut : livrer
 un repli que personne n'a regardé serait pire que de ne pas descendre.
 
+#### Ce que le chantier a rendu, le 26 août 2026
+
+**Fait.** Le plancher est à macOS 15, l'interface se pose sans verre en dessous de
+26, et cela a été regardé sur une machine qui n'a pas le verre.
+
+**La liste des violations tient en un fichier.** Descendu le plancher, le
+compilateur en a énuméré six, toutes dans `Controls.swift`, toutes du verre. Le reste
+de l'application — onze mille lignes, dix ans d'API en dessous — n'avait rien pris de
+macOS 26 en passant. C'est ce qu'on espérait sans le savoir, et c'est ce qui rend le
+chantier petit : il n'a coûté que ce que le verre coûte.
+
+Les six appels passent maintenant par trois enveloppes — un `enum Verre` à trois
+cas, un modificateur `verre(_:in:)`, un conteneur — qui sont **le seul endroit du
+dépôt où `#available` parle d'interface**. Les vues au-dessus ne savent pas sur quel
+système elles tournent. C'est la différence entre un repli et deux interfaces.
+
+**Le repli n'imite pas le verre.** Il garde ce à quoi le verre sert ici : laisser
+voir le spectrogramme qu'il couvre. D'où deux traitements et non un seul, comme
+au-dessus — le panneau des réglages dépolit ce qu'il cache (un matériau translucide),
+le sélecteur de pistes ne fait que s'y poser (un voile clair et un liseré, les raies
+continuent de passer dessous). Un faux verre se remarquerait plus qu'une surface
+franche.
+
+**Compiler demande toujours macOS 26.** Le chemin du verre doit être compilé, et
+seul le SDK 26 le connaît. Seul *ouvrir* descend à 15. Les deux phrases ne disent pas
+la même chose et le dépôt les confondait à trois endroits ; c'est corrigé.
+
+**Ce que le plancher rend comme machines.** Onze ans de Mac Intel de plus : macOS 15
+va jusqu'aux modèles de 2018, là où macOS 26 n'est atteint que par quatre Mac Intel.
+Le paquet portait déjà les deux tranches ; c'est la seule ligne du `Info.plist` qui
+les tenait dehors.
+
+##### La machine d'essai, et le clic qui n'était pas nécessaire
+
+La VM macOS 15.6.1 (build 24G90) est montée sous Parallels. **15.6.1 est le dernier
+IPSW 15.x qu'Apple publie** — les 15.7.x et 15.8 n'en ont pas — et le catalogue
+`mesu.apple.com` ne liste que la version courante de macOS : l'image se retrouve par
+l'API d'AppleDB, pas par Apple.
+
+Et une bonne surprise, qui vaut d'être notée parce qu'elle contredit ce que Windows
+avait appris : **l'accès distant suffit sur un Mac.** `prlctl exec` tombe bien dans
+une session sans bureau, comme sous Windows, mais `launchctl asuser` rend la main à
+la session graphique de la personne — l'application s'ouvre alors sur le vrai bureau,
+avec une vraie fenêtre, et le chemin qui suit la fenêtre est enfin exercé par un
+programme. Windows ne sait pas faire cela, et c'est pourquoi les deux sections de
+`recette.sh` ne se ressemblent pas.
+
+La photographie, elle, se prend **du dehors** : `prlctl capture`, depuis le Mac hôte.
+`screencapture` dans la machine d'essai réclamerait « Enregistrement de l'écran »,
+c'est-à-dire un mot de passe d'administrateur sur chaque machine neuve ;
+l'hyperviseur voit l'écran sans rien demander à personne. C'est aussi la réponse à ce
+que la recette ne savait pas faire sur le Mac hôte, où la capture échoue faute de
+cette autorisation.
+
+Deux détails de transport, notés pour qui remontera la machine : Parallels ne monte
+pas de dossier partagé dans une machine macOS, contrairement à Windows et à Linux —
+la recette sert donc les trois fichiers en HTTP, sur la seule adresse que l'hôte porte
+dans le réseau de la machine d'essai.
+
+##### Ce que la recette dit maintenant, et ce qu'elle disait de la v0.4
+
+La section macOS 15 de `recette.sh` commence par la vérification qui ne coûte rien :
+le plancher annoncé par le paquet doit être au-dessous de la version de la machine
+d'essai. Passée sur la v0.4 telle qu'elle est en ligne, elle dit en une ligne et sans
+rien ouvrir ce que personne n'avait vu — *le paquet exige macOS 26, la machine d'essai
+est en 15.6.1*. C'est un quatrième défaut de la v0.4, à côté des trois déjà relevés.
+
+Passée sur le paquet construit après ce chantier, elle va jusqu'au bout : l'archive
+s'ouvre sur macOS 15.6.1, la fenêtre fait 1512 × 840 points, le journal s'écrit, et
+l'image est dans `build/recette/fenetre-macos15.png` — le spectrogramme, les accords,
+la batterie et les commandes sans verre, à regarder.
+
 ### 5. Les rapports de plantage
 
 Les étapes 2 à 5 de [RAPPORTS.md](RAPPORTS.md), dans l'ordre qu'il donne. Elles
@@ -328,7 +405,7 @@ commencent une fois le chantier 1 en place, puisqu'elles en sont la suite.
 | étape | ce qu'elle rend visible | état |
 |---|---|---|
 | 1. Le journal sur disque | Rien à l'écran. Mais l'application dit enfin où elle tombe, sur les trois systèmes. | **faite** |
-| 2. Les deux pannes, et la recette | Les paquets livrés s'ouvrent, et une commande le vérifie sur les deux machines virtuelles avant chaque livraison. | **faite** — sauf l'AppImage ARM, qui est l'étape 3 |
+| 2. Les deux pannes, et la recette | Les paquets livrés s'ouvrent, et une commande le vérifie sur les machines virtuelles avant chaque livraison. | **faite** — sauf l'AppImage ARM, qui est l'étape 3 |
 | 3. AppImage ARM64, puis le `.deb` | Linux servi sur les deux architectures, et un paquet qui se double-clique. | **faite** |
-| 4. Le plancher macOS à 15 | Les Mac d'avant macOS 26 ouvrent Spectre, sans verre et sans le dire. | à faire |
+| 4. Le plancher macOS à 15 | Les Mac d'avant macOS 26 ouvrent Spectre, sans verre et sans le dire. | **faite** |
 | 5. Sentry | Voir [RAPPORTS.md](RAPPORTS.md). | à faire |

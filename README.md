@@ -15,14 +15,15 @@ n'importe quel instant du morceau.
 
 ### Sur macOS
 
-**macOS 26 ou plus récent** — l'interface est bâtie sur Liquid Glass, qui n'existe
-pas avant ; voir « Les commandes, posées sur l'image ».
+**macOS 15 ou plus récent.** L'interface est bâtie sur Liquid Glass, qui n'existe
+qu'à partir de macOS 26 ; en dessous, elle se pose sans verre, et rien d'autre ne
+change. Voir « Les commandes, posées sur l'image ».
 
 **Apple Silicon et Intel.** L'application publiée porte les deux tranches dans un
-seul binaire. Côté Intel, la contrainte n'est pas elle mais macOS 26, que seuls
-quatre modèles atteignent — MacBook Pro 16" 2019, MacBook Pro 13" 2020 à quatre
-ports, iMac 2020, Mac Pro 2019. Plus ancien que cela, la machine reste sous macOS
-15 et rien de ce dépôt ne s'y ouvrira.
+seul binaire. Côté Intel, macOS 15 va jusqu'aux modèles de 2018 — MacBook Pro,
+MacBook Air, Mac mini, iMac, iMac Pro et Mac Pro. C'est six ans de machines de plus
+que le plancher précédent, qui exigeait macOS 26 et que quatre Mac Intel seulement
+atteignent.
 
 Une application prête à l'emploi est publiée dans les
 [releases](../../releases). Elle n'est **pas signée par un identifiant Apple**,
@@ -416,7 +417,7 @@ qu'il est grand. D'où le partage : ce qui sert à chaque instant — **quelle p
 on écoute** — flotte en permanence au bord droit de l'image, et tout le reste vit
 dans un panneau qu'on déplie (⌘⌥R) et qu'on referme.
 
-Ce partage n'est tenable que grâce au verre de macOS 26. Un panneau opaque posé
+Ce partage tient grâce au verre de macOS 26. Un panneau opaque posé
 sur un spectrogramme le cacherait ; du verre laisse voir ce qu'il couvre. Le
 sélecteur de pistes est en verre **clair** et non *régulier* : le régulier dépolit
 ce qu'il couvre, et ce qu'il couvre ici est justement l'image qu'on est en train
@@ -459,12 +460,21 @@ Séparation des pistes : 30 % — encore 17 s
 Le compteur ne prétend rien savoir de plus qu'avant ; il montre seulement que le
 travail avance, ce qu'un nombre immobile ne fait pas.
 
-C'est ce choix qui fixe le plancher du projet à **macOS 26** : `glassEffect`,
-`GlassEffectContainer` et `glassEffectUnion` n'existent pas avant. On aurait pu
-garder macOS 14 en enveloppant tout dans `if #available`, mais cela ferait vivre
-deux interfaces dont une seule serait jamais regardée — et il faudrait de toute
-façon le SDK 26 pour compiler. Le noyau, lui, ne bouge pas : il ne connaît aucun
-système, et `SPECTRE_PORTABLE` continue de le vérifier.
+Le verre n'existe qu'à partir de macOS 26, et le plancher du projet est pourtant
+**macOS 15**. Les deux tiennent ensemble parce que le verre est **confiné** : six
+appels, tous dans `Sources/Spectre/Controls.swift`, tous passant par trois
+enveloppes qui sont le seul endroit du dépôt où `#available` parle d'interface. En
+dessous de 26, le panneau devient un matériau translucide et le sélecteur de pistes
+un voile clair cerné d'un liseré — dans les mêmes formes, aux mêmes places.
+
+Le repli n'imite pas le verre : il n'y arriverait pas, et un faux verre se remarque
+plus qu'une surface franche. Il garde ce à quoi le verre sert ici — **laisser voir
+le spectrogramme qu'il couvre**. C'est aussi pourquoi il y a deux traitements et non
+un seul : le panneau dépolit ce qu'il cache, le sélecteur se contente de s'y poser.
+
+Compiler demande toujours le SDK de macOS 26, puisque le chemin du verre doit être
+compilé. Seul l'ouvrir descend à 15. Le noyau, lui, ne bouge pas : il ne connaît
+aucun système, et `SPECTRE_PORTABLE` continue de le vérifier.
 
 Chaque champ explique au survol ce qu'il fait, y compris ce qui n'a pas de
 commande visible : le curseur de zoom vertical dit le raccourci du trackpad
@@ -784,7 +794,11 @@ coureur n'exerce faute de bureau.
 ```
 
 Il télécharge les paquets de la release, déplie l'archive macOS ailleurs, lève la
-quarantaine comme les notes de version le disent, et ouvre l'application. Il envoie
+quarantaine comme les notes de version le disent, et ouvre l'application. Puis il
+recommence **sur un Mac d'avant le verre** — une machine virtuelle macOS 15 — parce
+que ce Mac-ci est à jour et ne dit donc rien du seul plancher qui compte : il compare
+le plancher annoncé par le paquet à la version de la machine d'essai, ouvre
+l'archive là-bas, et photographie l'interface sans Liquid Glass. Il envoie
 l'AppImage à la machine Linux — **sans le bit d'exécution**, comme un navigateur le
 livre — vérifie qu'il refuse alors de s'ouvrir, puis le rend exécutable et le
 photographie ; il y installe ensuite le `.deb` et regarde ce que lui seul promet :
