@@ -227,12 +227,12 @@ extension RenduSpectre {
     /// Le rendu attaché à une fenêtre Win32, muni de son nuanceur HLSL.
     public convenience init?(fenetre: UnsafeMutableRawPointer) {
         self.init(fenetre: fenetre, nuanceur: nuanceurSpectrogramme,
-                  journal: Journal.erreur)
+                  journal: { Journal.erreur($0) })
     }
 
     /// Le rendu sans fenêtre, vers une cible qu'on relit.
     public convenience init?(largeur: Int, hauteur: Int) {
         self.init(largeur: largeur, hauteur: hauteur, nuanceur: nuanceurSpectrogramme,
-                  journal: Journal.erreur)
+                  journal: { Journal.erreur($0) })
     }
 }

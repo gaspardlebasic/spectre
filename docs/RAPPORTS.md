@@ -4,7 +4,7 @@ Ce document dit **comment** Spectre racontera ses pannes, et ce qu'il en coûte.
 est le pendant, pour cette fonctionnalité-là, de ce que [LANGUES.md](LANGUES.md)
 est pour les cinq langues : écrit avant le travail, tenu à jour à mesure.
 
-**L'étape 1 est faite.** Le reste ne l'est pas. Le chantier venait après le portage
+**Les étapes 1 et 2 sont faites.** Le reste ne l'est pas. Le chantier venait après le portage
 Linux — voir [LINUX.md](LINUX.md) — parce qu'ajouter une plateforme pendant qu'on
 apprend à écouter les trois autres ferait deux chantiers dans le même endroit ; il a
 été rouvert par le premier bout, et pas par choix. Une livraison Windows est partie
@@ -137,12 +137,146 @@ Pas de mesure d'audience, pas de télémétrie d'usage, aucun relevé de ce que 
 gens font de l'application. Seulement ce qui casse. La distinction n'est pas
 cosmétique : c'est la seule qui rende la phrase du premier lancement tenable.
 
+## Ce que l'étape 2 a rendu, le 26 août 2026
+
+**Faite.** Les pannes que l'application détecte déjà partent chez Sentry, et la
+phrase du premier lancement les annonce dans les cinq langues.
+
+### Une seule porte, et c'est celle du journal
+
+`Journal.erreur` était déjà le seul endroit où les trois systèmes disent ce qui
+casse. C'est devenu le point de départ du rapport, plutôt qu'une liste d'endroits à
+instrumenter — et la raison tient en une phrase : **deux listes de pannes finissent
+toujours par ne plus se ressembler.** Ce qui s'écrit dans le journal est ce qui part,
+et une panne ajoutée dans six mois sera remontée sans que personne y pense.
+
+Le chantier a d'ailleurs commencé par réparer l'inverse. Cinq pannes que
+l'application connaissait — le décodage qui échoue, les poids de Demucs absents, la
+séparation qui s'arrête, les pistes illisibles, le nuanceur que la carte refuse —
+n'allaient **que** dans la barre du bas, et pas même dans le journal. Elles y vont
+maintenant, ce qui valait déjà le déplacement : le journal du rangement les portait
+déjà toutes sauf celles-là.
+
+### Ce qui ne part pas est une fonction, pas une intention
+
+`Anonyme.nettoyer` retire le dossier personnel, le nom de la personne et le titre du
+morceau ; le **format**, lui, reste — « ‹morceau›.mp3 » dit que le décodeur mp3 a
+échoué, ce qui est toute la panne, sans dire sur quoi.
+
+Le contrôle qui compte n'interroge pas cette fonction : il fabrique une panne dont le
+message porte un chemin personnel et un titre, laisse partir le rapport, attrape les
+octets **au dernier moment avant le réseau**, et cherche dedans le nom et le titre.
+C'est la seule formulation qui reste vraie si quelqu'un ajoute un champ au rapport
+dans six mois.
+
+**Le sens dans lequel on se trompe est choisi.** Un nom de fichier peut contenir des
+espaces, ce qui rend impossible de savoir où il commence : « impossible de lire Santi
+& Tuğçe.mp3 » ne se distingue pas, pour une machine, de « impossible de lire.mp3 ».
+On efface donc jusqu'au dernier séparateur de phrase plutôt que jusqu'au dernier
+espace. Le prix est réel — un message sans ponctuation y perd quelques mots de
+contexte — et il est plus petit que celui d'un titre de morceau chez un tiers.
+
+### Trois plafonds, parce qu'un seul ne suffit pas
+
+Un plantage dans une boucle de dessin enverrait mille rapports en une minute. La même
+panne est donc **comptée** plutôt que répétée — un rapport qui dit « quarante fois »,
+et non quarante rapports qui disent la même chose — un lancement n'écrit pas plus de
+huit rapports distincts, et une journée pas plus de quarante. Le compteur du jour est
+sur le disque, parce qu'il doit survivre à une application qu'on rouvre : c'est
+précisément quand elle plante en boucle qu'on la rouvre en boucle.
+
+### Rien ne part d'un coureur, et cela se voit dans le code
+
+`Rapports.ouvrir()` n'est appelé qu'au bord de la boucle d'évènements, après
+`--photo`, `--fluidite`, `--separer` et `--accords` — qui rendent une image ou un
+fichier puis s'arrêtent. Les vérifications et les commandes en ligne ne l'appellent
+jamais. **Ce qui part vient donc d'une fenêtre ouverte devant quelqu'un**, par
+construction plutôt que par une liste d'exceptions, et une panne de coureur
+n'apprend rien sur les gens qui se servent de l'application.
+
+### L'avis : deux dessins, un seul catalogue
+
+SwiftUI sur le Mac, `SpectreDessin/Avis.swift` pour les deux autres. Les dessins sont
+écrits deux fois ; les textes sortent du même catalogue et l'état vient de la même
+propriété du modèle. Une application qui annoncerait l'envoi sur un système et pas
+sur les deux autres n'aurait rien annoncé du tout — et `LangueCheck` exige les cinq
+langues, donc les cinq catalogues portent les quatre clés.
+
+Le fond s'assombrit entièrement : ce n'est pas une bannière qu'on chasse d'un coin de
+l'œil. Un clic n'importe où, ou n'importe quelle touche, la referme pour toujours. Et
+**ce qui ne part pas y est écrit aussi gros que ce qui part** : c'est la moitié qui
+décide si les gens gardent l'application installée.
+
+#### L'avis ne s'affichait que sur le Mac, et rien ne le disait
+
+Le défaut mérite d'être gardé, parce qu'il est d'une famille qu'on rejouera. Le
+modèle retenait la réponse à « faut-il montrer l'avis ? » **au moment où il était
+construit**. Sur le Mac, `Rapports.ouvrir()` passe avant que SwiftUI ne fabrique le
+modèle ; sous Windows et sous Linux, le modèle est bâti d'abord et les rapports ne
+s'ouvrent qu'au bord de la boucle d'évènements — ce qui est délibéré, pour que
+`--photo` n'envoie rien. La valeur retenue était donc fausse deux fois sur trois.
+
+**Rien ne l'aurait dit.** Les trois systèmes compilaient, les trois s'ouvraient, le
+harnais des rapports était vert — il éprouve `Rapports` sans jamais passer par le
+modèle. C'est une photographie de la machine d'essai Linux qui l'a montré : une
+fenêtre normale, là où il aurait dû y avoir un avis au milieu.
+
+La propriété est maintenant **calculée** plutôt que retenue, et `GestesCheck` en
+tient la garde — il est le seul harnais où le modèle est bâti tout en haut du
+fichier, c'est-à-dire dans l'ordre exact des deux systèmes où le défaut vivait.
+
+C'est la même leçon que le chantier 4 : **on ne livre pas un dessin que personne n'a
+regardé.** Elle vaut aussi pour un dessin qu'on a regardé sur un seul des trois
+systèmes.
+
+### L'adresse, et pourquoi elle est en clair
+
+Le DSN est écrit dans `Enveloppe.swift`, au vu de tous, et c'est ainsi qu'un DSN se
+distribue : **il n'autorise qu'à envoyer, jamais à lire**. Quelqu'un qui le recopie
+peut nous envoyer de faux rapports, et rien d'autre. Le cacher dans un secret
+d'intégration continue ne ferait qu'égarer celui qui le cherchera, puisqu'il est de
+toute façon dans le binaire livré.
+
+Le compte est en région européenne — `ingest.de.sentry.io` — ce qui ne change rien au
+protocole. La porte de sortie reste ouverte : **GlitchTip parle le même protocole**,
+et le jour où le quota gêne, une seule constante change. C'est pourquoi le type
+s'appelle `Enveloppe` et non `Sentry`.
+
+### Éprouvé, y compris la seule chose qu'on ne peut pas simuler
+
+`RapportsCheck` remplace le réseau par une fonction dans tous ses contrôles — ce qui
+le rend portable, sans effet de bord, et rouge quand il doit l'être. Mais **un code
+qui n'a jamais posté ne poste peut-être pas** : c'est la leçon de
+[PAQUETS.md](PAQUETS.md), transposée d'un paquet à une pile réseau. `URLSession` vient
+de Foundation sur le Mac et d'un module à part sous Linux et Windows, où elle traîne
+une bibliothèque de plus qu'il faut empaqueter.
+
+D'où `Tools/Receveur/receveur.py`, un service de rapports qui vit le temps d'une
+vérification, sur un port que le système choisit. `check.sh` le pose, relit ce qui est
+arrivé de l'autre côté, et ne croit pas le harnais sur parole. Son jumeau
+`receveur.ps1` fait la même chose pour `essai.ps1` et pour le coureur Windows, en
+parlant HTTP à la main sur une prise TCP nue — `HttpListener` exigerait une
+réservation d'espace de noms, donc les droits d'administrateur, donc un harnais qu'on
+finit par sauter.
+
+Ce qui a été passé, et sur quoi :
+
+| | |
+|---|---|
+| macOS 26, l'atelier | `check.sh` et `./essai.sh` au vert, envoi réel compris |
+| Linux aarch64 | `check.sh` entier sur la machine d'essai — 472 contrôles, receveur compris |
+| Windows ARM64 | le harnais, puis **le paquet assemblé** : `RapportsCheck` posé dans `build\Spectre` et lancé avec un `PATH` réduit à Windows poste quand même. C'est l'épreuve du dossier propre, appliquée au chemin réseau — et elle répond à la seule question qui restait : `FoundationNetworking.dll` entre toute seule dans le paquet, par la fermeture de `dumpbin`, sans qu'on ait rien à ajouter à la main |
+| macOS 15, la machine d'essai | l'avis s'affiche au premier lancement, sur un Mac qui n'avait jamais vu Spectre ; puis un fichier illisible lui est donné, le journal écrit « ouverture du morceau : Impossible de lire ‹morceau›.mp3 », **la file se vide**, et le rapport arrive |
+
+Le dernier est celui qui compte : c'est le chemin entier, d'une vraie fenêtre sur une
+vraie machine jusqu'au service, en passant par tout ce que ce document décrit.
+
 ## Ordre de marche
 
 | étape | ce qu'elle rend visible | état |
 |---|---|---|
 | 1. Un journal commun aux trois | Rien à l'écran. Ce qui casse est déjà su, mais Windows a son `Journal`, le Mac et Linux n'ont rien : il faut un seul endroit où ça s'écrit. | **faite** |
-| 2. L'envoi, et le message du premier lancement | Les pannes détectées arrivent chez Sentry. C'est l'étape qui rapporte le plus pour le moins de travail. | à faire |
+| 2. L'envoi, et le message du premier lancement | Les pannes détectées arrivent chez Sentry. C'est l'étape qui rapporte le plus pour le moins de travail. | **faite** |
 | 3. Les vrais plantages | Le rapport écrit au moment de la chute, envoyé au lancement suivant, sur les trois systèmes. | à faire |
 | 4. Les symboles publiés | Les rapports deviennent lisibles : des noms de fonctions au lieu d'adresses. | à faire |
 | 5. La case | Si l'application trouve un public. Pas avant. | à faire |

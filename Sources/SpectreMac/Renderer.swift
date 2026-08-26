@@ -212,6 +212,10 @@ public final class SpectrogramRenderer: NSObject, MTKViewDelegate {
         self.device = device
         self.queue = q
         super.init()
+        // La carte part avec les rapports de panne : la moitié de ce qui casse chez
+        // les autres casse à cause d'un pilote, et c'est le nom du pilote qui permet
+        // de dire « ceux-là, et eux seuls ». Elle n'identifie personne.
+        Rapports.carte(device.name)
 
         do {
             let library = try device.makeLibrary(source: shaderSource, options: nil)
@@ -221,7 +225,12 @@ public final class SpectrogramRenderer: NSObject, MTKViewDelegate {
             desc.colorAttachments[0].pixelFormat = .bgra8Unorm
             pipeline = try device.makeRenderPipelineState(descriptor: desc)
         } catch {
-            NSLog("Spectre : compilation du shader impossible — \(error)")
+            // Par `Journal` et non par `NSLog` : c'est le seul chemin qui aille à
+            // la fois dans le fichier du rangement et dans un rapport. Un nuanceur
+            // que la carte refuse est exactement la panne qu'on n'a aucune chance de
+            // reproduire ici, et dont on n'apprendrait rien sans la carte qui l'a
+            // refusé. Voir `docs/RAPPORTS.md`.
+            Journal.erreur("compilation du nuanceur impossible — \(error)")
             return nil
         }
         buildNoteColorTable(saturation: display.noteSaturation, origin: hueOrigin)

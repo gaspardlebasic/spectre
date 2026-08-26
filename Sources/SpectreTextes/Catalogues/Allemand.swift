@@ -326,6 +326,12 @@ extension Catalogue {
         .winBarreBoucleHorsService: "Schleife (aus)",
         .winFriseOuvrir: "Eine Datei öffnen: Strg + O",
 
+        // MARK: Der Hinweis beim ersten Start
+        .avisRapportsTitre: "Spectre meldet seine Pannen selbst",
+        .avisRapportsCorps: "Wenn etwas kaputtgeht, schickt Spectre den Bericht von selbst, ohne zu fragen. Nur so lässt es sich beheben: niemand macht sich die Mühe, eine Panne zu schildern, und eine Panne, von der man nichts erfährt, bleibt.",
+        .avisRapportsSecret: "Niemals dabei: Ihre Dateinamen, Ihre Ordner oder was Sie hören. Sonst wird nichts erfasst — weder was Sie mit der Anwendung tun noch wie lange Sie sie geöffnet haben.",
+        .avisRapportsCompris: "Verstanden",
+
         // MARK: La ligne de commande
         .cliFichierIntrouvable: "Datei nicht gefunden: %1$@",
         .cliLectureImpossible: "Nicht lesbar: %1$@",

@@ -19,9 +19,22 @@ les trois plateformes ; c'est ce que mesure `verification.yml`. Qui touche à
 systèmes, pas pour un — [WINDOWS.md](WINDOWS.md) tient l'état du chantier, ce qui
 reste, et les pièges déjà payés.
 
-**Le chantier d'après est écrit, et n'est pas commencé** : Spectre enverra un
-rapport tout seul quand il tombera chez quelqu'un — [docs/RAPPORTS.md](docs/RAPPORTS.md)
-en tient le plan, les décisions déjà prises et les pièges qu'on peut nommer d'avance.
+**Spectre envoie ses pannes toute seule** — [docs/RAPPORTS.md](docs/RAPPORTS.md) en
+tient le plan et l'état. Les deux premières étapes sont faites : le journal sur
+disque, puis l'envoi des pannes que l'application détecte déjà. Deux conséquences
+pour qui écrit ici :
+
+- `Journal.erreur` est **la seule porte**. Ce qui s'y écrit part chez Sentry, et une
+  panne qu'on signale autrement n'arrivera nulle part. Rien ne part en revanche d'un
+  harnais ni d'une commande en ligne : `Rapports.ouvrir()` n'est appelé qu'au bord de
+  la boucle d'évènements.
+- **Aucun nom de fichier, aucun chemin personnel ne sort de la machine.** C'est une
+  fonction — `Anonyme.nettoyer` — et `RapportsCheck` la met en défaut à chaque
+  vérification, sur les octets qui allaient partir. Un champ ajouté au rapport ne
+  contourne pas la règle ; qu'il ne la contourne pas se vérifie.
+
+Restent les vrais plantages, les symboles publiés et la case à cocher, dans cet
+ordre.
 
 ## Les règles de la maison
 

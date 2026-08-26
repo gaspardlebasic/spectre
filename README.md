@@ -148,6 +148,37 @@ de livraison les tire d'une release qui ne sert qu'à cela, `modele-htdemucs-v4`
 les embarque dans chaque paquet — d'où leur taille. Celui qui construit soi-même les
 obtient par `./modele.sh`.
 
+## Ce que Spectre envoie, et ce qu'elle n'envoie jamais
+
+**Quand quelque chose casse, Spectre en envoie le rapport toute seule**, sans rien
+demander. Elle le dit au premier lancement, au milieu de la fenêtre, une fois.
+
+C'est une décision, pas un réglage oublié : personne ne clique sur « Signaler un
+problème », et une panne qu'on n'apprend pas reste là. La v0.4 est partie avec un
+installeur Windows qui ne s'ouvrait pas ; l'application écrivait pourquoi, et il a
+fallu une machine virtuelle et une demi-journée pour lire ce qu'elle disait. Chez
+quelqu'un d'autre, on ne l'aurait jamais su.
+
+| part | ne part **jamais** |
+|---|---|
+| la version de Spectre | le nom de vos fichiers |
+| le système et son numéro | vos dossiers, votre nom d'utilisateur |
+| l'architecture | ce que vous écoutez |
+| la carte graphique | ce que vous faites de l'application |
+| la panne, et l'endroit du programme d'où elle vient | combien de temps vous l'ouvrez |
+
+Ce n'est pas une mesure d'audience : il n'y a **que** ce qui casse. Le nom d'un
+morceau et le chemin d'un dossier sont retirés avant l'envoi par une fonction du
+noyau, et `RapportsCheck` la met en défaut à chaque vérification — sur les octets
+qui allaient partir, pas sur l'intention. Un numéro tiré au sort une fois distingue
+deux machines l'une de l'autre, sans aucun lien avec vous : sans lui, trente
+rapports d'une seule personne passeraient pour trente personnes.
+
+Rien n'attend le réseau : l'application s'ouvre, analyse et joue sans connexion,
+exactement comme avant. Les rapports partent derrière, et ce qui n'est pas parti au
+bout de trois jours est jeté. Le détail — le service, la porte de sortie, et
+pourquoi il n'y a pas de case à cocher — est dans [docs/RAPPORTS.md](docs/RAPPORTS.md).
+
 ## Construire soi-même
 
 ```bash
@@ -813,8 +844,20 @@ Voir [docs/PAQUETS.md](docs/PAQUETS.md) pour ce que les deux pannes étaient, et
 pourquoi rien ne les avait vues.
 
 `check.sh` commence par `LangueCheck`, qui compte les cinq catalogues et compare
-les repères de substitution d'une langue à l'autre. Le reste — couche numérique,
-WAV, sessions, batterie, accords, analyse, rendu, séparation, lecture — vient après.
+les repères de substitution d'une langue à l'autre. Viennent ensuite `JournalCheck`
+et `RapportsCheck`, pour la même raison : ils couvrent des manques qui ne se voient
+pas dans une fenêtre. Le reste — couche numérique, WAV, sessions, batterie, accords,
+analyse, rendu, séparation, lecture — vient après.
+
+`RapportsCheck` mérite une phrase de plus, parce que son contrôle décisif ne
+ressemble pas aux autres : il fabrique une panne dont le message porte un chemin
+personnel et un titre de morceau, laisse partir le rapport, **attrape les octets au
+dernier moment avant le réseau**, et cherche dedans le nom et le titre. C'est la
+seule formulation qui restera vraie si quelqu'un ajoute un champ au rapport dans six
+mois. Et parce qu'un code qui n'a jamais posté ne poste peut-être pas — `URLSession`
+n'est pas la même bibliothèque sur les trois systèmes — un receveur est posé le temps
+de la vérification sur la boucle locale, et l'on relit ce qui est arrivé de l'autre
+côté.
 
 ```bash
 ./essai.sh

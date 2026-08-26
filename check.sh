@@ -32,6 +32,11 @@ export SPECTRE_LANGUE=fr
 # morceaux — des minutes de GPU perdues en lançant ce script. Le dossier est vidé à
 # la sortie, quelle qu'en soit la cause.
 export SPECTRE_RANGEMENT="$PWD/build/check/rangement"
+# Et rien ne part chez Sentry : `non` retire l'adresse. `RapportsCheck`, lui, se
+# donne la sienne — voir `Rapports.ouvrir`. Sans cela, chaque passage de ce script
+# enverrait de vraies pannes de synthèse dans les vraies données, et l'avis du
+# premier lancement viendrait couvrir la fenêtre qu'on photographie.
+export SPECTRE_RAPPORTS=non
 rm -rf "$SPECTRE_RANGEMENT"
 trap 'rm -rf "$SPECTRE_RANGEMENT"' EXIT
 
@@ -54,6 +59,47 @@ echo "=== Le journal ==="
 # pas la dernière phrase a l'air de marcher — on ne s'en aperçoit qu'au moment où
 # l'on en a besoin, chez quelqu'un d'autre. Voir `docs/PAQUETS.md`.
 "$BIN/JournalCheck"
+
+echo
+echo "=== Les rapports de panne ==="
+# Juste après le journal, dont ils sont la suite : ce qui s'écrit dans le fichier est
+# ce qui part chez Sentry, par le même appel. Le contrôle qui compte est celui qui
+# cherche un nom de personne et un titre de morceau **dans les octets** qui allaient
+# partir — voir l'en-tête du harnais.
+#
+# Un receveur est posé sur la boucle locale le temps de la vérification, et le port
+# est celui que le système donne : sans lui, tout serait éprouvé sauf la seule chose
+# qui traverse une pile réseau, et `URLSession` n'est pas la même bibliothèque sur les
+# trois systèmes.
+RECEVEUR="$OUT/receveur"
+rm -rf "$RECEVEUR"
+mkdir -p "$RECEVEUR"
+python3 Tools/Receveur/receveur.py "$RECEVEUR" &
+SERVICE=$!
+# `wait` après le `kill` : sans lui le shell annonce « Terminated » au milieu de la
+# vérification suivante, ce qui a l'air d'une panne et n'en est pas.
+# Et `|| true` sur chacun, ce qui n'est pas une superstition. Deux pièges se cumulent
+# ici, et il a fallu les deux pour comprendre : **le code de sortie d'un piège EXIT
+# devient celui du script**, et **`set -e` interrompt le piège** à la première commande
+# qui échoue. `wait` sur un processus qu'on vient de tuer rend 143 : la vérification
+# était entièrement verte, `essai.sh` annonçait « check.sh échoue », et le journal qu'il
+# désignait disait « Tout est bon ».
+trap 'kill "$SERVICE" 2>/dev/null || true; wait "$SERVICE" 2>/dev/null || true; rm -rf "$SPECTRE_RANGEMENT" || true' EXIT
+for _ in $(seq 40); do [ -s "$RECEVEUR/port" ] && break; sleep 0.1; done
+if [ -s "$RECEVEUR/port" ]; then
+  SPECTRE_RECEVEUR="http://cle-dessai@127.0.0.1:$(cat "$RECEVEUR/port")/1" "$BIN/RapportsCheck"
+  # Et l'on regarde ce qui est arrivé de l'autre côté, plutôt que de croire le
+  # harnais sur parole.
+  if grep -q "spectre@essai" "$RECEVEUR/recu.txt" 2>/dev/null; then
+    echo "  ✓ le receveur a bien reçu une enveloppe"
+  else
+    echo "  ✗ le receveur n'a rien reçu"
+    exit 1
+  fi
+else
+  echo "  (pas de receveur — python3 n'a pas ouvert de port)"
+  "$BIN/RapportsCheck"
+fi
 
 echo
 echo "=== Couche numérique ==="

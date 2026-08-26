@@ -143,6 +143,7 @@ else
     pkill -x Spectre 2>/dev/null
     open --env SPECTRE_RANGEMENT="$PWD/$RANGEMENT" \
          --env SPECTRE_LANGUE="${SPECTRE_LANGUE:-fr}" \
+         --env SPECTRE_RAPPORTS=non \
          -a "$PWD/$APP" "$PWD/$TEMOIN" >/dev/null 2>&1
     FENETRE=""
     for _ in $(seq 1 30); do
@@ -263,6 +264,7 @@ else
         launchctl asuser $NUMERO sudo -u $COMPTE \
           open --env SPECTRE_RANGEMENT=$DEPOT/rangement \
                --env SPECTRE_LANGUE=${SPECTRE_LANGUE:-fr} \
+               --env SPECTRE_RAPPORTS=non \
                -a $DEPOT/Spectre.app $DEPOT/temoin.wav
       " >/dev/null 2>&1
       FENETRE=""

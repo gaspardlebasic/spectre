@@ -400,6 +400,31 @@ la batterie et les commandes sans verre, à regarder.
 Les étapes 2 à 5 de [RAPPORTS.md](RAPPORTS.md), dans l'ordre qu'il donne. Elles
 commencent une fois le chantier 1 en place, puisqu'elles en sont la suite.
 
+#### Ce que l'étape 2 a rendu, le 26 août 2026
+
+**L'envoi est en place**, et le détail est dans [RAPPORTS.md](RAPPORTS.md). Trois
+choses valent d'être notées ici, parce qu'elles répondent à ce que ce document-ci a
+appris :
+
+**Ce que le journal écrit est ce qui part.** `Journal.erreur` est la seule porte : il
+n'y a pas deux listes de pannes à tenir accordées, et une panne ajoutée plus tard
+sera remontée sans que personne y pense. En la posant, on a trouvé cinq pannes que
+l'application connaissait et qui n'allaient **même pas** dans le journal — elles
+mouraient dans la barre du bas.
+
+**Rien ne part d'un coureur.** `Rapports.ouvrir()` n'est appelé qu'au bord de la
+boucle d'évènements, après `--photo`, `--fluidite`, `--separer` et `--accords`. C'est
+la même distinction que celle qui traverse tout ce document : ce qui a une fenêtre
+devant quelqu'un, et ce qui rend une image dans le vide.
+
+**Et l'on n'a pas cru le harnais sur parole.** `URLSession` vient de Foundation sur
+le Mac et d'un module à part sous Linux et Windows, qui traîne une bibliothèque de
+plus — donc une DLL de plus à empaqueter, donc exactement le genre de manque qui a
+coûté la v0.4. Un receveur local, posé le temps de la vérification, fait poster
+l'application pour de vrai et relit ce qui est arrivé de l'autre côté. Il existe en
+deux exemplaires, un par dialecte : `receveur.py` pour `check.sh`, `receveur.ps1`
+pour `essai.ps1`.
+
 ## Ordre de marche
 
 | étape | ce qu'elle rend visible | état |
@@ -408,4 +433,4 @@ commencent une fois le chantier 1 en place, puisqu'elles en sont la suite.
 | 2. Les deux pannes, et la recette | Les paquets livrés s'ouvrent, et une commande le vérifie sur les machines virtuelles avant chaque livraison. | **faite** — sauf l'AppImage ARM, qui est l'étape 3 |
 | 3. AppImage ARM64, puis le `.deb` | Linux servi sur les deux architectures, et un paquet qui se double-clique. | **faite** |
 | 4. Le plancher macOS à 15 | Les Mac d'avant macOS 26 ouvrent Spectre, sans verre et sans le dire. | **faite** |
-| 5. Sentry | Voir [RAPPORTS.md](RAPPORTS.md). | à faire |
+| 5. Sentry | Voir [RAPPORTS.md](RAPPORTS.md). | **en cours** — l'étape 2 est faite : les pannes détectées partent, et l'avis du premier lancement les annonce |

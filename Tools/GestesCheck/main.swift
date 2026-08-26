@@ -1,5 +1,8 @@
 import Foundation
 import SpectreCore
+#if canImport(WinSDK)
+import WinSDK
+#endif
 import SpectreDessin
 import SpectreModele
 import SpectreTextes
@@ -160,6 +163,27 @@ final class RangementDePapier: ServiceDeSeparation {
 }
 
 // MARK: - Le montage
+
+/// Pose une variable d'environnement pour ce processus. `setenv` est du POSIX et
+/// n'existe pas sous Windows, où c'est `SetEnvironmentVariableW` qui écrit dans le
+/// bloc que `ProcessInfo` relit.
+func poserDansLEnvironnement(_ nom: String, _ valeur: String) {
+    #if canImport(WinSDK)
+    _ = nom.withCString(encodedAs: UTF16.self) { n in
+        valeur.withCString(encodedAs: UTF16.self) { v in SetEnvironmentVariableW(n, v) }
+    }
+    #else
+    setenv(nom, valeur, 1)
+    #endif
+}
+
+// Un rangement à soi, posé avant le premier appel : la section sur l'avis du premier
+// lancement écrit un témoin sur le disque, et ce n'est pas dans celui de l'utilisateur
+// qu'elle doit le faire — elle lui ferait rater l'avis pour de bon.
+let atelier = FileManager.default.temporaryDirectory
+    .appendingPathComponent("spectre-gestes-\(ProcessInfo.processInfo.processIdentifier)",
+                            isDirectory: true)
+poserDansLEnvironnement("SPECTRE_RANGEMENT", atelier.path)
 
 let modele = AppModel<LecteurDePapier>(
     lecteur: LecteurDePapier(), décodeur: DecodeurDePapier(),
@@ -494,6 +518,42 @@ controle("le clic droit est passé à la plateforme",
 gestes.sourisSortie()
 controle("la souris qui sort efface ce qui était survolé",
          modele.hover == nil && surface.forme == .fleche, "rien de survolé")
+
+// MARK: - L'avis du premier lancement
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LE CONTRÔLE QUI VIENT D'UNE PHOTOGRAPHIE
+//
+// L'avis ne s'affichait que sur le Mac, et rien ne le disait : les trois systèmes
+// compilaient, les trois s'ouvraient, et le harnais des rapports éprouve `Rapports`
+// sans passer par le modèle. La cause tenait à l'ordre : sur le Mac les rapports
+// s'ouvrent avant que SwiftUI ne fabrique le modèle, sous Windows et sous Linux le
+// modèle vient d'abord — ce qui est délibéré, pour que `--photo` n'envoie rien. La
+// valeur retenue à la construction était donc fausse deux fois sur trois.
+//
+// Le contrôle est ici et pas ailleurs parce que **`modele` a été bâti tout en haut
+// de ce fichier**, bien avant cette ligne : c'est exactement l'ordre des deux
+// systèmes où le défaut vivait.
+// ─────────────────────────────────────────────────────────────────────────────
+
+print("\n=== L'avis du premier lancement ===")
+
+controle("rien à annoncer tant que rien ne part", !modele.avisDeRapports,
+         "aucune adresse d'envoi")
+
+Rapports.remiseAZeroPourLeHarnais()
+Rapports.ouvrir(version: "essai", dsn: "https://cle@exemple.invalid/1",
+                envoiEnFond: false)
+controle("l'avis paraît même si le modèle est plus vieux que les rapports",
+         modele.avisDeRapports, "le modèle date d'avant `Rapports.ouvrir()`")
+
+let teteAvantLAvis = modele.playhead
+gestes.boutonEnfonce(a: CGPoint(x: 400, y: 300))
+controle("un clic n'importe où le referme", !modele.avisDeRapports, "refermé")
+controle("et ce clic-là n'a rien fait d'autre", modele.playhead == teteAvantLAvis,
+         "la tête de lecture n'a pas bougé")
+
+try? FileManager.default.removeItem(at: atelier)
 
 print("")
 if echecs == 0 {

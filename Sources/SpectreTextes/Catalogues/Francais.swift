@@ -321,6 +321,12 @@ extension Catalogue {
         .winBarreBoucleHorsService: "boucle (hors service)",
         .winFriseOuvrir: "Ouvrir un fichier : Ctrl + O",
 
+        // MARK: L'avis du premier lancement
+        .avisRapportsTitre: "Spectre signale ses pannes toute seule",
+        .avisRapportsCorps: "Quand quelque chose casse, Spectre en envoie le rapport sans rien vous demander. C'est ce qui permet de le corriger : personne ne prend la peine de raconter une panne, et une panne qu'on n'apprend pas reste là.",
+        .avisRapportsSecret: "N'en font jamais partie : le nom de vos fichiers, vos dossiers, ni ce que vous écoutez. Rien d'autre n'est mesuré — ni ce que vous faites de l'application, ni combien de temps vous l'ouvrez.",
+        .avisRapportsCompris: "J'ai compris",
+
         // MARK: La ligne de commande
         .cliFichierIntrouvable: "Fichier introuvable : %1$@",
         .cliLectureImpossible: "Lecture impossible : %1$@",

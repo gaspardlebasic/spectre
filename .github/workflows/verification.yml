@@ -93,6 +93,7 @@ jobs:
           "$BIN/DSPCheck"
           "$BIN/WAVCheck"
           "$BIN/SessionCheck"
+          "$BIN/RapportsCheck"
           "$BIN/FilterCheck"
           "$BIN/ChainCheck"
           "$BIN/GaplessCheck"
@@ -143,13 +144,34 @@ jobs:
           # le lien symbolique qui porte ce nom hors du mode développeur, et la
           # construction le signale sans échouer. Le chemin réel porte le triplet.
           $bin = (swift build -c release --show-bin-path | Select-Object -Last 1).Trim()
-          foreach ($harnais in @("DSPCheck", "WAVCheck", "SessionCheck", "FilterCheck",
+          # Un receveur sur la boucle locale, le temps des harnais : c'est ce qui fait
+          # poster `RapportsCheck` pour de vrai. Sous Windows, `URLSession` vient d'un
+          # module à part — donc d'une DLL de plus à empaqueter — et c'est exactement le
+          # genre de manque qui a coûté la v0.4. Voir `Tools/Receveur`.
+          $recu = Join-Path $env:RUNNER_TEMP "receveur"
+          $service = Start-Process pwsh -PassThru -WindowStyle Hidden -ArgumentList @(
+              "-NoProfile", "-File", "Tools\Receveur\receveur.ps1", "-Dossier", $recu)
+          foreach ($essai in 1..40) {
+            if (Test-Path (Join-Path $recu "port")) { break }
+            Start-Sleep -Milliseconds 200
+          }
+          if (Test-Path (Join-Path $recu "port")) {
+            $env:SPECTRE_RECEVEUR = "http://cle-dessai@127.0.0.1:$(Get-Content (Join-Path $recu 'port'))/1"
+          }
+          foreach ($harnais in @("DSPCheck", "WAVCheck", "SessionCheck", "RapportsCheck",
+                                 "FilterCheck",
                                  "ChainCheck", "GaplessCheck", "AnalysisCheck",
                                  "PercussionCheck", "HarmonyCheck")) {
             Write-Host "── $harnais"
             & "$bin\$harnais.exe"
             if ($LASTEXITCODE -ne 0) { throw "$harnais a échoué ($LASTEXITCODE)" }
           }
+          # Et l'on relit ce qui est arrivé de l'autre côté, plutôt que de croire le
+          # harnais sur parole.
+          $arrivee = Join-Path $recu "recu.txt"
+          if (-not (Test-Path $arrivee)) { throw "le receveur n'a rien reçu" }
+          Write-Host "── le receveur a bien reçu une enveloppe"
+          Stop-Process -Id $service.Id -Force -ErrorAction SilentlyContinue
 
   linux:
     name: Linux — l'application
@@ -223,12 +245,29 @@ jobs:
           SPECTRE_RANGEMENT: ${{ runner.temp }}/spectre
         run: |
           BIN="$(swift build -c release --show-bin-path)"
-          for harnais in LangueCheck JournalCheck DSPCheck WAVCheck SessionCheck FilterCheck \
+          # Un receveur sur la boucle locale, le temps des harnais : c'est ce qui fait
+          # poster `RapportsCheck` pour de vrai. Sous Linux, `URLSession` vient d'un
+          # module à part, avec une bibliothèque de plus que l'AppImage doit embarquer.
+          RECEVEUR="${RUNNER_TEMP:-/tmp}/receveur"
+          rm -rf "$RECEVEUR"
+          python3 Tools/Receveur/receveur.py "$RECEVEUR" &
+          SERVICE=$!
+          for _ in $(seq 40); do [ -s "$RECEVEUR/port" ] && break; sleep 0.1; done
+          if [ -s "$RECEVEUR/port" ]; then
+            export SPECTRE_RECEVEUR="http://cle-dessai@127.0.0.1:$(cat "$RECEVEUR/port")/1"
+          fi
+          for harnais in LangueCheck JournalCheck RapportsCheck DSPCheck WAVCheck \
+                         SessionCheck FilterCheck \
                          ChainCheck GaplessCheck AnalysisCheck PercussionCheck \
                          HarmonyCheck GestesCheck DecodeCheck PistesCheck; do
             echo "── $harnais"
             "$BIN/$harnais"
           done
+          # Et l'on relit ce qui est arrivé de l'autre côté.
+          test -s "$RECEVEUR/recu.txt" || { echo "le receveur n'a rien reçu"; exit 1; }
+          echo "── le receveur a bien reçu une enveloppe"
+          kill "$SERVICE" 2>/dev/null || true
+          wait "$SERVICE" 2>/dev/null || true
 
       # L'AppImage se fabrique aussi, et pour la même raison que l'installeur sous
       # Windows : un paquet qui ne s'assemble qu'à la veille d'une livraison

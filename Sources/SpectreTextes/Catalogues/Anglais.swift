@@ -320,6 +320,12 @@ extension Catalogue {
         .winBarreBoucleHorsService: "loop (off)",
         .winFriseOuvrir: "Open a file: Ctrl + O",
 
+        // MARK: The notice shown once, at first launch
+        .avisRapportsTitre: "Spectre reports its own failures",
+        .avisRapportsCorps: "When something breaks, Spectre sends the report on its own, without asking. That is what gets it fixed: nobody takes the trouble to describe a failure, and a failure nobody hears about stays.",
+        .avisRapportsSecret: "Never part of it: your file names, your folders, or what you listen to. Nothing else is measured — not what you do with the app, not how long you keep it open.",
+        .avisRapportsCompris: "Got it",
+
         // MARK: La ligne de commande
         .cliFichierIntrouvable: "File not found: %1$@",
         .cliLectureImpossible: "Cannot read: %1$@",

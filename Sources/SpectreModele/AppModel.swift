@@ -162,6 +162,42 @@ private let dureeDuTournePage = 0.32
     public var progress: Double?
     public var status: String?
 
+    /// L'avis du premier lancement : Spectre enverra ses pannes.
+    ///
+    /// Il vit ici parce qu'il est le même sur les trois systèmes — SwiftUI le pose
+    /// en surimpression, `Avis.swift` le dessine pour les deux autres, et les deux
+    /// lisent cette propriété-là. Il n'est vrai que si quelque chose part vraiment :
+    /// sans adresse d'envoi, `Rapports` répond non, et l'application se comporte
+    /// exactement comme avant. Voir `docs/RAPPORTS.md`.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────────
+    /// CALCULÉE, ET NON RETENUE À LA CONSTRUCTION
+    ///
+    /// Elle l'a été, et l'avis ne s'affichait alors **que sur le Mac**. La raison
+    /// tient à trois lignes d'ordre : sur le Mac, `Rapports.ouvrir()` passe avant
+    /// que SwiftUI ne fabrique le modèle ; sous Windows et sous Linux, le modèle est
+    /// bâti d'abord et les rapports ne s'ouvrent qu'au bord de la boucle
+    /// d'évènements — ce qui est délibéré, pour que `--photo` n'envoie rien. La
+    /// valeur retenue à la construction était donc fausse sur deux systèmes sur
+    /// trois.
+    ///
+    /// Rien ne l'aurait dit : les trois compilent, les trois s'ouvrent, et le
+    /// harnais éprouve `Rapports` sans passer par le modèle. C'est une photographie
+    /// de la machine d'essai Linux qui l'a montré — une fenêtre normale, là où il
+    /// aurait dû y avoir un avis.
+    /// ─────────────────────────────────────────────────────────────────────────
+    public var avisDeRapports: Bool { !avisLu && Rapports.avisAMontrer }
+
+    /// Lu pendant ce lancement-ci. Observé, et c'est ce qui fait que la vue du Mac
+    /// se redessine quand on referme l'avis.
+    public private(set) var avisLu = false
+
+    /// La phrase a été lue. Elle ne reviendra plus, sur aucun lancement.
+    public func avisDeRapportsLu() {
+        avisLu = true
+        Rapports.avisMontre()
+    }
+
     /// Sinusoïde d'écoute, tenue tant que le bouton reste enfoncé.
     @ObservationIgnored private let sinusoide: Sinusoide
     @ObservationIgnored private var probing = false
@@ -285,6 +321,12 @@ private let dureeDuTournePage = 0.32
             do {
                 loaded = try décodeur.charger(url)
             } catch {
+                // Dit **et** remonté. C'est l'étape 2 de `docs/RAPPORTS.md` : une
+                // panne que l'application détecte déjà, qu'elle écrivait dans la
+                // barre du bas avant de l'oublier. `Journal.erreur` est le seul
+                // chemin — ce qui s'écrit dans le journal est ce qui part, et il n'y
+                // a donc pas deux listes de pannes à tenir accordées.
+                Journal.erreur("ouverture du morceau : \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     self?.progress = nil
                     self?.status = error.localizedDescription
@@ -832,6 +874,10 @@ private let dureeDuTournePage = 0.32
         // touche pas à la sélection — la déplacer vers des pistes qu'on ne peut pas
         // montrer serait mentir sur l'état des choses.
         guard pistes.modeleDisponible else {
+            // Un défaut d'empaquetage, et il ne se voit que chez les autres : ici le
+            // modèle est toujours là. C'est exactement le genre de panne pour
+            // laquelle les rapports existent.
+            Journal.erreur("les poids de la séparation manquent à l'application")
             separationError = T(.statutModeleAbsentApplication)
             status = separationError
             return
@@ -880,6 +926,7 @@ private let dureeDuTournePage = 0.32
                     self.enAttenteDeBanque = nil
                     self.show(self.selection)
                 case .failure(let error):
+                    Journal.erreur("séparation : \(error.localizedDescription)")
                     self.separating = nil
                     self.selection = Self.everything
                     self.separationError = error.localizedDescription
@@ -892,6 +939,7 @@ private let dureeDuTournePage = 0.32
                 // pour ce qu'il change vraiment — un échec, qui obligera à recalculer
                 // la prochaine fois.
                 if let error {
+                    Journal.erreur("rangement des pistes : \(error.localizedDescription)")
                     self.status = T(.statutPistesNonEnregistrees, error.localizedDescription)
                 }
             })
@@ -969,6 +1017,7 @@ private let dureeDuTournePage = 0.32
             guard let montée else {
                 // Les fichiers sont là mais ne se lisent pas : plutôt que de rester
                 // sur une promesse, on revient au mixage et on le dit.
+                Journal.erreur("les pistes séparées sont sur le disque mais illisibles")
                 self.enAttenteDeBanque = nil
                 self.selection = Self.everything
                 self.separationError = T(.statutPistesIllisibles)

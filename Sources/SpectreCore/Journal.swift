@@ -67,8 +67,27 @@ import Glibc
 public enum Journal {
     // MARK: - Ce que l'application dit
 
-    public static func erreur(_ message: String) {
+    /// ─────────────────────────────────────────────────────────────────────────
+    /// LE MÊME CHEMIN POUR CE QUI S'ÉCRIT ET POUR CE QUI PART
+    ///
+    /// Depuis l'étape 2 de `docs/RAPPORTS.md`, une erreur va **aussi** chez Sentry.
+    /// Elle passe par ici plutôt que par une liste d'endroits à instrumenter, et la
+    /// raison tient en une phrase : deux listes de pannes finissent toujours par ne
+    /// plus se ressembler. Ce qui s'écrit dans le journal est ce qui part, et une
+    /// panne ajoutée dans six mois est remontée sans que personne y pense.
+    ///
+    /// Rien ne part si `Rapports.ouvrir()` n'a pas été appelé — c'est-à-dire depuis
+    /// toute vérification, toute commande en ligne, et l'application elle-même quand
+    /// elle rend une image et s'arrête. Voir `Rapports.swift`.
+    ///
+    /// `#fileID` remonte l'endroit de l'appel et non celui-ci, ce qui est tout
+    /// l'intérêt : sans lui, les mille pannes possibles de l'application
+    /// arriveraient toutes étiquetées « Journal.swift, ligne 72 ».
+    /// ─────────────────────────────────────────────────────────────────────────
+    public static func erreur(_ message: String,
+                              fichier: String = #fileID, ligne: Int = #line) {
         ecrire("Spectre : \(message)", surLErreur: true)
+        Rapports.signaler(message, fichier: fichier, ligne: ligne)
     }
 
     /// Une note va sur la **sortie ordinaire**, et pas sur celle d'erreur.

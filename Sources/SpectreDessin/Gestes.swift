@@ -268,6 +268,16 @@ public final class Gestes<Lecteur: LecteurAudio> {
     public func boutonEnfonce(a p: CGPoint) {
         mesures?.uneEntree()
 
+        // L'avis du premier lancement passe avant tout, et **avale** le clic. Un
+        // avis qu'on chasse en visant un bouton se ferme aussi par mégarde ; celui-ci
+        // se ferme du premier clic n'importe où, ce qui est le geste qu'on fait
+        // devant un message qu'on a fini de lire. Le bouton dessiné dit seulement
+        // qu'il y a quelque chose à faire.
+        if modele.avisDeRapports {
+            modele.avisDeRapportsLu()
+            return
+        }
+
         // Le panneau d'abord : un clic qui visait un curseur ne doit pas déplacer la
         // tête de lecture par-dessous. La souris est capturée comme pour un glisser
         // de boucle, faute de quoi tirer un curseur jusqu'au bord du panneau le
@@ -422,6 +432,13 @@ public final class Gestes<Lecteur: LecteurAudio> {
     /// Rend `true` quand la touche a été traitée.
     public func touche(_ touche: ToucheDeSpectre) -> Bool {
         mesures?.uneEntree()
+        // Une touche ferme l'avis, et n'agit pas en plus : sans cela, l'espace qu'on
+        // presse pour le chasser lancerait la lecture d'un morceau qu'on n'a pas
+        // encore ouvert.
+        if modele.avisDeRapports {
+            modele.avisDeRapportsLu()
+            return true
+        }
         let majuscule = self.majuscule
         // Ctrl+O est le raccourci d'ouverture partout ; il passe donc avant tout le
         // reste, y compris le « O » nu qui n'est lié à rien.

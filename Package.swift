@@ -178,6 +178,8 @@ var cibles: [Target] = [
     // cela vit dans le noyau, donc à l'identique sur les trois plateformes : le
     // harnais les mesure là où elles n'avaient jamais tourné, plutôt que de les
     // déclarer portées parce qu'elles compilent.
+    .executableTarget(name: "RapportsCheck", dependencies: ["SpectreCore"],
+                      path: "Tools/RapportsCheck"),
     .executableTarget(name: "SessionCheck", dependencies: ["SpectreCore"],
                       path: "Tools/SessionCheck"),
     // Les trois harnais de la chaîne de lecture portable. Ils n'ont besoin
@@ -227,6 +229,7 @@ var produits: [Product] = [
     .executable(name: "DSPCheck", targets: ["DSPCheck"]),
     .executable(name: "WAVCheck", targets: ["WAVCheck"]),
     .executable(name: "JournalCheck", targets: ["JournalCheck"]),
+    .executable(name: "RapportsCheck", targets: ["RapportsCheck"]),
     .executable(name: "SessionCheck", targets: ["SessionCheck"]),
     .executable(name: "FilterCheck", targets: ["FilterCheck"]),
     .executable(name: "ChainCheck", targets: ["ChainCheck"]),

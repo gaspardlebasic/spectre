@@ -136,6 +136,10 @@ guard let rendu = RenduGL(fenetreSDL: UnsafeMutableRawPointer(fenetre)) else {
     exit(1)
 }
 Journal.note("Carte : \(rendu.nomDeLaCarte)")
+// La carte part avec les rapports de panne : la moitié de ce qui casse chez les
+// autres casse à cause d'un pilote, et c'est le nom du pilote qui permet de dire
+// « ceux-là, et eux seuls ». Elle n'identifie personne.
+Rapports.carte(rendu.nomDeLaCarte)
 
 // La surimpression n'est pas indispensable au spectrogramme : si Cairo manque,
 // l'image reste et l'on perd la réglette. Mieux vaut une application amputée qu'une
@@ -158,6 +162,8 @@ let panneau = Panneau()
 if arguments.contains("--reglages") { panneau.ouvert = true }
 /// Ce qui ne se replie jamais : les quatre pistes et la porte des réglages.
 let flottant = Flottant()
+/// La phrase du premier lancement, tant que personne ne l'a lue.
+let avis = Avis()
 /// Ce que dit la commande qu'on survole. Partagée par le panneau et la colonne : il
 /// n'y a qu'une souris, donc qu'une bulle à l'écran.
 let infobulle = Infobulle()
@@ -257,6 +263,11 @@ func uneImage() {
         // la commande survolée, donc en dehors du panneau qui la couperait net.
         infobulle.dessiner(pinceau, largeurFenetre: points.largeur,
                            hauteurFenetre: points.hauteur)
+        // Et l'avis par-dessus l'infobulle elle-même : tant qu'il est là, il n'y a
+        // rien d'autre à lire dans cette fenêtre.
+        avis.dessiner(pinceau: pinceau, largeurFenetre: points.largeur,
+                      hauteurFenetre: points.hauteur,
+                      aMontrer: modele.avisDeRapports)
     }
 }
 
@@ -368,6 +379,14 @@ if let demande = valeur("--fluidite"), let secondes = Double(demande) {
 }
 
 // MARK: - La boucle
+
+// Les rapports de panne s'ouvrent **ici**, et pas plus haut : au-dessus de cette
+// ligne se trouvent la photographie et le relevé de fluidité, qui rendent une image
+// puis s'arrêtent. Une machine d'intégration continue n'a aucune raison d'envoyer
+// quoi que ce soit, et une panne de coureur n'apprend rien sur les gens qui se
+// servent de l'application. Ce qui part vient d'une fenêtre ouverte devant
+// quelqu'un. Voir `docs/RAPPORTS.md`.
+Rapports.ouvrir()
 
 var tourne = true
 var evenement = SDL_Event()

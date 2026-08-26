@@ -239,13 +239,13 @@ extension RenduSpectre {
     /// Windows remplit.
     public convenience init?(fenetreSDL: UnsafeMutableRawPointer) {
         self.init(fenetre: fenetreSDL, nuanceur: nuanceurSpectrogramme,
-                  journal: Journal.erreur)
+                  journal: { Journal.erreur($0) })
     }
 
     /// Le rendu sans fenêtre, vers une cible qu'on relit — ce par quoi le nuanceur
     /// se mesure là où personne ne peut regarder l'écran.
     public convenience init?(largeur: Int, hauteur: Int) {
         self.init(largeur: largeur, hauteur: hauteur,
-                  nuanceur: nuanceurSpectrogramme, journal: Journal.erreur)
+                  nuanceur: nuanceurSpectrogramme, journal: { Journal.erreur($0) })
     }
 }

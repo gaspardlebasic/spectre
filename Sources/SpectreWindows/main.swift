@@ -135,6 +135,8 @@ final class Application: EchosDeLaFenetre {
     /// Ce que dit la commande qu'on survole. Partagée par le panneau et la colonne :
     /// il n'y a qu'une souris, donc qu'une bulle à l'écran.
     let infobulle = Infobulle()
+    /// La phrase du premier lancement, tant que personne ne l'a lue.
+    let avis = Avis()
     let commandes: Commandes
     /// Le titre déjà posé sur la fenêtre. Comparé plutôt que reposé à chaque image :
     /// `SetWindowTextW` fait repeindre la barre de titre, cent vingt fois par seconde
@@ -181,6 +183,10 @@ final class Application: EchosDeLaFenetre {
             Journal.erreur("pas de réglette ni de grille : Direct2D n'a pas démarré.")
         }
         Journal.note("carte : \(rendu.nomDeLaCarte)")
+        // La carte part avec les rapports de panne : la moitié de ce qui casse chez
+        // les autres casse à cause d'un pilote, et c'est le nom du pilote qui permet
+        // de dire « ceux-là, et eux seuls ». Elle n'identifie personne.
+        Rapports.carte(rendu.nomDeLaCarte)
     }
 
     func ouvrir(_ url: URL) {
@@ -259,6 +265,13 @@ final class Application: EchosDeLaFenetre {
     // MARK: La boucle
 
     func tourner() {
+        // Les rapports de panne s'ouvrent **ici**, et pas plus tôt : `--photo` et
+        // `--fluidite` rendent une image puis s'arrêtent sans jamais passer par cette
+        // fonction. Une machine d'intégration continue n'a aucune raison d'envoyer
+        // quoi que ce soit, et une panne de coureur n'apprend rien sur les gens qui
+        // se servent de l'application. Ce qui part vient d'une fenêtre ouverte devant
+        // quelqu'un. Voir `docs/RAPPORTS.md`.
+        Rapports.ouvrir()
         fenetre.montrer()
         while enMarche {
             viderLaFilePrincipale()
@@ -369,6 +382,11 @@ final class Application: EchosDeLaFenetre {
             // d'être dessinées.
             infobulle.dessiner(pinceau, largeurFenetre: points.largeur,
                                hauteurFenetre: points.hauteur)
+            // Et l'avis par-dessus l'infobulle elle-même : tant qu'il est là, il n'y
+            // a rien d'autre à lire dans cette fenêtre.
+            avis.dessiner(pinceau: pinceau, largeurFenetre: points.largeur,
+                          hauteurFenetre: points.hauteur,
+                          aMontrer: modele.avisDeRapports)
         }
     }
 

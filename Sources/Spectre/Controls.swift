@@ -575,3 +575,59 @@ struct ConteneurDeVerre<Contenu: View>: View {
         }
     }
 }
+
+// MARK: - L'avis du premier lancement
+
+/// Spectre enverra ses pannes. Dit une fois, au milieu, impossible à manquer.
+///
+/// ─────────────────────────────────────────────────────────────────────────────
+/// LE JUMEAU DE `SpectreDessin/Avis.swift`, MOT POUR MOT
+///
+/// Les deux dessins sont écrits deux fois — SwiftUI ici, Cairo et Direct2D là-bas —
+/// mais **les textes sortent du même catalogue** et l'état vient de la même
+/// propriété du modèle. C'est la seule chose qui compte : une application qui
+/// annoncerait l'envoi sur un système et pas sur les deux autres n'aurait rien
+/// annoncé du tout.
+///
+/// Pas de case à cocher : on informe, on ne demande pas. La décision, ce qu'elle
+/// coûte et le jour où elle changera sont dans `docs/RAPPORTS.md`.
+/// ─────────────────────────────────────────────────────────────────────────────
+struct AvisDeRapports: View {
+    @Bindable var model: AppModel
+
+    var body: some View {
+        if model.avisDeRapports {
+            ZStack {
+                // Tout le reste s'efface derrière : tant que cette phrase est là, il
+                // n'y a rien d'autre à lire dans cette fenêtre.
+                Color.black.opacity(0.62).ignoresSafeArea()
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(T(.avisRapportsTitre))
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.95))
+                    Text(T(.avisRapportsCorps))
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.75))
+                    // La même taille que ce qui précède, et une teinte qui appelle
+                    // l'œil : ce qui ne part pas n'est pas une note de bas de page.
+                    Text(T(.avisRapportsSecret))
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(Color(red: 0.62, green: 0.86, blue: 0.70))
+                    Button(T(.avisRapportsCompris)) { model.avisDeRapportsLu() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .keyboardShortcut(.defaultAction)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 4)
+                }
+                .padding(26)
+                .frame(width: 460, alignment: .leading)
+                .verre(.regulier, in: .rect(cornerRadius: 16))
+            }
+            // Le même geste que sur les deux autres systèmes : un clic n'importe où
+            // suffit. Le bouton dit seulement qu'il y a quelque chose à faire.
+            .contentShape(Rectangle())
+            .onTapGesture { model.avisDeRapportsLu() }
+        }
+    }
+}

@@ -320,6 +320,12 @@ extension Catalogue {
         .winBarreBoucleHorsService: "bucle (desactivado)",
         .winFriseOuvrir: "Abrir un archivo: Ctrl + O",
 
+        // MARK: El aviso del primer arranque
+        .avisRapportsTitre: "Spectre informa de sus fallos por su cuenta",
+        .avisRapportsCorps: "Cuando algo se rompe, Spectre envía el informe sin preguntar nada. Es lo que permite corregirlo: nadie se toma la molestia de contar un fallo, y un fallo del que no se sabe nada se queda ahí.",
+        .avisRapportsSecret: "Nunca forman parte de él: los nombres de sus archivos, sus carpetas ni lo que escucha. No se mide nada más: ni lo que hace con la aplicación, ni cuánto tiempo la tiene abierta.",
+        .avisRapportsCompris: "Entendido",
+
         // MARK: La ligne de commande
         .cliFichierIntrouvable: "Archivo no encontrado: %1$@",
         .cliLectureImpossible: "Lectura imposible: %1$@",

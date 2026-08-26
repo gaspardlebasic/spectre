@@ -156,6 +156,15 @@ public enum Cle: String, CaseIterable, Sendable {
     case reglagesNomDesNotes, reglagesNotesSelonLaLangue
     case reglagesLangueExplication, reglagesLangueImposee, reglagesAuto
 
+    // MARK: - Les rapports de panne
+
+    // Le message du premier lancement. Il est affiché, donc il prend une clé, donc
+    // les cinq catalogues la portent — `LangueCheck` échoue sinon. Une application
+    // qui annonce un envoi automatique dans une seule langue ne l'a annoncé à
+    // personne. Voir `docs/RAPPORTS.md`.
+    case avisRapportsTitre, avisRapportsCorps, avisRapportsSecret
+    case avisRapportsCompris
+
     // MARK: - Windows
 
     case winMenuOuvrir, winMenuOuvrirRecemment, winMenuViderLaListe

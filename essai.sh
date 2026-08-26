@@ -59,6 +59,11 @@ export SPECTRE_LANGUE=fr
 # lancement. Le dossier survit d'une épreuve à l'autre : le modèle recompilé pour
 # le GPU coûte assez cher pour qu'on le garde.
 export SPECTRE_RANGEMENT="$PWD/$OUT/rangement"
+# Et rien ne part chez Sentry : `non` retire l'adresse. `RapportsCheck`, lui, se
+# donne la sienne — voir `Rapports.ouvrir`. Sans cela, chaque passage de ce script
+# enverrait de vraies pannes de synthèse dans les vraies données, et l'avis du
+# premier lancement viendrait couvrir la fenêtre qu'on photographie.
+export SPECTRE_RAPPORTS=non
 mkdir -p "$SPECTRE_RANGEMENT"
 
 vert()  { printf '  \033[32m✓\033[0m %s\n' "$1"; }

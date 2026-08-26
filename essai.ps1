@@ -56,6 +56,9 @@ function Verdict($nom, $ok, $detail) {
 $travail = Join-Path $env:TEMP "spectre-essai-$PID"
 New-Item -ItemType Directory -Force -Path $travail | Out-Null
 $env:SPECTRE_RANGEMENT = Join-Path $travail "rangement"
+# Et rien ne part chez Sentry : `non` retire l'adresse. `RapportsCheck`, lui, se
+# donne la sienne. Voir `Rapports.ouvrir`.
+$env:SPECTRE_RAPPORTS = "non"
 New-Item -ItemType Directory -Force -Path $env:SPECTRE_RANGEMENT | Out-Null
 
 Etape "Construction"
@@ -78,7 +81,24 @@ if (-not $Rapide) {
     # déjà `check.sh` avec `SeparationCheck`.
     $modele = Join-Path $racine "Resources\htdemucs.onnx"
     if (Test-Path $modele) { $env:SPECTRE_MODELE = $modele }
-    $harnais = @("DSPCheck", "WAVCheck", "SessionCheck", "AnalysisCheck",
+    # Les rapports de panne, avec un receveur sur la boucle locale : c'est le seul
+    # contrôle qui traverse vraiment `URLSession`, et sous Windows elle vient d'un
+    # module à part dont il faut aussi que la DLL soit là. Voir `Tools/Receveur`.
+    $recu = Join-Path $travail "receveur"
+    Remove-Item -Recurse -Force $recu -ErrorAction SilentlyContinue
+    $receveur = Start-Process powershell -PassThru -WindowStyle Hidden -ArgumentList @(
+        "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-File", (Join-Path $racine "Tools\Receveur\receveur.ps1"), "-Dossier", $recu)
+    foreach ($essai in 1..40) {
+        if (Test-Path (Join-Path $recu "port")) { break }
+        Start-Sleep -Milliseconds 100
+    }
+    if (Test-Path (Join-Path $recu "port")) {
+        $port = Get-Content (Join-Path $recu "port")
+        $env:SPECTRE_RECEVEUR = "http://cle-dessai@127.0.0.1:$port/1"
+    }
+
+    $harnais = @("RapportsCheck", "DSPCheck", "WAVCheck", "SessionCheck", "AnalysisCheck",
                  "PercussionCheck", "HarmonyCheck", "FilterCheck", "ChainCheck",
                  "GaplessCheck", "EtirementCheck", "RenduCheck", "DecodeCheck",
                  "SortieCheck", "PistesCheck")
@@ -89,6 +109,16 @@ if (-not $Rapide) {
         $derniere = ($sortie | Select-Object -Last 1)
         Verdict $h $ok $derniere
         if (-not $ok) { $sortie | ForEach-Object { Write-Host "        $_" } }
+    }
+
+    # Et l'on regarde ce qui est arrivé de l'autre côté, plutôt que de croire le
+    # harnais sur parole.
+    if ($receveur) {
+        $arrivee = Join-Path $recu "recu.txt"
+        Verdict "le receveur a bien reçu une enveloppe" `
+                ((Test-Path $arrivee) -and (Get-Content $arrivee -Raw) -match "spectre@")
+        Stop-Process -Id $receveur.Id -Force -ErrorAction SilentlyContinue
+        Remove-Item Env:\SPECTRE_RECEVEUR -ErrorAction SilentlyContinue
     }
 }
 

@@ -198,7 +198,8 @@ jobs:
           swift build -c release
           if ($LASTEXITCODE -ne 0) { throw "La construction a echoue." }
           $bin = (swift build -c release --show-bin-path | Select-Object -Last 1).Trim()
-          foreach ($harnais in @("JournalCheck", "DSPCheck", "WAVCheck", "SessionCheck", "FilterCheck",
+          foreach ($harnais in @("JournalCheck", "RapportsCheck", "DSPCheck", "WAVCheck",
+                                 "SessionCheck", "FilterCheck",
                                  "ChainCheck", "GaplessCheck", "AnalysisCheck",
                                  "PercussionCheck", "HarmonyCheck", "EtirementCheck",
                                  "LangueCheck")) {
@@ -355,7 +356,7 @@ jobs:
           # c'est ce qui rendait invérifiable la seule question que pose l'arrivée du
           # coureur ARM64 : est-ce que la séparation marche là aussi ?
           cp -f Resources/htdemucs.onnx "$BIN/" 2>/dev/null || true
-          for harnais in LangueCheck JournalCheck DSPCheck WAVCheck SessionCheck FilterCheck \
+          for harnais in LangueCheck JournalCheck RapportsCheck DSPCheck WAVCheck SessionCheck FilterCheck \
                          ChainCheck GaplessCheck AnalysisCheck PercussionCheck \
                          HarmonyCheck GestesCheck DecodeCheck PistesCheck; do
             echo "── $harnais"

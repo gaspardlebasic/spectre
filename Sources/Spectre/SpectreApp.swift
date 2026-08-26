@@ -83,6 +83,11 @@ struct Entry {
         if let flag = arguments.firstIndex(of: "--accords"), flag + 1 < arguments.count {
             exit(ChordsCommand.run(path: arguments[flag + 1], arguments: arguments))
         }
+        // Les rapports de panne s'ouvrent **ici**, et pas plus haut : au-dessus se
+        // trouvent `--separer` et `--accords`, qui font leur travail sans fenêtre et
+        // s'arrêtent. Ce qui part vient d'une fenêtre ouverte devant quelqu'un, et
+        // jamais d'un coureur d'intégration continue. Voir `docs/RAPPORTS.md`.
+        Rapports.ouvrir()
         SpectreApp.main()
     }
 }
@@ -251,6 +256,9 @@ struct ContentView: View {
                 DrumLaneView(model: model)
             }
         }
+        // Par-dessus la pile entière, ligne de batterie comprise : l'avis du
+        // premier lancement ne partage la fenêtre avec rien.
+        .overlay { AvisDeRapports(model: model) }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             guard let provider = providers.first else { return false }
             _ = provider.loadObject(ofClass: URL.self) { url, _ in

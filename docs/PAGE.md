@@ -142,6 +142,15 @@ de version publiée ; `build.ps1` fabrique l'application.
 
 ---
 
+## Ce que Spectre envoie
+
+Quand quelque chose casse, Spectre en envoie le rapport toute seule, pour que ce
+soit corrigé. N'en font jamais partie : le nom de vos fichiers, vos dossiers, ni ce
+que vous écoutez. Rien d'autre n'est mesuré. Elle le dit une fois, au premier
+lancement.
+
+---
+
 ## Pied de page
 
 Logiciel libre · Code source sur GitHub · Séparation par Demucs v4 (Meta AI
@@ -275,6 +284,14 @@ published build yet; `build.ps1` makes the app.
 
 ---
 
+## What Spectre sends
+
+When something breaks, Spectre sends the report on its own, so that it gets fixed.
+Never part of it: your file names, your folders, or what you listen to. Nothing else
+is measured. It says so once, at first launch.
+
+---
+
 ## Footer
 
 Free software · Source on GitHub · Separation by Demucs v4 (Meta AI Research)
@@ -404,6 +421,14 @@ cd spectre && ./build.sh
 publicada; `build.ps1` genera la aplicación.
 
 **Linux** — previsto después de Windows.
+
+---
+
+## Lo que Spectre envía
+
+Cuando algo se rompe, Spectre envía el informe por su cuenta, para que se corrija.
+Nunca forman parte de él: los nombres de sus archivos, sus carpetas ni lo que
+escucha. No se mide nada más. Lo dice una vez, en el primer arranque.
 
 ---
 
@@ -541,6 +566,14 @@ veröffentlichte Version; `build.ps1` baut die Anwendung.
 
 ---
 
+## Was Spectre sendet
+
+Wenn etwas kaputtgeht, schickt Spectre den Bericht von selbst, damit es behoben
+wird. Niemals dabei: Ihre Dateinamen, Ihre Ordner oder was Sie hören. Sonst wird
+nichts erfasst. Sie sagt es einmal, beim ersten Start.
+
+---
+
 ## Fußzeile
 
 Freie Software · Quellcode auf GitHub · Trennung mit Demucs v4 (Meta AI Research)
@@ -669,6 +702,14 @@ cd spectre && ./build.sh
 opublikowanej wersji; `build.ps1` buduje aplikację.
 
 **Linux** — planowany po Windows.
+
+---
+
+## Co Spectre wysyła
+
+Kiedy coś się zepsuje, Spectre sam wysyła raport, żeby dało się to naprawić. Nigdy
+nie trafiają tam nazwy plików, foldery ani to, czego słuchasz. Nic więcej nie jest
+mierzone. Mówi o tym raz, przy pierwszym uruchomieniu.
 
 ---
 
