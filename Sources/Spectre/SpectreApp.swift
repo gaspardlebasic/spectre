@@ -122,7 +122,7 @@ struct SpectreApp: App {
                     }) {
                         model.open(URL(fileURLWithPath: path))
                     }
-                    model.reopenLastFile()
+                    model.demarrer()
                 }
                 // Chemin réellement emprunté par un double-clic dans le Finder :
                 // SwiftUI capte l'évènement d'ouverture avant le délégué AppKit.
@@ -239,7 +239,12 @@ struct ContentView: View {
                 SpectrogramSurface(model: model)
                 TimelineOverlay(model: model)
                 PlayheadLine(model: model)
-                if model.spectrogram.columnCount == 0 { welcome }
+                // La page de lancement tant qu'il n'y a rien à montrer, et elle
+                // s'efface dès que l'analyse commence : deux choses au milieu de la
+                // fenêtre, dont l'une dit d'attendre, se gênent.
+                if model.spectrogram.columnCount == 0, model.progress == nil {
+                    PageDesMorceaux(model: model)
+                }
                 if let progress = model.progress { analysing(progress) }
             }
             // Les commandes flottent sur l'image au lieu de lui prendre une bande
@@ -256,9 +261,14 @@ struct ContentView: View {
                 DrumLaneView(model: model)
             }
         }
-        // Par-dessus la pile entière, ligne de batterie comprise : l'avis du
-        // premier lancement ne partage la fenêtre avec rien.
-        .overlay { AvisDeRapports(model: model) }
+        // Par-dessus la pile entière, ligne de batterie comprise : le diaporama du
+        // premier lancement ne partage la fenêtre avec rien. Et la mise à jour vient
+        // après lui — qui découvre l'application n'a pas à répondre d'abord à une
+        // question sur les numéros de version. L'ordre est tenu dans `Lancement`,
+        // qui ne montre la seconde que lorsque le premier est refermé ; ces deux
+        // lignes-ci ne font que les empiler.
+        .overlay { Diaporama(model: model) }
+        .overlay { ModaleDeMiseAJour(model: model) }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             guard let provider = providers.first else { return false }
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
@@ -267,17 +277,6 @@ struct ContentView: View {
             }
             return true
         }
-    }
-
-    private var welcome: some View {
-        VStack(spacing: 10) {
-            Text(T(.accueilDeposer))
-                .font(.system(size: 17, weight: .medium, design: .rounded))
-            Text(T(.accueilRaccourci))
-                .font(.system(size: 12, design: .rounded))
-                .foregroundStyle(.secondary)
-        }
-        .foregroundStyle(.white.opacity(0.7))
     }
 
     private func analysing(_ progress: Double) -> some View {

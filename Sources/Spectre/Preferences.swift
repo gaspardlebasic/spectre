@@ -201,6 +201,14 @@ struct SettingsView: View {
                     HStack(spacing: 8) {
                         Text(Self.formatter.string(fromByteCount: Int64(usage)))
                             .monospacedDigit()
+                        // À côté de « Vider… », parce que c'est la même question
+                        // posée autrement : ce panneau disait ce que le dossier
+                        // occupe et savait le jeter, sans jamais permettre d'aller
+                        // voir. Reprendre une piste isolée dans un autre logiciel
+                        // demandait de connaître le chemin d'Application Support.
+                        Button(T(.reglagesOuvrirLeDossier)) {
+                            model.montrerLeDossierDesPistes()
+                        }
                         Button(T(.reglagesViderPoints)) { confirmingEmpty = true }
                             .disabled(usage == 0)
                     }

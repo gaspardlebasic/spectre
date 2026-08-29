@@ -134,6 +134,7 @@ public enum Cle: String, CaseIterable, Sendable {
     case pistesRefaire, pistesRefaireAide
     case pistesCache, pistesPlafond, pistesPlafondAide
     case pistesViderLeCache, pistesViderLeCacheAide
+    case pistesOuvrirLeDossier, pistesOuvrirLeDossierAide
     case pistesPoidsAbsents, pistesPoidsAbsentsWin, pistesOnnxAbsent
 
     // MARK: - Les menus du Mac
@@ -148,24 +149,35 @@ public enum Cle: String, CaseIterable, Sendable {
 
     case accueilDeposer, accueilRaccourci, accueilAnalyse
 
+    // MARK: - La page de lancement
+
+    // Ce que l'application montre tant qu'aucun morceau n'est ouvert : les
+    // derniers travaillés, et de quoi en reprendre un.
+    case lancementReprendre, lancementAucunMorceau, lancementOuvrirUnFichier
+    case lancementRetirer, lancementSepare
+
+    // MARK: - Le diaporama du premier lancement
+
+    // Deux diapositives, montrées une seule fois. La seconde porte la phrase sur
+    // les rapports de panne, qui remplace la modale d'autrefois.
+    case bienvenueTitreBoucle, bienvenueCorpsBoucle, bienvenueTempoBoucle
+    case bienvenueTitrePistes, bienvenueCorpsPistes, bienvenueRapports
+    case bienvenueSuivant, bienvenueCommencer, bienvenuePasser
+
+    // MARK: - La mise à jour
+
+    case majTitre, majCorps, majTelecharger, majPlusTard
+
     // MARK: - La fenêtre des réglages
 
     case reglagesPistesSeparees, reglagesTailleMaximale, reglagesOccupe
     case reglagesViderPoints, reglagesViderBouton, reglagesAnnuler
+    case reglagesOuvrirLeDossier
     case reglagesCacheExplication, reglagesViderTitre, reglagesViderMessage
     case reglagesCouleurDesNotes, reglagesPremiereTeinte, reglagesCouleursExplication
     case reglagesLangue, reglagesLangueInterface, reglagesLangueSysteme
     case reglagesNomDesNotes, reglagesNotesSelonLaLangue
     case reglagesLangueExplication, reglagesLangueImposee, reglagesAuto
-
-    // MARK: - Les rapports de panne
-
-    // Le message du premier lancement. Il est affiché, donc il prend une clé, donc
-    // les cinq catalogues la portent — `LangueCheck` échoue sinon. Une application
-    // qui annonce un envoi automatique dans une seule langue ne l'a annoncé à
-    // personne. Voir `docs/RAPPORTS.md`.
-    case avisRapportsTitre, avisRapportsCorps, avisRapportsSecret
-    case avisRapportsCompris
 
     // MARK: - Windows
 

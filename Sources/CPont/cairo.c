@@ -2,7 +2,7 @@
 // `direct2d.cpp`.
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// LE MÊME CONTRAT, QUATORZE FONCTIONS
+// LE MÊME CONTRAT, QUINZE FONCTIONS
 //
 // Ce fichier exporte exactement ce qu'exporte `direct2d.cpp`, avec les mêmes noms
 // et les mêmes signatures. `Pinceau`, dans `SpectreToile`, ne sait pas laquelle des
@@ -493,4 +493,80 @@ float spectre_surimpression_paragraphe(SpectreRendu *r, const uint16_t *texte,
     // Reposé pour l'appel suivant, qui sera peut-être une ligne simple.
     pango_layout_set_width(r->miseEnPage, -1);
     return (float)h;
+}
+
+// ─────────────────────────────────────────────────────────── Les images
+
+// Les captures du diaporama du premier lancement, et rien d'autre pour l'instant.
+//
+// **Gardées après la première lecture**, échec compris. Le diaporama est redessiné
+// à chaque image comme tout le reste de la surimpression : décoder deux mégapixels
+// de PNG cent vingt fois par seconde ferait de la présentation de l'application la
+// seule chose qui rame, et rechercher cent vingt fois par seconde un fichier absent
+// coûterait autant pour ne rien montrer.
+//
+// Quatre entrées : le diaporama en montre deux, et l'on ne veut pas d'un cache qui
+// grandit sans borne dans un fichier de dessin. Au-delà, l'image n'est simplement
+// pas dessinée — c'est le même sort qu'un fichier absent, et le texte reste.
+#define SPECTRE_IMAGES 4
+
+static struct {
+    char *chemin;
+    cairo_surface_t *surface;      // NULL quand la lecture a échoué
+} imagesGardees[SPECTRE_IMAGES];
+static int imagesConnues = 0;
+
+static cairo_surface_t *imagePour(const char *chemin) {
+    for (int i = 0; i < imagesConnues; ++i) {
+        if (strcmp(imagesGardees[i].chemin, chemin) == 0) {
+            return imagesGardees[i].surface;
+        }
+    }
+    if (imagesConnues >= SPECTRE_IMAGES) { return NULL; }
+
+    cairo_surface_t *surface = cairo_image_surface_create_from_png(chemin);
+    if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+        cairo_surface_destroy(surface);
+        surface = NULL;
+    }
+    char *garde = strdup(chemin);
+    if (!garde) {
+        if (surface) { cairo_surface_destroy(surface); }
+        return NULL;
+    }
+    imagesGardees[imagesConnues].chemin = garde;
+    imagesGardees[imagesConnues].surface = surface;
+    imagesConnues += 1;
+    return surface;
+}
+
+void spectre_surimpression_image(SpectreRendu *r, const uint16_t *chemin,
+                                 float x, float y, float largeur, float hauteur) {
+    if (!r || !r->dessinEnCours || !chemin || largeur <= 0 || hauteur <= 0) { return; }
+    char *utf8 = enUTF8(chemin);
+    if (!utf8) { return; }
+    cairo_surface_t *image = imagePour(utf8);
+    free(utf8);
+    if (!image) { return; }
+
+    double l = cairo_image_surface_get_width(image);
+    double h = cairo_image_surface_get_height(image);
+    if (l <= 0 || h <= 0) { return; }
+
+    // À ses proportions, et centrée : les deux captures n'ont pas la même forme —
+    // l'une est une fenêtre entière, l'autre une bande de vingt points de haut — et
+    // les étirer toutes deux dans le même cadre mentirait sur ce que l'application
+    // montre, ce qui est très exactement ce qu'un diaporama ne doit pas faire.
+    double facteur = (largeur / l < hauteur / h) ? largeur / l : hauteur / h;
+    cairo_save(r->pinceau);
+    cairo_translate(r->pinceau,
+                    x + (largeur - l * facteur) / 2,
+                    y + (hauteur - h * facteur) / 2);
+    cairo_scale(r->pinceau, facteur, facteur);
+    cairo_set_source_surface(r->pinceau, image, 0, 0);
+    // La capture est réduite d'un facteur trois : sans filtre, les traits d'un point
+    // du spectrogramme disparaissent un sur trois et l'image devient une grille.
+    cairo_pattern_set_filter(cairo_get_source(r->pinceau), CAIRO_FILTER_GOOD);
+    cairo_paint(r->pinceau);
+    cairo_restore(r->pinceau);
 }

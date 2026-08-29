@@ -264,6 +264,8 @@ extension Catalogue {
         .pistesPlafondAide: "Un tema de siete minutos cuesta unos 300 MB. Pasado el tope, los temas abiertos hace más tiempo se van enteros — nunca el que se está oyendo — y se recalculan.",
         .pistesViderLeCache: "Vaciar la caché",
         .pistesViderLeCacheAide: "Tirar todas las pistas guardadas. Cada tema tendrá que separarse de nuevo, unos treinta segundos por tema.",
+        .pistesOuvrirLeDossier: "Abrir la carpeta",
+        .pistesOuvrirLeDossierAide: "Mostrar en el explorador de archivos la carpeta donde se guardan las pistas separadas.",
         .pistesPoidsAbsents: "Los pesos de Demucs no están instalados — ver `modele.sh`. Sin ellos, el tema se lee tal como está.",
         .pistesPoidsAbsentsWin: "Los pesos de Demucs no están instalados — ver `modele.sh`. Sin ellos, el tema se lee tal como está.",
         .pistesOnnxAbsent: "ONNX Runtime no está instalado: ejecutar .\\onnx.ps1, y luego reiniciar la aplicación.",
@@ -287,11 +289,36 @@ extension Catalogue {
         .accueilRaccourci: "o ⌘O",
         .accueilAnalyse: "Analizando…",
 
+        // MARK: La page de lancement
+        .lancementReprendre: "Retomar un tema",
+        .lancementAucunMorceau: "Todavía no se ha abierto ningún tema.",
+        .lancementOuvrirUnFichier: "Abrir un archivo…",
+        .lancementRetirer: "Quitar de la lista y tirar sus pistas separadas",
+        .lancementSepare: "pistas separadas",
+
+        // MARK: Le diaporama du premier lancement
+        .bienvenueTitreBoucle: "Repetir un pasaje a cámara lenta",
+        .bienvenueCorpsBoucle: "Mayús + arrastrar sobre el espectrograma elige un pasaje y lo pone en bucle. Los deslizadores Velocidad y Transposición, en el panel de ajustes, lo ralentizan sin desafinarlo y lo transportan sin ralentizarlo.",
+        .bienvenueTempoBoucle: "El tempo se detecta solo al abrir el tema. Cuando cae al lado, el panel lo corrige: la cifra se escribe a mano, y «1 aquí» pone el primer tiempo del compás donde está el cabezal.",
+        .bienvenueTitrePistes: "Cuatro pistas, separadas en su propia máquina",
+        .bienvenueCorpsPistes: "Voz, bajo, batería y el resto se aíslan en cuanto se abre un tema, y se guardan para las veces siguientes. El cálculo dura unos minutos; la barra de abajo dice por dónde va, y el tema se escucha mientras tanto.",
+        .bienvenueRapports: "Cuando algo se rompe, Spectre envía el informe por su cuenta. Ni los nombres de sus archivos, ni sus carpetas, ni lo que escucha forman parte de él.",
+        .bienvenueSuivant: "Siguiente",
+        .bienvenueCommencer: "Empezar",
+        .bienvenuePasser: "Omitir",
+
+        // MARK: La mise à jour
+        .majTitre: "Spectre %1$@ ya está disponible",
+        .majCorps: "Usted tiene la versión %1$@.",
+        .majTelecharger: "Descargar",
+        .majPlusTard: "Más tarde",
+
         // MARK: La fenêtre des réglages
         .reglagesPistesSeparees: "Pistas separadas",
         .reglagesTailleMaximale: "Tamaño máximo de la caché",
         .reglagesOccupe: "Ocupado",
         .reglagesViderPoints: "Vaciar…",
+        .reglagesOuvrirLeDossier: "Abrir la carpeta",
         .reglagesViderBouton: "Vaciar",
         .reglagesAnnuler: "Cancelar",
         .reglagesCacheExplication: "Un tema de siete minutos cuesta unos 250 MB. Pasado el tope, los temas abiertos hace más tiempo se van enteros — nunca el que se está oyendo — y se recalculan en medio minuto.",
@@ -322,10 +349,6 @@ extension Catalogue {
         .winFriseOuvrir: "Abrir un archivo: Ctrl + O",
 
         // MARK: El aviso del primer arranque
-        .avisRapportsTitre: "Spectre informa de sus fallos por su cuenta",
-        .avisRapportsCorps: "Cuando algo se rompe, Spectre envía el informe sin preguntar nada. Es lo que permite corregirlo: nadie se toma la molestia de contar un fallo, y un fallo del que no se sabe nada se queda ahí.",
-        .avisRapportsSecret: "Nunca forman parte de él: los nombres de sus archivos, sus carpetas ni lo que escucha. No se mide nada más: ni lo que hace con la aplicación, ni cuánto tiempo la tiene abierta.",
-        .avisRapportsCompris: "Entendido",
 
         // MARK: La ligne de commande
         .cliFichierIntrouvable: "Archivo no encontrado: %1$@",

@@ -131,6 +131,9 @@ public final class Gestes<Lecteur: LecteurAudio> {
     private unowned let surface: any SurfaceDeGestes
     private let panneau: Panneau
     private let flottant: Flottant
+    /// La page de lancement, le diaporama et la mise à jour. Ils prennent la souris
+    /// avant tout le reste tant qu'ils sont là — voir `boutonEnfonce`.
+    private let accueil: Accueil<Lecteur>
     private var glisser: GlisserDeBoucle?
     private var dernierClic = 0.0
     private var dernierClicX = 0.0
@@ -140,11 +143,12 @@ public final class Gestes<Lecteur: LecteurAudio> {
     public var mesures: Mesures?
 
     public init(modele: AppModel<Lecteur>, surface: any SurfaceDeGestes,
-                panneau: Panneau, flottant: Flottant) {
+                panneau: Panneau, flottant: Flottant, accueil: Accueil<Lecteur>) {
         self.modele = modele
         self.surface = surface
         self.panneau = panneau
         self.flottant = flottant
+        self.accueil = accueil
     }
 
     /// Hauteur que le panneau peut occuper : la fenêtre moins la barre d'état, qu'il
@@ -268,13 +272,22 @@ public final class Gestes<Lecteur: LecteurAudio> {
     public func boutonEnfonce(a p: CGPoint) {
         mesures?.uneEntree()
 
-        // L'avis du premier lancement passe avant tout, et **avale** le clic. Un
-        // avis qu'on chasse en visant un bouton se ferme aussi par mégarde ; celui-ci
-        // se ferme du premier clic n'importe où, ce qui est le geste qu'on fait
-        // devant un message qu'on a fini de lire. Le bouton dessiné dit seulement
-        // qu'il y a quelque chose à faire.
-        if modele.avisDeRapports {
-            modele.avisDeRapportsLu()
+        // Le diaporama du premier lancement et la mise à jour passent avant tout, et
+        // **avalent** le clic : tant qu'ils sont là, il n'y a rien d'autre à faire
+        // dans cette fenêtre. Ce sont leurs boutons qui agissent, à l'image suivante,
+        // et un clic à côté ne fait rien plutôt que de déplacer la tête de lecture
+        // d'un morceau qu'on n'a pas encore ouvert.
+        if accueil.couvreLaFenetre {
+            accueil.appuiA(p)
+            return
+        }
+
+        // Puis la page de lancement, quand elle occupe le milieu de la fenêtre. Elle
+        // ne recouvre pas tout — la colonne des pistes et le bouton des réglages
+        // restent visibles au-dessus d'elle —, d'où l'ordre : ce qui flotte d'abord,
+        // la page ensuite.
+        if accueil.pageAMontrer, !dansLePanneau(p), !surLaColonne(p) {
+            accueil.appuiA(p)
             return
         }
 
@@ -331,6 +344,7 @@ public final class Gestes<Lecteur: LecteurAudio> {
         mesures?.uneEntree()
         panneau.sourisA(p)
         flottant.sourisA(p)
+        accueil.sourisA(p)
 
         // Le panneau est posé **sur** l'image : sans ce garde-fou, viser un curseur
         // ferait afficher par-dessous la note et la fréquence du point qu'il cache.
@@ -384,6 +398,7 @@ public final class Gestes<Lecteur: LecteurAudio> {
         modele.hover = nil
         panneau.sourisPartie()
         flottant.sourisPartie()
+        accueil.sourisPartie()
         surface.poserLeCurseur(.fleche)
     }
 
@@ -432,13 +447,10 @@ public final class Gestes<Lecteur: LecteurAudio> {
     /// Rend `true` quand la touche a été traitée.
     public func touche(_ touche: ToucheDeSpectre) -> Bool {
         mesures?.uneEntree()
-        // Une touche ferme l'avis, et n'agit pas en plus : sans cela, l'espace qu'on
-        // presse pour le chasser lancerait la lecture d'un morceau qu'on n'a pas
-        // encore ouvert.
-        if modele.avisDeRapports {
-            modele.avisDeRapportsLu()
-            return true
-        }
+        // Une touche fait avancer le diaporama ou répond à la mise à jour, et n'agit
+        // pas en plus : sans cela, l'espace qu'on presse pour chasser une couche
+        // lancerait la lecture d'un morceau qu'on n'a pas encore ouvert.
+        if accueil.touche(touche) { return true }
         let majuscule = self.majuscule
         // Ctrl+O est le raccourci d'ouverture partout ; il passe donc avant tout le
         // reste, y compris le « O » nu qui n'est lié à rien.

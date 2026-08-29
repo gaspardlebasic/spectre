@@ -117,6 +117,13 @@ echo "=== Sessions et morceaux récents ==="
 "$BIN/SessionCheck"
 
 echo
+echo "=== Page de lancement, diaporama et mise à jour ==="
+# Les trois choses que la plupart des gens ne voient qu'une fois — donc les trois
+# que l'auteur ne revoit jamais. Sans réseau : la réponse du dépôt est remplacée
+# par un JSON écrit à la main, comme `RapportsCheck` remplace l'envoi.
+"$BIN/LancementCheck"
+
+echo
 echo "=== Relevé de la batterie ==="
 "$BIN/PercussionCheck"
 

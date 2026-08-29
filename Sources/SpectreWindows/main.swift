@@ -59,6 +59,7 @@ typealias Frise = SpectreDessin.Frise<LecteurSurLePont>
 typealias Batterie = SpectreDessin.Batterie<LecteurSurLePont>
 typealias Barre = SpectreDessin.Barre<LecteurSurLePont>
 typealias Commandes = SpectreDessin.Commandes<LecteurSurLePont>
+typealias Accueil = SpectreDessin.Accueil<LecteurSurLePont>
 
 extension SpectreModele.AppModel where Lecteur == LecteurSurLePont {
     /// L'assemblage Windows : à chaque protocole du modèle, sa mise en œuvre.
@@ -69,6 +70,7 @@ extension SpectreModele.AppModel where Lecteur == LecteurSurLePont {
                   pistes: RangementSurLePont(),
                   dialogue: DialogueWindows(fenetre: fenetre),
                   récentsDuSystème: RecentsWindows(),
+                  extérieur: ExterieurWindows(),
                   préférences: PreferencesWindows.partagees)
     }
 }
@@ -135,8 +137,8 @@ final class Application: EchosDeLaFenetre {
     /// Ce que dit la commande qu'on survole. Partagée par le panneau et la colonne :
     /// il n'y a qu'une souris, donc qu'une bulle à l'écran.
     let infobulle = Infobulle()
-    /// La phrase du premier lancement, tant que personne ne l'a lue.
-    let avis = Avis()
+    /// La page de lancement, le diaporama du premier lancement et la mise à jour.
+    let accueil: Accueil
     let commandes: Commandes
     /// Le titre déjà posé sur la fenêtre. Comparé plutôt que reposé à chaque image :
     /// `SetWindowTextW` fait repeindre la barre de titre, cent vingt fois par seconde
@@ -171,8 +173,10 @@ final class Application: EchosDeLaFenetre {
         self.modele = AppModel(fenetre: fenetre.poignee)
         self.commandes = Commandes(modele: modele,
                                    preferences: PreferencesWindows.partagees)
+        self.accueil = Accueil(modele: modele)
         self.gestes = GestesWindows(modele: modele, fenetre: fenetre,
-                                    panneau: panneau, flottant: flottant)
+                                    panneau: panneau, flottant: flottant,
+                                    accueil: accueil)
         modele.renderer = rendu
         rendu.origineDesTeintes = PreferencesWindows.partagees.hueOrigin
         fenetre.echos = self
@@ -356,6 +360,14 @@ final class Application: EchosDeLaFenetre {
         rendu.surimprimer(echelle: fenetre.echelle) { pinceau in
             Frise(modele: modele, pinceau: pinceau,
                   largeur: points.largeur, hauteur: hauteurImage).dessiner()
+            // La page de lancement au milieu de l'image, tant qu'il n'y a rien à
+            // montrer. Sous la colonne des pistes et sous le panneau, qui restent
+            // atteignables : ce n'est pas une modale, c'est ce que la fenêtre montre
+            // quand elle est vide.
+            if accueil.pageAMontrer {
+                accueil.dessinerLaPage(pinceau, largeur: points.largeur,
+                                       hauteur: hauteurImage)
+            }
             Batterie(modele: modele, pinceau: pinceau, largeur: points.largeur,
                      haut: hauteurImage, hauteur: hauteurDeLaBatterie).dessiner()
             // Le panneau vient après la frise et avant la barre : il flotte sur
@@ -382,11 +394,11 @@ final class Application: EchosDeLaFenetre {
             // d'être dessinées.
             infobulle.dessiner(pinceau, largeurFenetre: points.largeur,
                                hauteurFenetre: points.hauteur)
-            // Et l'avis par-dessus l'infobulle elle-même : tant qu'il est là, il n'y
-            // a rien d'autre à lire dans cette fenêtre.
-            avis.dessiner(pinceau: pinceau, largeurFenetre: points.largeur,
-                          hauteurFenetre: points.hauteur,
-                          aMontrer: modele.avisDeRapports)
+            // Et les couches du lancement par-dessus l'infobulle elle-même : tant
+            // que le diaporama ou la mise à jour est là, il n'y a rien d'autre à
+            // lire dans cette fenêtre.
+            accueil.dessinerLesCouches(pinceau, largeurFenetre: points.largeur,
+                                       hauteurFenetre: points.hauteur)
         }
     }
 
@@ -560,11 +572,12 @@ if let mesurerPendant {
     print(application.mesurerLaFluidite(secondes: mesurerPendant))
     exit(0)
 }
-// Lancée sans fichier, l'application rouvre le dernier morceau consulté. C'est le
-// même appel que sur le Mac, et il ne fait rien si le lancement en désignait un.
+// La question de la version, posée au dépôt sur un fil à part. C'est le même appel
+// que sur le Mac.
 //
-// Seulement sur le chemin de la fenêtre : `--photo` et `--fluidite` doivent porter
-// sur le morceau qu'on leur nomme et sur rien d'autre, faute de quoi une épreuve
-// mesurerait ce qu'on écoutait la veille.
-if morceau == nil { application.modele.reopenLastFile() }
+// Seulement sur le chemin de la fenêtre : `--photo` et `--fluidite` rendent une
+// image puis s'arrêtent, et une machine d'intégration continue n'a aucune raison
+// d'interroger GitHub. C'est la même règle que pour `Rapports.ouvrir` — ce qui sort
+// de la machine sort d'une fenêtre ouverte devant quelqu'un.
+application.modele.demarrer()
 application.tourner()

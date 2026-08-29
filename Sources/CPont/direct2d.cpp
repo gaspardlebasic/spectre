@@ -26,8 +26,15 @@
 
 #include <initguid.h>
 #include "interne.h"
+// WIC décode le PNG des captures du diaporama. Inclus **après** `initguid.h`, qui
+// est déjà en tête de ce fichier : c'est ce qui fait naître ici les identifiants de
+// classe et de format que WIC déclare — `CLSID_WICImagingFactory`,
+// `GUID_WICPixelFormat32bppPBGRA` — sans avoir à lier une bibliothèque de plus pour
+// eux. Le décodeur lui-même vient de `windowscodecs`, que `Package.swift` lie.
+#include <wincodec.h>
 #include <cstdio>
 #include <cstring>
+#include <cwchar>
 
 /// Les polices, dans l'ordre où Swift les désigne.
 ///
@@ -51,8 +58,14 @@ static D2D1_COLOR_F couleur(uint32_t rvba) {
 
 // ─────────────────────────────────────────────────────────── La surface
 
+extern "C" void spectre_surimpression_oublier_les_images(void);
+
 extern "C" void spectre_surimpression_lacher(SpectreRendu *r) {
     if (!r) { return; }
+    // Avant tout le reste : une `ID2D1Bitmap` appartient au contexte, et la garder
+    // par-dessus un contexte détruit ferait tomber le dessin entier — donc une
+    // fenêtre noire au premier coin qu'on tire.
+    spectre_surimpression_oublier_les_images();
     if (r->contexteD2D) { r->contexteD2D->SetTarget(nullptr); }
     if (r->surfaceD2D) { r->surfaceD2D->Release(); r->surfaceD2D = nullptr; }
     if (r->pinceau) { r->pinceau->Release(); r->pinceau = nullptr; }
@@ -381,6 +394,123 @@ extern "C" void spectre_surimpression_arrondi(SpectreRendu *r, float x, float y,
     } else {
         r->contexteD2D->FillRoundedRectangle(forme, pinceau(r, rvba));
     }
+}
+
+// ─────────────────────────────────────────────────────────── Les images
+
+// Le jumeau exact de la section « Les images » de `cairo.c` : les captures du
+// diaporama du premier lancement, lues une fois puis gardées.
+//
+// **Une différence, et elle compte** : une `ID2D1Bitmap` appartient au contexte
+// Direct2D, que `spectre_surimpression_lacher` détruit à chaque redimensionnement
+// de la fenêtre. Le cache est donc vidé là aussi — une image gardée par-dessus un
+// contexte mort ferait tomber le dessin entier, spectrogramme compris, et la
+// fenêtre deviendrait noire au premier coin tiré.
+#define SPECTRE_IMAGES 4
+
+static struct {
+    WCHAR chemin[512];
+    ID2D1Bitmap *bitmap;           // nul quand la lecture a échoué
+} imagesGardees[SPECTRE_IMAGES];
+static int imagesConnues = 0;
+static IWICImagingFactory *fabriqueWIC = nullptr;
+
+extern "C" void spectre_surimpression_oublier_les_images(void) {
+    for (int i = 0; i < imagesConnues; ++i) {
+        if (imagesGardees[i].bitmap) {
+            imagesGardees[i].bitmap->Release();
+            imagesGardees[i].bitmap = nullptr;
+        }
+        imagesGardees[i].chemin[0] = 0;
+    }
+    imagesConnues = 0;
+}
+
+static ID2D1Bitmap *lireLImage(SpectreRendu *r, const WCHAR *chemin) {
+    if (!fabriqueWIC) {
+        // WIC est du COM, et rien d'autre dans l'application n'ouvre d'appartement :
+        // Direct3D, Direct2D et DirectWrite ont chacun leur propre fabrique et n'en
+        // demandent pas. On l'ouvre donc ici, et l'on accepte qu'il le soit déjà
+        // autrement — `RPC_E_CHANGED_MODE` n'est pas un échec pour nous, l'objet
+        // qu'on veut se crée dans l'un comme dans l'autre.
+        CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr,
+                                    CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&fabriqueWIC)))) {
+            fabriqueWIC = nullptr;
+            return nullptr;
+        }
+    }
+
+    IWICBitmapDecoder *decodeur = nullptr;
+    if (FAILED(fabriqueWIC->CreateDecoderFromFilename(chemin, nullptr, GENERIC_READ,
+                                                      WICDecodeMetadataCacheOnLoad,
+                                                      &decodeur))) {
+        return nullptr;
+    }
+
+    IWICBitmapFrameDecode *trame = nullptr;
+    IWICFormatConverter *converti = nullptr;
+    ID2D1Bitmap *bitmap = nullptr;
+    // En 32 bits BGRA prémultipliée, qui est le seul format qu'une cible Direct2D
+    // accepte sans conversion — la même que celle de la chaîne d'échange.
+    if (SUCCEEDED(decodeur->GetFrame(0, &trame))
+        && SUCCEEDED(fabriqueWIC->CreateFormatConverter(&converti))
+        && SUCCEEDED(converti->Initialize(trame, GUID_WICPixelFormat32bppPBGRA,
+                                          WICBitmapDitherTypeNone, nullptr, 0.0,
+                                          WICBitmapPaletteTypeMedianCut))) {
+        r->contexteD2D->CreateBitmapFromWicBitmap(converti, nullptr, &bitmap);
+    }
+    if (converti) { converti->Release(); }
+    if (trame) { trame->Release(); }
+    decodeur->Release();
+    return bitmap;
+}
+
+extern "C" void spectre_surimpression_image(SpectreRendu *r, const uint16_t *chemin,
+                                            float x, float y,
+                                            float largeur, float hauteur) {
+    if (!r || !r->dessinEnCours || !r->contexteD2D || !chemin) { return; }
+    if (largeur <= 0 || hauteur <= 0) { return; }
+    const WCHAR *voulu = reinterpret_cast<const WCHAR *>(chemin);
+
+    ID2D1Bitmap *bitmap = nullptr;
+    bool connue = false;
+    for (int i = 0; i < imagesConnues; ++i) {
+        if (wcscmp(imagesGardees[i].chemin, voulu) == 0) {
+            bitmap = imagesGardees[i].bitmap;
+            connue = true;
+            break;
+        }
+    }
+    if (!connue) {
+        if (imagesConnues >= SPECTRE_IMAGES) { return; }
+        bitmap = lireLImage(r, voulu);
+        wcsncpy(imagesGardees[imagesConnues].chemin, voulu, 511);
+        imagesGardees[imagesConnues].chemin[511] = 0;
+        imagesGardees[imagesConnues].bitmap = bitmap;
+        imagesConnues += 1;
+    }
+    if (!bitmap) { return; }
+
+    D2D1_SIZE_F taille = bitmap->GetSize();
+    if (taille.width <= 0 || taille.height <= 0) { return; }
+
+    // À ses proportions, et centrée : les deux captures n'ont pas la même forme, et
+    // les étirer toutes deux dans le même cadre mentirait sur ce que l'application
+    // montre — ce qu'un diaporama ne doit pas faire.
+    float facteur = (largeur / taille.width < hauteur / taille.height)
+                  ? largeur / taille.width : hauteur / taille.height;
+    float l = taille.width * facteur, h = taille.height * facteur;
+    float gauche = x + (largeur - l) / 2, haut = y + (hauteur - h) / 2;
+    D2D1_RECT_F ou = D2D1::RectF(gauche, haut, gauche + l, haut + h);
+    // Qualifié par la classe de base, et **pas** par commodité : `ID2D1DeviceContext`
+    // déclare son propre `DrawBitmap`, à `D2D1_INTERPOLATION_MODE`, ce qui **cache**
+    // en C++ les surcharges de `ID2D1RenderTarget` — celles à
+    // `D2D1_BITMAP_INTERPOLATION_MODE`, qui sont les seules que le reste de ce
+    // fichier connaisse. Sans la qualification, l'appel ne compile pas, et l'erreur
+    // parle d'un mode d'interpolation plutôt que d'une règle de portée.
+    r->contexteD2D->ID2D1RenderTarget::DrawBitmap(
+        bitmap, &ou, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, nullptr);
 }
 
 extern "C" void spectre_surimpression_decouper(SpectreRendu *r, float x, float y,

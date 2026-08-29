@@ -1679,6 +1679,17 @@ distribue et s'installe. Ce qui manque encore, et qu'il ne faut pas croire fait 
   au premier lancement, et il faut passer par « Informations complémentaires ». C'est
   le pendant exact de la quarantaine macOS, et cela se règle de la même manière :
   avec un certificat, qui se paie.
-- **Il n'y a pas de mise à jour automatique.** Réinstaller par-dessus fonctionne —
-  l'identifiant d'application est fixe, et l'ancienne version s'efface d'elle-même —
-  mais rien ne va voir si une version plus récente existe.
+- **La mise à jour est annoncée, pas installée.** L'application demande son numéro à
+  GitHub au lancement et propose la page des versions quand il est plus grand — voir
+  `SpectreCore/MiseAJour.swift`. Réinstaller par-dessus fonctionne : l'identifiant
+  d'application est fixe, et l'ancienne version s'efface d'elle-même. Ce qui manque
+  toujours, c'est que le paquet se pose tout seul, et cela demanderait un installeur
+  signé.
+- **Le décodage des captures par WIC n'a été compilé nulle part.**
+  `spectre_surimpression_image` est le jumeau Direct2D de ce que Cairo fait pour
+  Linux — WIC décode le PNG, `CreateBitmapFromWicBitmap` en fait une `ID2D1Bitmap`,
+  et `spectre_surimpression_lacher` la jette avec le contexte qui la porte. Le côté
+  Cairo est éprouvé, photographie comprise ; celui-ci ne l'a été que par relecture.
+  C'est la première chose à regarder à la prochaine passe sur la VM : `.\essai.ps1`,
+  puis la fenêtre au premier lancement, qui doit montrer la capture et non un cadre
+  noir.

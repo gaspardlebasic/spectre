@@ -39,6 +39,8 @@ enum Icone {
     case batterie
     /// `waveform` — le morceau tel qu'il est.
     case mixage
+    /// `trash` — retirer un morceau de la page de lancement, et jeter ses pistes.
+    case corbeille
 
     /// L'icône d'une piste. La correspondance suit `Stem.symbol`, symbole pour
     /// symbole : il n'y a pas deux listes de pistes, seulement deux façons de les
@@ -95,6 +97,20 @@ enum Icone {
                 let x = cx - 6 + Double(i) * 3
                 p.tracer(x, cy - hauteur, x, cy + hauteur, couleur, epaisseur: 1.4)
             }
+
+        case .corbeille:
+            // Le couvercle, son anse, la cuve et deux stries. Deux stries et non
+            // trois : à quatorze points de large, la troisième se confond avec les
+            // bords de la cuve et l'icône devient un rectangle hachuré.
+            p.tracer(cx - 6, cy - 4, cx + 6, cy - 4, couleur, epaisseur: 1.3)
+            p.tracer(cx - 2.4, cy - 6.4, cx + 2.4, cy - 6.4, couleur, epaisseur: 1.3)
+            p.tracer(cx - 2.4, cy - 6.4, cx - 2.4, cy - 4, couleur, epaisseur: 1.3)
+            p.tracer(cx + 2.4, cy - 6.4, cx + 2.4, cy - 4, couleur, epaisseur: 1.3)
+            p.tracer(cx - 4.4, cy - 4, cx - 3.6, cy + 6.6, couleur, epaisseur: 1.3)
+            p.tracer(cx + 4.4, cy - 4, cx + 3.6, cy + 6.6, couleur, epaisseur: 1.3)
+            p.tracer(cx - 3.6, cy + 6.6, cx + 3.6, cy + 6.6, couleur, epaisseur: 1.3)
+            p.tracer(cx - 1.4, cy - 1.6, cx - 1.4, cy + 4, couleur, epaisseur: 1)
+            p.tracer(cx + 1.4, cy - 1.6, cx + 1.4, cy + 4, couleur, epaisseur: 1)
         }
     }
 }

@@ -46,6 +46,7 @@ typealias Frise = SpectreDessin.Frise<LecteurSurLePont>
 typealias Batterie = SpectreDessin.Batterie<LecteurSurLePont>
 typealias Barre = SpectreDessin.Barre<LecteurSurLePont>
 typealias Commandes = SpectreDessin.Commandes<LecteurSurLePont>
+typealias Accueil = SpectreDessin.Accueil<LecteurSurLePont>
 
 extension SpectreModele.AppModel where Lecteur == LecteurSurLePont {
     /// L'assemblage Linux : à chaque protocole du modèle, sa mise en œuvre.
@@ -56,6 +57,7 @@ extension SpectreModele.AppModel where Lecteur == LecteurSurLePont {
                   pistes: RangementSurLePont(),
                   dialogue: DialogueLinux(),
                   récentsDuSystème: RecentsLinux(),
+                  extérieur: ExterieurLinux(),
                   préférences: PreferencesLinux.partagees)
     }
 }
@@ -79,12 +81,12 @@ let positionnels = arguments.enumerated().filter { i, mot in
     !mot.hasPrefix("--") && (i == 0 || !arguments[i - 1].hasPrefix("--"))
 }.map(\.element)
 
-guard let premier = positionnels.first else {
-    Journal.erreur("usage : SpectreLinux morceau.wav [--photo image.ppm]")
-    exit(2)
-}
-let entree = URL(fileURLWithPath: premier)
+let entree = positionnels.first.map { URL(fileURLWithPath: $0) }
 let photo = valeur("--photo")
+
+// Un morceau n'est plus exigé : sans lui, l'application montre sa page de lancement,
+// comme sur les deux autres systèmes. C'est ce que le portage devait à l'étape de la
+// page de lancement, et c'est aussi ce qui permet de la photographier.
 
 /// `--taille LARGEURxHAUTEUR`, la même option que `SpectreCLI` et que la version
 /// Windows : c'est ce qui permet de demander la même image aux trois chemins et de
@@ -122,7 +124,7 @@ SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, Int32(SDL_GL_CONTEXT_PROFILE_CO
 // spectrogramme sortirait flou sur un écran dense — ce qui se remarque immédiatement
 // sur les raies.
 let drapeaux = SpectreFenetreOpenGL | SpectreFenetreRedimensionnable | SpectreFenetreDense
-guard let fenetre = SDL_CreateWindow(entree.lastPathComponent,
+guard let fenetre = SDL_CreateWindow(entree?.lastPathComponent ?? "Spectre",
                                      tailleVoulue?.largeur ?? 1200,
                                      tailleVoulue?.hauteur ?? 700, drapeaux) else {
     Journal.erreur("SDL a refusé d'ouvrir une fenêtre : \(String(cString: SDL_GetError()))")
@@ -156,14 +158,14 @@ Textes.demarrer(choix: nil, notes: nil,
 let modele = AppModel()
 modele.renderer = rendu
 rendu.origineDesTeintes = PreferencesLinux.partagees.hueOrigin
-modele.open(entree)
+if let entree { modele.open(entree) }
 
 let panneau = Panneau()
 if arguments.contains("--reglages") { panneau.ouvert = true }
 /// Ce qui ne se replie jamais : les quatre pistes et la porte des réglages.
 let flottant = Flottant()
-/// La phrase du premier lancement, tant que personne ne l'a lue.
-let avis = Avis()
+/// La page de lancement, le diaporama du premier lancement et la mise à jour.
+let accueil = Accueil(modele: modele)
 /// Ce que dit la commande qu'on survole. Partagée par le panneau et la colonne : il
 /// n'y a qu'une souris, donc qu'une bulle à l'écran.
 let infobulle = Infobulle()
@@ -240,6 +242,14 @@ func uneImage() {
     rendu.surimprimer(echelle: echelle) { pinceau in
         Frise(modele: modele, pinceau: pinceau,
               largeur: points.largeur, hauteur: hauteurImage).dessiner()
+        // La page de lancement au milieu de l'image, tant qu'il n'y a rien à
+        // montrer. Sous la colonne des pistes et sous le panneau, qui restent
+        // atteignables : ce n'est pas une modale, c'est ce que la fenêtre montre
+        // quand elle est vide.
+        if accueil.pageAMontrer {
+            accueil.dessinerLaPage(pinceau, largeur: points.largeur,
+                                   hauteur: hauteurImage)
+        }
         Batterie(modele: modele, pinceau: pinceau, largeur: points.largeur,
                  haut: hauteurImage, hauteur: hauteurDeLaBatterie).dessiner()
         // Le panneau vient après la frise et avant la barre : il flotte sur l'image,
@@ -263,11 +273,11 @@ func uneImage() {
         // la commande survolée, donc en dehors du panneau qui la couperait net.
         infobulle.dessiner(pinceau, largeurFenetre: points.largeur,
                            hauteurFenetre: points.hauteur)
-        // Et l'avis par-dessus l'infobulle elle-même : tant qu'il est là, il n'y a
-        // rien d'autre à lire dans cette fenêtre.
-        avis.dessiner(pinceau: pinceau, largeurFenetre: points.largeur,
-                      hauteurFenetre: points.hauteur,
-                      aMontrer: modele.avisDeRapports)
+        // Et les couches du lancement par-dessus l'infobulle elle-même : tant que le
+        // diaporama ou la mise à jour est là, il n'y a rien d'autre à lire dans
+        // cette fenêtre.
+        accueil.dessinerLesCouches(pinceau, largeurFenetre: points.largeur,
+                                   hauteurFenetre: points.hauteur)
     }
 }
 
@@ -288,6 +298,9 @@ if let photo {
     for _ in 0..<900 {
         viderLaFilePrincipale()
         uneImage()
+        // Sans morceau, il n'y a rien à attendre : c'est la page de lancement qu'on
+        // photographie, et elle est prête dès la première image.
+        if entree == nil { repos += 1; if repos > 5 { break }; usleep(10_000); continue }
         if modele.spectrogram.columnCount > 0, modele.status == nil {
             repos += 1
             if repos > 20 { break }
@@ -312,7 +325,8 @@ if let photo {
 // MARK: - Les gestes
 
 let surface = SurfaceSDL(fenetre: fenetre, modele: modele, panneau: panneau,
-                         flottant: flottant, taillePoints: taillePoints)
+                         flottant: flottant, accueil: accueil,
+                         taillePoints: taillePoints)
 
 // MARK: - Le relevé de fluidité
 
@@ -387,6 +401,8 @@ if let demande = valeur("--fluidite"), let secondes = Double(demande) {
 // servent de l'application. Ce qui part vient d'une fenêtre ouverte devant
 // quelqu'un. Voir `docs/RAPPORTS.md`.
 Rapports.ouvrir()
+// Et la question de la version, pour la même raison et au même endroit.
+modele.demarrer()
 
 var tourne = true
 var evenement = SDL_Event()

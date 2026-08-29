@@ -48,9 +48,9 @@ import Foundation
 /// plus de quarante.
 ///
 /// **Rien ne part tant qu'il n'y a pas d'adresse.** Sans DSN — c'est le cas du
-/// dépôt tel qu'il est — `actifs` est faux, la file n'est pas écrite, et l'avis du
-/// premier lancement ne s'affiche pas. Une application qui annoncerait un envoi
-/// qu'elle ne fait pas serait pire que muette.
+/// dépôt tel qu'il est — `actifs` est faux, la file n'est pas écrite, et le
+/// diaporama du premier lancement n'annonce rien. Une application qui annoncerait un
+/// envoi qu'elle ne fait pas serait pire que muette.
 /// ─────────────────────────────────────────────────────────────────────────────
 public enum Rapports {
 
@@ -103,8 +103,8 @@ public enum Rapports {
         self.version = version
         // `SPECTRE_RAPPORTS` remplace l'adresse du dépôt, et **`non` la retire** :
         // c'est par là que les harnais et la recette lancent la vraie application
-        // sans que rien ne parte et sans que l'avis du premier lancement ne vienne
-        // couvrir la fenêtre qu'ils photographient. Une épreuve qui poste chez
+        // sans que rien ne parte et sans que le diaporama du premier lancement
+        // n'annonce un envoi qui n'aura pas lieu. Une épreuve qui poste chez
         // Sentry à chaque passage salit les seules données qu'on ait.
         let texte = dsn ?? ProcessInfo.processInfo.environment["SPECTRE_RAPPORTS"]
             ?? Enveloppe.adresseDuDepot
@@ -198,46 +198,13 @@ public enum Rapports {
         reveil.unlock()
     }
 
-    // MARK: - L'avis du premier lancement
-
-    /// Vrai tant que la personne n'a pas encore vu la phrase qui annonce l'envoi.
-    ///
-    /// **On informe, on ne demande pas** — décision prise en connaissance de cause,
-    /// et écrite dans `docs/RAPPORTS.md` avec ce qu'elle coûte. Une case décochée
-    /// par défaut ne serait cochée par personne, ce qui est la même impasse que le
-    /// bouton qu'on ne clique pas ; une case cochée par défaut serait un
-    /// consentement de façade, ce qui est pire que de le dire franchement. La case
-    /// viendra si l'application trouve un public.
-    ///
-    /// Faux quand rien ne part : annoncer un envoi qu'on ne fait pas serait une
-    /// fausse déclaration dans l'autre sens.
-    /// Le disque n'est interrogé qu'une fois. Ce n'est pas une optimisation
-    /// gratuite : la question est posée **à chaque image** par les deux systèmes qui
-    /// dessinent eux-mêmes leur interface, soit cent vingt fois par seconde, et un
-    /// appel de fichier par image est le genre de coût qu'on ne remarque que sur la
-    /// machine la plus lente.
-    public static var avisAMontrer: Bool {
-        verrou.lock()
-        defer { verrou.unlock() }
-        guard adresse != nil, let temoin = temoinDeLAvis else { return false }
-        if avisDejaVu == nil {
-            avisDejaVu = FileManager.default.fileExists(atPath: temoin.path)
-        }
-        return !(avisDejaVu ?? true)
-    }
-
-    /// La phrase a été lue. Elle ne reviendra pas.
-    public static func avisMontre() {
-        verrou.lock()
-        defer { verrou.unlock() }
-        avisDejaVu = true
-        guard let temoin = temoinDeLAvis else { return }
-        try? Data("vu\n".utf8).write(to: temoin, options: .atomic)
-    }
-
-    private static var temoinDeLAvis: URL? {
-        dossier?.appendingPathComponent("avis-lu", isDirectory: false)
-    }
+    // L'avis du premier lancement vivait ici, et n'y vit plus : c'est désormais la
+    // seconde diapositive du diaporama qui porte la phrase, et `Bienvenue` — dans
+    // `SessionStore.swift` — qui tient le témoin. La raison du déménagement est que
+    // le diaporama se montre **même quand rien ne part** : lié à l'adresse d'envoi,
+    // il aurait disparu chez qui construit le dépôt sans DSN, emportant avec lui la
+    // présentation de l'application. Ce qui reste ici est `actifs`, que le diaporama
+    // consulte pour savoir s'il a quelque chose à annoncer.
 
     // MARK: - L'envoi, derrière
 
@@ -377,7 +344,6 @@ public enum Rapports {
     private static var carteGraphique: String?
     private static var memoireDuNumero: String?
     /// `nil` tant que le disque n'a pas été interrogé.
-    private static var avisDejaVu: Bool?
     /// Ce que ce lancement-ci a déjà signalé, par empreinte.
     private static var duLancement = [String: Rapport]()
 
@@ -411,7 +377,6 @@ public enum Rapports {
         dossier = nil
         carteGraphique = nil
         memoireDuNumero = nil
-        avisDejaVu = nil
         duLancement = [:]
     }
 

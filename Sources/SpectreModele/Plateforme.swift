@@ -187,6 +187,20 @@ public protocol DocumentsRecents {
     func effacer()
 }
 
+/// Ce qui sort de l'application : une page dans le navigateur, un dossier dans
+/// l'explorateur de fichiers.
+///
+/// Deux gestes, et ils ne se ressemblent que de loin : `NSWorkspace` d'un côté,
+/// `ShellExecuteW` de l'autre, `xdg-open` du troisième. Le modèle, lui, ne connaît
+/// que « la page des versions » et « le dossier des pistes ».
+public protocol Exterieur {
+    /// Ouvre une adresse dans le navigateur de l'utilisateur. Sert à la mise à
+    /// jour, qui propose une page et ne télécharge rien elle-même.
+    func ouvrirLaPage(_ url: URL)
+    /// Montre un dossier dans l'explorateur de fichiers.
+    func montrerLeDossier(_ url: URL)
+}
+
 // MARK: - La séparation
 
 // `SeparationProgress` est dans `SpectreCore` : ce n'est pas une notion du modèle

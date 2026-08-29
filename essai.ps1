@@ -59,6 +59,11 @@ $env:SPECTRE_RANGEMENT = Join-Path $travail "rangement"
 # Et rien ne part chez Sentry : `non` retire l'adresse. `RapportsCheck`, lui, se
 # donne la sienne. Voir `Rapports.ouvrir`.
 $env:SPECTRE_RAPPORTS = "non"
+# Ni diaporama ni mise à jour, pour la même raison que sous macOS : le premier
+# couvre toute la fenêtre qu'on photographie, et l'epreuve tourne dans un rangement
+# neuf — donc chaque passage serait un premier lancement.
+$env:SPECTRE_BIENVENUE = "non"
+$env:SPECTRE_MAJ = "non"
 New-Item -ItemType Directory -Force -Path $env:SPECTRE_RANGEMENT | Out-Null
 
 Etape "Construction"

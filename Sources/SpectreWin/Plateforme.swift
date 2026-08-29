@@ -110,6 +110,28 @@ public struct RecentsWindows: DocumentsRecents {
     }
 }
 
+/// Le navigateur, et l'explorateur de fichiers.
+///
+/// `ShellExecuteW` dans les deux cas, avec deux verbes : `open` sur une adresse la
+/// confie au navigateur par défaut, `explore` sur un dossier ouvre l'Explorateur
+/// dessus. C'est le même appel que celui qu'un raccourci du menu Démarrer déclenche,
+/// et il ne demande rien de plus que `shell32`, déjà lié pour le sélecteur de
+/// fichiers.
+public struct ExterieurWindows: Exterieur {
+    public init() {}
+
+    public func ouvrirLaPage(_ url: URL) { lancer("open", url.absoluteString) }
+    public func montrerLeDossier(_ url: URL) { lancer("explore", url.path) }
+
+    private func lancer(_ verbe: String, _ cible: String) {
+        verbe.withCString(encodedAs: UTF16.self) { v in
+            cible.withCString(encodedAs: UTF16.self) { c in
+                _ = ShellExecuteW(nil, v, c, nil, nil, SW_SHOWNORMAL)
+            }
+        }
+    }
+}
+
 // MARK: - Les réglages
 
 /// Les réglages de l'application sous Windows.

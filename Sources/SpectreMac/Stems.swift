@@ -58,9 +58,9 @@ public enum StemStore {
     /// plus un choix offert, mais la trace reste utile : changer de modèle un jour
     /// ne doit pas faire resservir en silence des pistes calculées par l'ancien.
     public static func folder(for fingerprint: String) -> URL? {
-        guard let root else { return nil }
-        let folder = root.appendingPathComponent("pistes/\(fingerprint)/\(modelName)",
-                                                 isDirectory: true)
+        guard let pistes = Storage.pistes else { return nil }
+        let folder = pistes.appendingPathComponent("\(fingerprint)/\(modelName)",
+                                                   isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder
     }
@@ -107,8 +107,9 @@ public enum StemStore {
     /// discothèque n'a pas été écrit par nous et n'a aucune raison d'être remonté de
     /// six décibels. D'où la double condition — l'extension *et* l'emplacement.
     public static func gain(for url: URL) -> Float {
-        guard url.pathExtension.lowercased() == "flac", let root else { return 1 }
-        return url.path.hasPrefix(root.appendingPathComponent("pistes").path)
+        guard url.pathExtension.lowercased() == "flac",
+              let pistes = Storage.pistes else { return 1 }
+        return url.path.hasPrefix(pistes.path)
             ? compressedHeadroom : 1
     }
 
@@ -142,9 +143,9 @@ public enum StemStore {
     /// vide par morceau — invisible tant qu'on ne les compte pas, et le ménage du
     /// cache les parcourt maintenant une à une.
     public static func removeStems(for fingerprint: String) {
-        guard let root else { return }
+        guard let pistes = Storage.pistes else { return }
         try? FileManager.default.removeItem(
-            at: root.appendingPathComponent("pistes/\(fingerprint)", isDirectory: true))
+            at: pistes.appendingPathComponent(fingerprint, isDirectory: true))
     }
 
     // MARK: La banque
@@ -357,8 +358,7 @@ public enum StemStore {
 
     /// Ce que le dossier des pistes occupe, en octets.
     public static func cacheSize() -> Int {
-        guard let root else { return 0 }
-        let pistes = root.appendingPathComponent("pistes", isDirectory: true)
+        guard let pistes = Storage.pistes else { return 0 }
         guard let walk = FileManager.default.enumerator(
             at: pistes, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
         var total = 0
@@ -373,8 +373,7 @@ public enum StemStore {
     /// Ce sont des minutes de GPU, mais elles se refont : c'est un cache, et un cache
     /// qu'on ne peut pas vider est un dossier qui grossit.
     public static func emptyCache() {
-        guard let root else { return }
-        let pistes = root.appendingPathComponent("pistes", isDirectory: true)
+        guard let pistes = Storage.pistes else { return }
         try? FileManager.default.removeItem(at: pistes)
     }
 
@@ -390,9 +389,8 @@ public enum StemStore {
     @discardableResult
     public static func pruneCache(keeping fingerprint: String?,
                                   limit: Int = cacheLimit) -> Int {
-        guard let root else { return 0 }
+        guard let pistes = Storage.pistes else { return 0 }
         let manager = FileManager.default
-        let pistes = root.appendingPathComponent("pistes", isDirectory: true)
         guard let entries = try? manager.contentsOfDirectory(
             at: pistes, includingPropertiesForKeys: [.contentModificationDateKey])
         else { return 0 }
@@ -439,7 +437,7 @@ public enum StemStore {
     /// ménage serait celui des calculs et non celui des écoutes, et le morceau sur
     /// lequel on travaille depuis une heure passerait pour le plus vieux.
     public static func markUsed(_ fingerprint: String) {
-        guard let folder = root?.appendingPathComponent("pistes/\(fingerprint)",
+        guard let folder = Storage.pistes?.appendingPathComponent(fingerprint,
                                                         isDirectory: true),
               FileManager.default.fileExists(atPath: folder.path) else { return }
         try? FileManager.default.setAttributes([.modificationDate: Date()],

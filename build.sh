@@ -89,6 +89,25 @@ if [ -f Resources/htdemucs.onnx ]; then
 else
   echo "Note : pas de modèle de séparation — lancer ./modele.sh pour l'ajouter."
 fi
+# Les deux captures du diaporama du premier lancement.
+#
+# Ce sont **les mêmes fichiers que ceux du README** : une présentation qui montrerait
+# autre chose que la page du dépôt vieillirait deux fois. Elles sont renommées en
+# passant — ni espace ni accent — parce que le nom voyage ensuite dans trois paquets
+# et deux systèmes de fichiers, et que ce n'est pas un endroit où l'on veut découvrir
+# qu'une normalisation Unicode diffère.
+cp "Resources/Captures/faire boucler une section au ralenti.png" \
+   "$APP/Contents/Resources/diapo-boucle.png"
+cp "Resources/Captures/séparation des pistes.png" \
+   "$APP/Contents/Resources/diapo-pistes.png"
+# Et l'on efface leurs attributs étendus. Une capture d'écran en porte sept —
+# `com.apple.FinderInfo`, la date de dernier usage, la zone photographiée — et
+# `codesign` refuse un paquet qui en contient : « resource fork, Finder information,
+# or similar detritus not allowed ». Le paquet partait alors non signé, avec pour
+# seule trace une ligne d'avertissement au milieu de la construction.
+xattr -c "$APP/Contents/Resources/diapo-boucle.png" \
+         "$APP/Contents/Resources/diapo-pistes.png"
+
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 # Rien à embarquer pour ONNX Runtime : sa distribution SwiftPM est une **archive

@@ -220,6 +220,24 @@ void spectre_surimpression_arrondi(SpectreRendu *rendu, float x, float y,
                                    float largeur, float hauteur, float rayon,
                                    uint32_t rvba, float epaisseur);
 
+/// Dessine une image PNG, à ses proportions, centrée dans le rectangle donné.
+///
+/// `chemin` est un chemin de fichier en UTF-16 terminé par un zéro — le même format
+/// que le texte, et pour la même raison : c'est ce que Windows attend, et une
+/// frontière qui changerait de forme selon le système obligerait `Pinceau` à savoir
+/// sur quoi il tourne.
+///
+/// **Le fichier est lu au premier appel, puis gardé.** Le diaporama du premier
+/// lancement redessine sa capture cent vingt fois par seconde, et décoder deux
+/// mégapixels de PNG à chaque image ferait de la présentation de l'application la
+/// seule chose qui rame. L'échec est gardé lui aussi : un fichier absent ne doit pas
+/// se rechercher cent vingt fois par seconde non plus.
+///
+/// Ne fait rien quand le fichier manque ou ne se décode pas. Une capture absente
+/// doit laisser le texte du diaporama, qui est ce qui compte.
+void spectre_surimpression_image(SpectreRendu *rendu, const uint16_t *chemin,
+                                 float x, float y, float largeur, float hauteur);
+
 /// Restreint le dessin à un rectangle, jusqu'à `spectre_surimpression_recoller`.
 ///
 /// C'est ce qui permet à un panneau de défiler : son contenu est dessiné à sa place

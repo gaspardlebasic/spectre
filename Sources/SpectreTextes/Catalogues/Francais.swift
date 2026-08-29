@@ -265,6 +265,8 @@ extension Catalogue {
         .pistesPlafondAide: "Un morceau de sept minutes coûte environ 300 Mo. Au-delà du plafond, les morceaux les moins récemment ouverts s'en vont entiers — jamais celui qu'on écoute — et se recalculent.",
         .pistesViderLeCache: "Vider le cache",
         .pistesViderLeCacheAide: "Jeter toutes les pistes rangées. Chaque morceau devra être séparé de nouveau, soit environ une demi-minute par morceau.",
+        .pistesOuvrirLeDossier: "Ouvrir le dossier",
+        .pistesOuvrirLeDossierAide: "Montrer dans l'explorateur de fichiers le dossier où les pistes séparées sont rangées.",
         .pistesPoidsAbsents: "Les poids de Demucs ne sont pas installés — voir `modele.sh`. Sans eux, le morceau se lit tel qu'il est.",
         .pistesPoidsAbsentsWin: "Les poids de Demucs ne sont pas installés — voir `modele.sh`. Sans eux, le morceau se lit tel qu'il est.",
         .pistesOnnxAbsent: "ONNX Runtime n'est pas installé : lancer .\\onnx.ps1, puis relancer l'application.",
@@ -288,11 +290,36 @@ extension Catalogue {
         .accueilRaccourci: "ou ⌘O",
         .accueilAnalyse: "Analyse…",
 
+        // MARK: La page de lancement
+        .lancementReprendre: "Reprendre un morceau",
+        .lancementAucunMorceau: "Aucun morceau ouvert jusqu'ici.",
+        .lancementOuvrirUnFichier: "Ouvrir un fichier…",
+        .lancementRetirer: "Retirer de la liste, et jeter ses pistes séparées",
+        .lancementSepare: "pistes séparées",
+
+        // MARK: Le diaporama du premier lancement
+        .bienvenueTitreBoucle: "Faire boucler une section au ralenti",
+        .bienvenueCorpsBoucle: "Maj + glisser sur le spectrogramme choisit un passage et le met en boucle. Les curseurs Vitesse et Transposition, dans le panneau de réglages, le ralentissent sans le désaccorder et le transposent sans le ralentir.",
+        .bienvenueTempoBoucle: "Le tempo est relevé tout seul à l'ouverture. Quand il tombe à côté, le panneau le reprend : le chiffre se saisit à la main, et « 1 ici » pose le premier temps de la mesure là où est la tête de lecture.",
+        .bienvenueTitrePistes: "Quatre pistes, séparées sur votre machine",
+        .bienvenueCorpsPistes: "Voix, basse, batterie et le reste sont isolés dès l'ouverture d'un morceau, puis gardés pour les fois suivantes. Le calcul dure quelques minutes ; la barre du bas dit où il en est, et le morceau s'écoute pendant ce temps.",
+        .bienvenueRapports: "Quand quelque chose casse, Spectre en envoie le rapport tout seul. Ni le nom de vos fichiers, ni vos dossiers, ni ce que vous écoutez n'en font jamais partie.",
+        .bienvenueSuivant: "Suivant",
+        .bienvenueCommencer: "Commencer",
+        .bienvenuePasser: "Passer",
+
+        // MARK: La mise à jour
+        .majTitre: "Spectre %1$@ est disponible",
+        .majCorps: "Vous avez la version %1$@.",
+        .majTelecharger: "Télécharger",
+        .majPlusTard: "Plus tard",
+
         // MARK: La fenêtre des réglages
         .reglagesPistesSeparees: "Pistes séparées",
         .reglagesTailleMaximale: "Taille maximale du cache",
         .reglagesOccupe: "Occupé",
         .reglagesViderPoints: "Vider…",
+        .reglagesOuvrirLeDossier: "Ouvrir le dossier",
         .reglagesViderBouton: "Vider",
         .reglagesAnnuler: "Annuler",
         .reglagesCacheExplication: "Un morceau de sept minutes coûte environ 250 Mo. Au-delà du plafond, les morceaux les moins récemment ouverts s'en vont entiers — jamais celui qu'on écoute — et se recalculent en une demi-minute.",
@@ -323,10 +350,6 @@ extension Catalogue {
         .winFriseOuvrir: "Ouvrir un fichier : Ctrl + O",
 
         // MARK: L'avis du premier lancement
-        .avisRapportsTitre: "Spectre signale ses pannes toute seule",
-        .avisRapportsCorps: "Quand quelque chose casse, Spectre en envoie le rapport sans rien vous demander. C'est ce qui permet de le corriger : personne ne prend la peine de raconter une panne, et une panne qu'on n'apprend pas reste là.",
-        .avisRapportsSecret: "N'en font jamais partie : le nom de vos fichiers, vos dossiers, ni ce que vous écoutez. Rien d'autre n'est mesuré — ni ce que vous faites de l'application, ni combien de temps vous l'ouvrez.",
-        .avisRapportsCompris: "J'ai compris",
 
         // MARK: La ligne de commande
         .cliFichierIntrouvable: "Fichier introuvable : %1$@",

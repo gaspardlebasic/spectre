@@ -1084,6 +1084,20 @@ bas, qui dit maintenant *pourquoi* il n'en recevra pas.
 chemin compile, mais personne n'a cliqué : aucune souris ne se pilote sous Wayland
 depuis un terminal distant. C'est le seul morceau du portage qui ne soit pas mesuré.
 
+**`SpectreLinux` n'exige plus de fichier en argument. Fait.** Il refusait de
+s'ouvrir sans morceau — `usage : SpectreLinux morceau.wav`, puis `exit(2)` —, ce qui
+était sans conséquence tant que la fenêtre vide n'avait rien à montrer. La page de
+lancement, elle, *est* ce qu'on montre quand il n'y a pas de morceau : la refuser
+aurait retiré à Linux la première chose que les gens voient. Un morceau reste exigé
+pour `--photo` avec un fichier et pour `--fluidite`, qui rendent une image de quelque
+chose ; `--photo` sans fichier photographie la page de lancement, et c'est par là
+qu'on la regarde.
+
+**Les captures du diaporama passent par Cairo.** `spectre_surimpression_image` lit un
+PNG par `cairo_image_surface_create_from_png`, le garde après la première lecture et
+le pose à ses proportions dans le cadre qu'on lui donne. C'est le jumeau exact de ce
+que `direct2d.cpp` fait par WIC, et la treizième fonction du contrat entre les deux.
+
 **L'AppImage ARM64. Fait.** Le coureur `ubuntu-22.04-arm` est dans la matrice, et la
 livraison produit les quatre paquets Linux — AppImage et `.deb`, sur les deux
 architectures. Voir `docs/PAQUETS.md`.

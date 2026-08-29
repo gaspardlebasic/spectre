@@ -182,6 +182,13 @@ var cibles: [Target] = [
                       path: "Tools/RapportsCheck"),
     .executableTarget(name: "SessionCheck", dependencies: ["SpectreCore"],
                       path: "Tools/SessionCheck"),
+    // La page de lancement, le diaporama du premier lancement et la mise à jour.
+    // Il dépend du modèle et non seulement du noyau : ce qu'il éprouve — l'ordre
+    // des couches, ce que la corbeille emporte — vit dans `Lancement`. Comme le
+    // modèle, il ne connaît aucune plateforme et tourne donc sur les trois.
+    .executableTarget(name: "LancementCheck",
+                      dependencies: ["SpectreCore", "SpectreModele"],
+                      path: "Tools/LancementCheck"),
     // Les trois harnais de la chaîne de lecture portable. Ils n'ont besoin
     // d'aucune carte son : le filtre se mesure sur sa réponse, la chaîne se rend
     // hors ligne, et l'amorçage se lit dans des en-têtes qu'on fabrique. C'est ce
@@ -231,6 +238,7 @@ var produits: [Product] = [
     .executable(name: "JournalCheck", targets: ["JournalCheck"]),
     .executable(name: "RapportsCheck", targets: ["RapportsCheck"]),
     .executable(name: "SessionCheck", targets: ["SessionCheck"]),
+    .executable(name: "LancementCheck", targets: ["LancementCheck"]),
     .executable(name: "FilterCheck", targets: ["FilterCheck"]),
     .executable(name: "ChainCheck", targets: ["ChainCheck"]),
     .executable(name: "GaplessCheck", targets: ["GaplessCheck"]),
@@ -461,6 +469,10 @@ if surWindows {
                 // noms d'accords — dessinée dans le tampon du nuanceur.
                 .linkedLibrary("d2d1"),
                 .linkedLibrary("dwrite"),
+                // WIC décode les captures du diaporama du premier lancement. Le
+                // jumeau Cairo lit son PNG lui-même ; Direct2D, lui, ne décode
+                // rien et attend qu'on lui donne des pixels.
+                .linkedLibrary("windowscodecs"),
             ]
         ),
         // Ce que Windows répond aux protocoles du modèle — le pendant exact de

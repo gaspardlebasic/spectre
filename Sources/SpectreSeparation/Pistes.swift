@@ -28,8 +28,6 @@ import SpectreModele
 // ─────────────────────────────────────────────────────────────────────────────
 
 public enum RangementDesPistes {
-    private static var racine: URL? { Storage.root }
-
     /// Fréquence à laquelle les pistes rangées doivent être : celle du réseau, la
     /// seule à laquelle il travaille.
     public static let frequenceDesPistes = 44_100.0
@@ -38,8 +36,8 @@ public enum RangementDesPistes {
     /// modèle un jour ne doit pas faire resservir en silence des pistes calculées par
     /// l'ancien.
     public static func dossier(pour empreinte: String) -> URL? {
-        guard let racine else { return nil }
-        let dossier = racine.appendingPathComponent("pistes/\(empreinte)/\(Reseau.nom)",
+        guard let pistes = Storage.pistes else { return nil }
+        let dossier = pistes.appendingPathComponent("\(empreinte)/\(Reseau.nom)",
                                                     isDirectory: true)
         try? FileManager.default.createDirectory(at: dossier, withIntermediateDirectories: true)
         return dossier
@@ -80,9 +78,9 @@ public enum RangementDesPistes {
 
     /// Efface les pistes d'un morceau, **et le dossier qui les portait**.
     public static func oublier(_ empreinte: String) {
-        guard let racine else { return }
+        guard let pistes = Storage.pistes else { return }
         try? FileManager.default.removeItem(
-            at: racine.appendingPathComponent("pistes/\(empreinte)", isDirectory: true))
+            at: pistes.appendingPathComponent(empreinte, isDirectory: true))
     }
 
     // MARK: Combinaisons
@@ -185,8 +183,8 @@ public enum RangementDesPistes {
     }
 
     public static func gain(pour url: URL) -> Float {
-        guard let racine,
-              url.path.hasPrefix(racine.appendingPathComponent("pistes").path)
+        guard let pistes = Storage.pistes,
+              url.path.hasPrefix(pistes.path)
         else { return 1 }
         return WAVFile.gain(pour: url)
     }
@@ -216,14 +214,13 @@ public enum RangementDesPistes {
     public static var plafond = 1_000_000_000
 
     public static func taille() -> Int {
-        guard let racine else { return 0 }
-        return poids(de: racine.appendingPathComponent("pistes", isDirectory: true))
+        guard let pistes = Storage.pistes else { return 0 }
+        return poids(de: pistes)
     }
 
     public static func vider() {
-        guard let racine else { return }
-        try? FileManager.default.removeItem(
-            at: racine.appendingPathComponent("pistes", isDirectory: true))
+        guard let pistes = Storage.pistes else { return }
+        try? FileManager.default.removeItem(at: pistes)
     }
 
     /// Ramène le dossier des pistes sous le plafond.
@@ -235,9 +232,8 @@ public enum RangementDesPistes {
     @discardableResult
     public static func ranger(enGardant empreinte: String?,
                               plafond limite: Int = plafond) -> Int {
-        guard let racine else { return 0 }
+        guard let pistes = Storage.pistes else { return 0 }
         let gestionnaire = FileManager.default
-        let pistes = racine.appendingPathComponent("pistes", isDirectory: true)
         guard let entrees = try? gestionnaire.contentsOfDirectory(
             at: pistes, includingPropertiesForKeys: [.contentModificationDateKey])
         else { return 0 }
@@ -268,7 +264,7 @@ public enum RangementDesPistes {
     /// ménage serait celui des calculs et non celui des écoutes, et le morceau sur
     /// lequel on travaille depuis une heure passerait pour le plus vieux.
     public static func marquerServi(_ empreinte: String) {
-        guard let dossier = racine?.appendingPathComponent("pistes/\(empreinte)",
+        guard let dossier = Storage.pistes?.appendingPathComponent(empreinte,
                                                            isDirectory: true),
               FileManager.default.fileExists(atPath: dossier.path) else { return }
         try? FileManager.default.setAttributes([.modificationDate: Date()],

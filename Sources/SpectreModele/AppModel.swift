@@ -34,6 +34,7 @@ private let dureeDuTournePage = 0.32
     @ObservationIgnored private let pistes: ServiceDeSeparation
     @ObservationIgnored private let dialogue: DialogueFichier
     @ObservationIgnored private let récentsDuSystème: DocumentsRecents
+    @ObservationIgnored private let extérieur: Exterieur
     /// Lisibles de l'extérieur, et en lecture seule : le dessin y prend l'origine
     /// des teintes, qui décide de la couleur des noms de notes. Les *écrire* est le
     /// métier du panneau, qui tient sa propre référence — voir `ReglagesModifiables`.
@@ -167,41 +168,16 @@ private let dureeDuTournePage = 0.32
     public var progress: Double?
     public var status: String?
 
-    /// L'avis du premier lancement : Spectre enverra ses pannes.
+    /// La page de lancement, le diaporama du premier lancement et la mise à jour.
     ///
-    /// Il vit ici parce qu'il est le même sur les trois systèmes — SwiftUI le pose
-    /// en surimpression, `Avis.swift` le dessine pour les deux autres, et les deux
-    /// lisent cette propriété-là. Il n'est vrai que si quelque chose part vraiment :
-    /// sans adresse d'envoi, `Rapports` répond non, et l'application se comporte
-    /// exactement comme avant. Voir `docs/RAPPORTS.md`.
+    /// Un objet à part, et non trois propriétés de plus ici : ce qu'il porte ne vaut
+    /// que tant qu'aucun morceau n'est ouvert, ne touche ni au son ni à l'image, et
+    /// s'éprouve donc sans monter une carte son — voir `Lancement.swift`.
     ///
-    /// ─────────────────────────────────────────────────────────────────────────
-    /// CALCULÉE, ET NON RETENUE À LA CONSTRUCTION
-    ///
-    /// Elle l'a été, et l'avis ne s'affichait alors **que sur le Mac**. La raison
-    /// tient à trois lignes d'ordre : sur le Mac, `Rapports.ouvrir()` passe avant
-    /// que SwiftUI ne fabrique le modèle ; sous Windows et sous Linux, le modèle est
-    /// bâti d'abord et les rapports ne s'ouvrent qu'au bord de la boucle
-    /// d'évènements — ce qui est délibéré, pour que `--photo` n'envoie rien. La
-    /// valeur retenue à la construction était donc fausse sur deux systèmes sur
-    /// trois.
-    ///
-    /// Rien ne l'aurait dit : les trois compilent, les trois s'ouvrent, et le
-    /// harnais éprouve `Rapports` sans passer par le modèle. C'est une photographie
-    /// de la machine d'essai Linux qui l'a montré — une fenêtre normale, là où il
-    /// aurait dû y avoir un avis.
-    /// ─────────────────────────────────────────────────────────────────────────
-    public var avisDeRapports: Bool { !avisLu && Rapports.avisAMontrer }
-
-    /// Lu pendant ce lancement-ci. Observé, et c'est ce qui fait que la vue du Mac
-    /// se redessine quand on referme l'avis.
-    public private(set) var avisLu = false
-
-    /// La phrase a été lue. Elle ne reviendra plus, sur aucun lancement.
-    public func avisDeRapportsLu() {
-        avisLu = true
-        Rapports.avisMontre()
-    }
+    /// `@ObservationIgnored` sur la référence, qui ne change jamais : c'est l'objet
+    /// lui-même qui est observé, et les vues qui lisent `modele.lancement.morceaux`
+    /// se remettent à jour comme si la liste était ici.
+    @ObservationIgnored public let lancement: Lancement
 
     /// Sinusoïde d'écoute, tenue tant que le bouton reste enfoncé.
     @ObservationIgnored private let sinusoide: Sinusoide
@@ -228,6 +204,7 @@ private let dureeDuTournePage = 0.32
                 pistes: ServiceDeSeparation,
                 dialogue: DialogueFichier,
                 récentsDuSystème: DocumentsRecents,
+                extérieur: Exterieur,
                 préférences: PreferencesGlobales) {
         self.player = lecteur
         self.décodeur = décodeur
@@ -235,7 +212,9 @@ private let dureeDuTournePage = 0.32
         self.pistes = pistes
         self.dialogue = dialogue
         self.récentsDuSystème = récentsDuSystème
+        self.extérieur = extérieur
         self.préférences = préférences
+        self.lancement = Lancement(pistes: pistes, exterieur: extérieur)
         self.analysis = AnalysisSettings(reassignment: préférences.reassignment)
     }
 
@@ -261,37 +240,40 @@ private let dureeDuTournePage = 0.32
 
     // MARK: Les morceaux récents
 
-    /// Ce que porte « Fichier ▸ Ouvrir récemment ».
+    /// Ce que porte « Fichier ▸ Ouvrir récemment », et la page de lancement.
     ///
-    /// La liste vient de `RecentFiles`, qui est la nôtre — celle d'AppKit ne survit
-    /// pas au redémarrage ici. On la tient tout de même à jour en parallèle, pour le
-    /// menu du Dock et les « Éléments récents » du menu Pomme, qui ne connaissent
-    /// qu'elle.
-    public private(set) var recentFiles: [URL] = RecentFiles.all()
+    /// Une seule liste pour les deux : elle vit dans `lancement`, qui la relit du
+    /// disque et sait ce que chaque morceau a déjà de pistes calculées. Le menu n'a
+    /// besoin que des adresses, et les prend ici — deux listes tenues en parallèle
+    /// finiraient par se contredire au premier oubli.
+    public var recentFiles: [URL] { lancement.morceaux.map(\.url) }
 
     public func clearRecentFiles() {
-        RecentFiles.clear()
+        lancement.toutOublier()
         récentsDuSystème.effacer()
-        recentFiles = []
     }
 
-    /// Rouvre le dernier morceau consulté, au démarrage — **sauf si le lancement en
-    /// désignait déjà un**.
+    /// Ce que la plateforme appelle une fois, quand la fenêtre est là.
     ///
-    /// Le délai n'est pas de la superstition. Un double-clic dans le Finder délivre
-    /// son fichier par un évènement qui arrive *après* l'apparition de la fenêtre :
-    /// ouvrir le morceau précédent tout de suite reviendrait à en analyser un pour
-    /// rien, puis à le remplacer sous les yeux de l'utilisatrice — et, depuis que la
-    /// séparation est automatique, à lancer une minute de GPU sur le mauvais morceau.
-    /// On laisse donc passer le temps de cet évènement, et l'on ne fait rien si
-    /// quelque chose est arrivé entre-temps.
-    public func reopenLastFile() {
-        guard source == nil, progress == nil, let last = recentFiles.first else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self, self.source == nil, self.progress == nil else { return }
-            self.open(last)
-        }
+    /// Remplace l'ouverture automatique du dernier morceau. Voir l'en-tête de
+    /// `Lancement.swift` : rouvrir tout seul lançait une minute de GPU sur un
+    /// morceau dont on ne voulait pas huit fois sur dix, et la page de lancement
+    /// rend le choix sans rien coûter — la première ligne de la liste *est* le
+    /// dernier morceau.
+    ///
+    /// Il ne reste donc à faire ici qu'une chose : poser au dépôt la question de la
+    /// version. Le diaporama et la liste, eux, n'attendent rien et sont déjà prêts
+    /// quand la fenêtre s'ouvre.
+    public func demarrer() {
+        lancement.chercherUneMiseAJour()
     }
+
+    /// Montre le dossier des pistes séparées dans l'explorateur de fichiers.
+    ///
+    /// Le panneau de réglages dit ce qu'il occupe et sait le vider ; il manquait de
+    /// pouvoir aller voir — pour reprendre une piste isolée dans un autre logiciel,
+    /// ou pour comprendre où sont passés les gigaoctets.
+    public func montrerLeDossierDesPistes() { lancement.montrerLeDossierDesPistes() }
 
     /// Refait l'image du morceau ouvert. Changer un réglage d'analyse n'est pas
     /// changer un réglage d'affichage : la matrice n'est pas à retoucher, elle est
@@ -309,7 +291,7 @@ private let dureeDuTournePage = 0.32
         guard progress == nil else { return }
         RecentFiles.note(url)
         récentsDuSystème.noter(url)
-        recentFiles = RecentFiles.all()
+        lancement.rafraichir()
         status = T(.statutLectureDuFichier)
         progress = 0
         player.stop()

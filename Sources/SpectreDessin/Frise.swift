@@ -69,8 +69,14 @@ public struct Frise<Lecteur: LecteurAudio> {
     // MARK: Rien à montrer
 
     /// Une fenêtre vide sans explication passe pour une panne.
+    ///
+    /// Ce qui s'écrit ici est ce que le modèle a à dire pendant qu'il travaille — le
+    /// fichier qu'il lit, la matrice qu'il calcule. Quand il n'a rien à dire, c'est
+    /// la page de lancement qui occupe le milieu de la fenêtre (voir
+    /// `Accueil.swift`), et deux choses au même endroit, dont l'une demande
+    /// d'attendre, se gêneraient.
     private func attente() {
-        let message = modele.status ?? T(.winFriseOuvrir)
+        guard let message = modele.status else { return }
         pinceau.texte(message, x: 0, y: hauteur / 2, largeur: largeur, taille: 13,
                       Pinceau.blanc(0.55), alignement: .centre)
         if let avancement = modele.progress, avancement > 0 {
