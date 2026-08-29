@@ -240,6 +240,21 @@ final class Application: EchosDeLaFenetre {
             if modele.spectrogram.columnCount > 0, modele.progress == nil,
                !modele.percussionPending, !modele.chordsPending { break }
         }
+        // Sans morceau, il n'y a rien à attendre : c'est la page de lancement — ou le
+        // diaporama du premier lancement — qu'on photographie, et elle est prête dès
+        // la première image. C'est par là qu'on regarde les deux écrans que tout le
+        // reste de l'épreuve ne voit jamais, puisqu'il ouvre toujours un fichier.
+        guard modele.source != nil || modele.spectrogram.columnCount > 0 else {
+            for _ in 0..<10 {
+                viderLaFilePrincipale()
+                _ = fenetre.traiterLesMessages()
+                appliquerLaTaille()
+                rendu.attendreLImageSuivante()
+                uneImage()
+            }
+            uneImageSansPresenter()
+            return ecrire(dans: chemin)
+        }
         guard modele.spectrogram.columnCount > 0 else {
             Journal.erreur("Rien n'a été analysé en \(Int(attente)) s"
                            + (modele.status.map { " — \($0)" } ?? "") + ".")
@@ -251,6 +266,11 @@ final class Application: EchosDeLaFenetre {
         // après coup ne rendrait que du noir — ce qui ressemble en tout point à un
         // nuanceur qui ne dessine rien.
         uneImageSansPresenter()
+        return ecrire(dans: chemin)
+    }
+
+    /// Relit le tampon que la carte s'apprête à présenter, et l'écrit.
+    private func ecrire(dans chemin: String) -> Bool {
         guard let pixels = rendu.relire() else {
             Journal.erreur("La chaîne d'échange n'a rien rendu.")
             return false

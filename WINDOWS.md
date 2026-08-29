@@ -1685,11 +1685,23 @@ distribue et s'installe. Ce qui manque encore, et qu'il ne faut pas croire fait 
   d'application est fixe, et l'ancienne version s'efface d'elle-même. Ce qui manque
   toujours, c'est que le paquet se pose tout seul, et cela demanderait un installeur
   signé.
-- **Le décodage des captures par WIC n'a été compilé nulle part.**
+- **Le décodage des captures par WIC n'a jamais tourné.**
   `spectre_surimpression_image` est le jumeau Direct2D de ce que Cairo fait pour
-  Linux — WIC décode le PNG, `CreateBitmapFromWicBitmap` en fait une `ID2D1Bitmap`,
-  et `spectre_surimpression_lacher` la jette avec le contexte qui la porte. Le côté
-  Cairo est éprouvé, photographie comprise ; celui-ci ne l'a été que par relecture.
-  C'est la première chose à regarder à la prochaine passe sur la VM : `.\essai.ps1`,
-  puis la fenêtre au premier lancement, qui doit montrer la capture et non un cadre
-  noir.
+  Linux : WIC décode le PNG, `CreateBitmapFromWicBitmap` en fait une `ID2D1Bitmap`,
+  et `spectre_surimpression_lacher` la jette avec le contexte qui la porte — sans
+  quoi le premier coin tiré rendrait la fenêtre noire. Il **compile et s'édite** sur
+  la machine ARM64 ; il n'a pas été *vu*, parce qu'un `prlctl exec` tombe dans la
+  session 0, qui n'a pas de bureau : Direct3D y refuse la chaîne d'échange avant que
+  quoi que ce soit se dessine. Le côté Cairo, lui, est photographié.
+
+  L'édition de liens a d'ailleurs déjà attrapé une faute que la compilation avait
+  laissée passer, et elle mérite d'être retenue : `ID2D1DeviceContext` déclare son
+  propre `DrawBitmap`, ce qui cache les surcharges de `ID2D1RenderTarget`, et
+  qualifier l'appel par la classe de base — `contexte->ID2D1RenderTarget::DrawBitmap`
+  — **coupe l'appel virtuel** et réclame un symbole que personne ne définit. C'est un
+  `static_cast` vers la classe de base qu'il faut, pas une qualification.
+
+  À regarder à la prochaine passe devant l'écran : `.\essai.ps1`, puis
+  `SpectreWindows.exe --photo` **sans fichier**, qui photographie la page de
+  lancement — et, dans un rangement neuf, le diaporama. La capture doit s'y voir, et
+  non un cadre noir.

@@ -503,14 +503,19 @@ extern "C" void spectre_surimpression_image(SpectreRendu *r, const uint16_t *che
     float l = taille.width * facteur, h = taille.height * facteur;
     float gauche = x + (largeur - l) / 2, haut = y + (hauteur - h) / 2;
     D2D1_RECT_F ou = D2D1::RectF(gauche, haut, gauche + l, haut + h);
-    // Qualifié par la classe de base, et **pas** par commodité : `ID2D1DeviceContext`
-    // déclare son propre `DrawBitmap`, à `D2D1_INTERPOLATION_MODE`, ce qui **cache**
-    // en C++ les surcharges de `ID2D1RenderTarget` — celles à
-    // `D2D1_BITMAP_INTERPOLATION_MODE`, qui sont les seules que le reste de ce
-    // fichier connaisse. Sans la qualification, l'appel ne compile pas, et l'erreur
-    // parle d'un mode d'interpolation plutôt que d'une règle de portée.
-    r->contexteD2D->ID2D1RenderTarget::DrawBitmap(
-        bitmap, &ou, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, nullptr);
+    // Un `static_cast` vers la classe de base, et **pas** par commodité :
+    // `ID2D1DeviceContext` déclare son propre `DrawBitmap`, à
+    // `D2D1_INTERPOLATION_MODE`, ce qui **cache** en C++ les surcharges de
+    // `ID2D1RenderTarget` — celles à `D2D1_BITMAP_INTERPOLATION_MODE`, qui sont les
+    // seules que le reste de ce fichier connaisse.
+    //
+    // Un `contexte->ID2D1RenderTarget::DrawBitmap(…)` ferait la même chose et ne
+    // s'éditerait pas : qualifier un appel par sa classe **coupe l'appel virtuel**,
+    // et la méthode ainsi désignée est purement virtuelle — l'éditeur de liens
+    // réclame alors un symbole que personne ne définit. Le coût a été une édition de
+    // liens entière, tout au bout d'une compilation qui n'avait rien dit.
+    static_cast<ID2D1RenderTarget *>(r->contexteD2D)
+        ->DrawBitmap(bitmap, &ou, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, nullptr);
 }
 
 extern "C" void spectre_surimpression_decouper(SpectreRendu *r, float x, float y,
