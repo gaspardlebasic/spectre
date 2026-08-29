@@ -57,6 +57,24 @@ import SpectreSocle
     /// Ce qu'on nous a demandé pendant que le fichier se décodait encore.
     @ObservationIgnored private var enAttenteDeLecture: Double?
     @ObservationIgnored private var chargementEnCours: URL?
+    /// Vrai entre la demande et l'installation du signal — le temps du décodage d'un
+    /// fichier, ou de la somme d'une sélection de pistes.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────────
+    /// POURQUOI LA TÊTE DE LECTURE REPARTAIT DU DÉBUT
+    ///
+    /// Recocher la dernière piste manquante ramène au fichier d'origine, donc à
+    /// `load`, qui décode **à côté** : le modèle repose aussitôt la tête où elle
+    /// était, mais elle se posait sur la chaîne d'avant, celle qu'on allait
+    /// remplacer. La chaîne neuve arrivait deux secondes plus tard à zéro — ou, s'il
+    /// y avait une boucle, au début de la boucle, puisqu'une chaîne posée hors de sa
+    /// boucle y rentre. D'où les deux symptômes, et d'où ce drapeau : tant qu'il est
+    /// levé, une demande de position ou de lecture n'est pas exécutée, elle est
+    /// **retenue**, et c'est l'installation qui l'honore.
+    /// ─────────────────────────────────────────────────────────────────────────
+    @ObservationIgnored private var installationEnCours = false
+    /// Où l'on nous a demandé de nous poser pendant ce temps-là.
+    @ObservationIgnored private var positionEnAttente: Double?
 
     private var vitesseRangee: Double = 1
     private var transpositionRangee: Double = 0
@@ -153,6 +171,8 @@ import SpectreSocle
         duration = 0
         message = nil
         chargementEnCours = nouvelle
+        installationEnCours = true
+        positionEnAttente = nil
 
         // Le décodage est **entier et en mémoire** : sur un morceau long il prend
         // quelques secondes, et le faire ici bloquerait la fenêtre à chaque
@@ -194,6 +214,8 @@ import SpectreSocle
         let attendu = jeton
         let reprise = currentTime
         let jouait = isPlaying
+        installationEnCours = true
+        positionEnAttente = nil
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let mono = nouvelle.melangeMono(pistes)
             let lecteur = self
@@ -206,12 +228,20 @@ import SpectreSocle
     }
 
     private func installer(_ contenu: WAVFile.Contents) {
+        // `reprenant: nil` disait « au début » ; ce qu'il fallait dire est « là où
+        // l'on nous a demandé de nous poser en attendant ». Un morceau qu'on ouvre
+        // ne demande rien, et repart donc bien de zéro.
         installer(mono: contenu.mono, frequence: contenu.sampleRate,
-                  reprenant: nil, enJouant: false)
+                  reprenant: positionEnAttente, enJouant: false)
     }
 
     private func installer(mono: [Float], frequence frequenceDuSignal: Double,
-                           reprenant reprise: Double?, enJouant jouait: Bool) {
+                           reprenant demande: Double?, enJouant jouait: Bool) {
+        // Une demande arrivée pendant l'attente l'emporte sur la position capturée
+        // au départ : c'est la plus récente des deux, et c'est un geste.
+        let reprise = positionEnAttente ?? demande
+        positionEnAttente = nil
+        installationEnCours = false
         verrou.lock()
         var neuve = PlaybackChain(samples: mono, channels: 1,
                                   sampleRate: frequenceDuSignal)
@@ -275,11 +305,12 @@ import SpectreSocle
     // MARK: Jouer
 
     public func play(from time: Double?) {
-        guard let sortie else {
-            // Le fichier se décode encore : on retient la demande plutôt que de la
+        guard let sortie, !installationEnCours else {
+            // Le signal n'est pas encore là : on retient la demande plutôt que de la
             // perdre, sans quoi appuyer sur la barre d'espace juste après une
-            // ouverture ne ferait rien.
-            enAttenteDeLecture = time ?? currentTime
+            // ouverture ne ferait rien. Et la jouer sur la chaîne d'avant serait
+            // pire que de ne rien faire — elle va être remplacée.
+            enAttenteDeLecture = time ?? positionEnAttente ?? currentTime
             return
         }
         if let time { seek(to: time) }
@@ -305,6 +336,15 @@ import SpectreSocle
     }
 
     public func seek(to time: Double) {
+        guard !installationEnCours else {
+            // Déplacer la chaîne qu'on va jeter ne déplace rien. La demande est
+            // retenue, et `installer` posera la chaîne neuve à cet endroit.
+            positionEnAttente = max(time, 0)
+            verrou.lock()
+            positionBrute = max(time, 0)
+            verrou.unlock()
+            return
+        }
         verrou.lock()
         let avant = chaine?.currentTime
         chaine?.seek(to: max(time, 0))
