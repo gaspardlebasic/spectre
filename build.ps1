@@ -160,10 +160,15 @@ if (Test-Path $poids) {
 # renommes en passant, parce que le nom traverse un installeur et deux systemes de
 # fichiers et que ce n'est pas la qu'on veut decouvrir une difference de
 # normalisation Unicode.
-$captures = @{
-    "faire boucler une section au ralenti.png" = "diapo-boucle.png"
-    "s" + [char]0xE9 + "paration des pistes.png" = "diapo-pistes.png"
-}
+#
+# Le « é » de « séparation » est composé plutôt qu'écrit : Windows PowerShell 5.1
+# lit ce fichier dans la page de code locale et non en UTF-8, et l'accent n'y
+# survivrait pas. Mais **une clé calculée ne se pose pas dans un littéral de table
+# de hachage** — PowerShell veut un `=` immédiatement après la clé, et rend
+# « Missing '=' operator after key in hash literal ». Le coureur l'a trouvé, la
+# machine de développement non : elle ne lance jamais `build.ps1` seule.
+$captures = @{ "faire boucler une section au ralenti.png" = "diapo-boucle.png" }
+$captures["s" + [char]0xE9 + "paration des pistes.png"] = "diapo-pistes.png"
 foreach ($nom in $captures.Keys) {
     $source = Join-Path $racine (Join-Path "Resources\Captures" $nom)
     if (Test-Path -LiteralPath $source) {
