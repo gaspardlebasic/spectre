@@ -116,6 +116,7 @@ extension Catalogue {
         .statutPistesIllisibles: "Spuren nicht lesbar; der Mix ist geblieben.",
         .statutAnalyseDe: "„%1$@“ wird analysiert…",
         .statutReleveBatterie: "Schlagzeug wird gelesen…",
+        .statutGrilleReprise: "Raster vom Schlagzeug übernommen",
         .statutBatterieRetiree: "Schlagzeug entfernt",
         .statutAucunCoup: "Kein Schlag gefunden",
         .statutReleveAccords: "Akkorde werden gelesen…",

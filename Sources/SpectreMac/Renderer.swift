@@ -376,7 +376,8 @@ public final class SpectrogramRenderer: NSObject, MTKViewDelegate {
         u.tiltPerOctave = Float(display.tiltDbPerOctave)
         u.log2FminOver1k = Float(log2(layout.minFrequency / 1000))
         u.binsPerOctave = Float(layout.binsPerOctave)
-        u.semitoneAtBin0 = Float(Pitch.midi(from: layout.minFrequency, referenceA: display.referenceA))
+        u.semitoneAtBin0 = Float(Pitch.midi(from: layout.minFrequency,
+                                            referenceA: display.referenceA) + demiTons)
 
         encoder.setRenderPipelineState(pipeline)
         encoder.setFragmentTexture(tiles, index: 0)
@@ -388,4 +389,7 @@ public final class SpectrogramRenderer: NSObject, MTKViewDelegate {
 
     /// Géométrie de l'axe des fréquences, nécessaire aux couleurs de notes.
     public var layout = BinLayout()
+    /// Transposition en cours, en demi-tons : elle décale la palette des notes, et
+    /// rien d'autre. Voir `RenduSpectrogramme`.
+    public var demiTons: Double = 0
 }

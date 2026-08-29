@@ -110,6 +110,7 @@ extension Catalogue {
         .statutPistesIllisibles: "Pistas ilegibles; se ha quedado la mezcla.",
         .statutAnalyseDe: "Analizando «%1$@»…",
         .statutReleveBatterie: "Leyendo la batería…",
+        .statutGrilleReprise: "Rejilla recuperada de la batería",
         .statutBatterieRetiree: "Batería quitada",
         .statutAucunCoup: "Ningún golpe detectado",
         .statutReleveAccords: "Leyendo los acordes…",

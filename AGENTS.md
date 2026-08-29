@@ -118,6 +118,11 @@ Puis il fait passer ce morceau par les trois chemins qui existent :
 - **le relevé d'accords** — `Spectre --accords … --mixage` ; les quatre accords
   joués doivent tous être relevés, aucun autre ne doit apparaître, et tous les
   intervalles doivent être nommés ;
+- **le premier temps** — le relevé d'accords est refait après coup **sur les pistes
+  séparées** : c'est le seul endroit où la chaîne entière se vérifie, de la
+  séparation aux noms d'accords en passant par la reprise de la grille. Le témoin
+  commence pile sur un temps et joue huit mesures ; les huit doivent être relevées,
+  et la première tomber à 0,00 s ;
 - **la fenêtre** — l'application est ouverte par LaunchServices avec le fichier,
   comme un double-clic. On vérifie qu'elle tient debout, qu'une fenêtre s'ouvre, que
   son titre porte le nom du fichier (c'est la preuve, depuis l'extérieur, que le
@@ -247,11 +252,20 @@ chemin numérique portable.
 
 ## Ce qui reste ouvert
 
-- Sur le morceau témoin, la grille métrique place le premier temps fort à 1,5 s
-  alors que le morceau commence pile sur un temps. Les noms d'accords restent
-  justes dans la fenêtre, mais le relevé en ligne de commande démarre décalé et
-  perd la première mesure — sept intervalles au lieu de huit. C'est une piste de
-  travail, pas un diagnostic.
+- **Le premier temps se lit sur la batterie, donc seulement une fois séparé.** La
+  grille est estimée sur le mixage à l'ouverture — elle en tire la période — puis
+  **reprise sur la piste de batterie** quand la séparation a fini : voir
+  `SpectreCore/PremierTemps.swift`, dont l'en-tête dit pourquoi le mixage ne peut
+  pas trouver le « un ». C'est ce qui a réparé le décalage de 1,5 s du morceau
+  témoin, et rendu au relevé sa huitième mesure.
+
+  Ce qui reste : `Spectre --accords … --mixage` et `SpectreCLI` lisent un mixage,
+  donc n'ont pas de piste de batterie, donc gardent la grille du premier passage.
+  `PremierTemps` refuse alors de reprendre plutôt que de se tromper — c'est le bon
+  comportement, mais cela veut dire que la ligne de commande sur un mixage garde le
+  premier temps décalé, et perd toujours sa première mesure. La sortie de
+  `essai.sh` le montre côte à côte : sept intervalles sur le mixage, huit sur les
+  pistes.
 - `## Ce qui n'est pas encore là`, à la fin du README, tient la liste des manques
   assumés.
 

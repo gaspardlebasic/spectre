@@ -116,7 +116,10 @@ if let réglé = AutoContrast.settings(basedOn: affichage, in: spectrogramme) {
                  affichage.floorDb, affichage.ceilingDb, affichage.tiltDbPerOctave))
 }
 
-if let grille = TempoEstimator.estimate(spectrogramme) {
+// La grille passe par la batterie : l'estimation sur le mixage trouve la période,
+// le relevé des percussions trouve le premier temps. Voir `PremierTemps`.
+if let grille = PremierTemps.grille(spectrogramme, signal: fichier.mono,
+                                    frequence: fichier.sampleRate) {
     let sûreté = grille.confidence >= 2.2 ? "" : " (peu sûr)"
     print(String(format: "  tempo : %.0f BPM, premier temps à %.3f s%@",
                  grille.bpm, grille.origin, sûreté))

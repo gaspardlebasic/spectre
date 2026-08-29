@@ -168,6 +168,11 @@ public struct Chord: Equatable, Hashable, Sendable {
         Pitch.names(flats: flats)[root] + quality.symbol
     }
 
+    /// Le même accord, monté ou descendu de `demiTons`.
+    public func transposé(de demiTons: Int) -> Chord {
+        demiTons == 0 ? self : Chord(root: root + demiTons, quality: quality)
+    }
+
     /// Tous les accords que le détecteur sait nommer — douze fondamentales par
     /// couleur. Le vocabulaire réellement employé se règle : voir
     /// `ChordSettings.Vocabulary`.
@@ -203,6 +208,15 @@ public struct ChordSegment: Equatable, Sendable {
         self.chord = chord
         self.confidence = confidence
         self.notes = notes
+    }
+
+    /// Le même segment, nommé un demi-ton plus haut ou plus bas.
+    public func transposé(de demiTons: Int) -> ChordSegment {
+        guard demiTons != 0 else { return self }
+        var copie = self
+        copie.chord = chord?.transposé(de: demiTons)
+        copie.notes = notes.map { $0.transposé(de: demiTons) }
+        return copie
     }
 }
 
@@ -241,6 +255,19 @@ public struct ChordTrack: Sendable {
 
     public static let empty = ChordTrack(segments: [])
     public var isEmpty: Bool { segments.isEmpty }
+
+    /// Le relevé transposé, pour l'afficher à la hauteur qu'on **entend**.
+    ///
+    /// Le relevé lui-même ne bouge pas : il est fait sur la matrice, qui est faite
+    /// sur le signal d'origine. Ce qui bouge est le nom qu'on lui donne, parce que
+    /// jouer le morceau deux demi-tons plus haut fait bien entendre un Ré là où
+    /// l'analyse a vu un Do — et qu'un relevé qui continuerait d'écrire Do
+    /// répondrait à une question que personne ne pose.
+    public func transposé(de demiTons: Int) -> ChordTrack {
+        guard demiTons != 0 else { return self }
+        return ChordTrack(segments: segments.map { $0.transposé(de: demiTons) },
+                          firstBeat: firstBeat, grouped: grouped)
+    }
 
     public func segment(at time: Double) -> ChordSegment? {
         segments.first { time >= $0.start && time < $0.end }
@@ -375,6 +402,14 @@ public struct SoundingNote: Equatable, Sendable {
 
     public var isRoot: Bool { role == .root }
     public var pitchClass: Int { ((midi % 12) + 12) % 12 }
+
+    /// La même raie, nommée à la hauteur qu'on entend.
+    public func transposé(de demiTons: Int) -> SoundingNote {
+        guard demiTons != 0 else { return self }
+        var copie = self
+        copie.midi = midi + demiTons
+        return copie
+    }
     public func name(flats: Bool = true) -> String {
         Pitch.names(flats: flats)[pitchClass] + "\(midi / 12 - 1)"
     }

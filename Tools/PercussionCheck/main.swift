@@ -235,6 +235,108 @@ check("la courbe de grosse caisse culmine sur les coups",
       onBeat > offBeat * 2,
       String(format: "%.2f sur le coup, %.2f entre deux", onBeat, offBeat))
 
+// --- Le premier temps --------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
+// CE QUE CETTE SECTION MESURE, ET POURQUOI ELLE EST ICI
+//
+// Trouver la période d'un morceau est une question de régularité, et le mixage y
+// répond. Trouver le **premier temps** demande de savoir quel instrument a joué :
+// la grosse caisse tombe sur le « un », la caisse claire sur le contretemps. C'est
+// ce que la piste de batterie dit, et c'est pour cela que la grille est reprise à
+// la fin de la séparation — voir `PremierTemps`.
+//
+// La vérification est ici, dans le harnais de la batterie, parce que c'est ici que
+// le motif de batterie existe. Il lui faut en plus une image harmonique : le
+// dernier indice, celui qui départage le premier temps du troisième quand la
+// grosse caisse tombe sur les deux, est le changement d'accord. On synthétise donc
+// à côté ce que la séparation aurait laissé dans l'image — l'accompagnement et la
+// basse, sans percussions — exactement comme l'application le fait.
+// ─────────────────────────────────────────────────────────────────────────────
+print("\n=== Le premier temps ===")
+
+// Un accord par mesure : do, la mineur, fa, sol. C'est le changement d'un accord au
+// suivant qui marque le « un », pas leur nom.
+let grilleJouée = [[48, 60, 64, 67], [45, 57, 60, 64], [41, 57, 60, 65], [43, 59, 62, 67]]
+var harmonie = [Float](repeating: 0, count: signal.count)
+
+/// Une note tenue, avec quatre harmoniques : une sinusoïde pure ne ferait pas un
+/// chroma qui ressemble à de la musique.
+func tenue(_ midi: Int, de début: Double, pendant durée: Double, gain: Double) {
+    let f0 = Pitch.frequency(ofMidi: Double(midi))
+    let premier = Int(début * sampleRate)
+    let combien = Int(durée * sampleRate)
+    guard combien > 0 else { return }
+    for i in 0..<combien where premier + i < harmonie.count && premier + i >= 0 {
+        let t = Double(i) / sampleRate
+        let enveloppe = min(t / 0.02, 1) * min((Double(combien) / sampleRate - t) / 0.05, 1)
+        var valeur = 0.0
+        for h in 1...4 { valeur += pow(0.6, Double(h - 1)) * sin(2 * .pi * f0 * Double(h) * t) }
+        harmonie[premier + i] += Float(gain * max(enveloppe, 0) * valeur * 0.2)
+    }
+}
+
+for bar in 0..<bars {
+    let origine = lead + Double(bar) * 4 * beat
+    let accord = grilleJouée[bar % grilleJouée.count]
+    for hauteur in accord.dropFirst() { tenue(hauteur, de: origine, pendant: 4 * beat - 0.02, gain: 1) }
+    // La basse rejoue à chaque temps : sans elle, rien ne marque la pulsation dans
+    // l'image, et l'estimation de période n'aurait rien à mordre.
+    for temps in 0..<4 {
+        tenue(accord[0], de: origine + Double(temps) * beat, pendant: beat - 0.03, gain: 1.4)
+    }
+}
+
+let image = OfflineAnalysis.run(samples: harmonie, sampleRate: sampleRate,
+                                settings: AnalysisSettings())
+guard let estimée = TempoEstimator.estimate(image) else {
+    check("une grille sort de l'accompagnement", false, "aucune estimation")
+    print()
+    print("\(failures + 1) vérification(s) en échec.")
+    exit(1)
+}
+print(String(format: "  estimation sur l'accompagnement seul : %.0f BPM, premier temps à %.3f s",
+             estimée.bpm, estimée.origin))
+
+/// L'écart d'une origine au vrai premier temps, replié sur la mesure : à 120 BPM,
+/// une mesure dure deux secondes, et 1,99 s est à dix millisecondes de zéro.
+func écartAuTempsFort(_ origine: Double) -> Double {
+    let mesure = 4 * beat
+    let reste = origine.truncatingRemainder(dividingBy: mesure)
+    return min(abs(reste), abs(mesure - reste))
+}
+
+// Le vrai premier temps est à `lead`, soit une mesure entière : replié, c'est zéro.
+if let reprise = PremierTemps.affiner(estimée, batterie: track, image: image) {
+    print(String(format: "  reprise sur la batterie : %.1f BPM, premier temps à %.3f s, sûreté %.1f",
+                 reprise.bpm, reprise.origin, reprise.confidence))
+    check("le tempo tient", abs(reprise.bpm - bpm) < 0.6,
+          String(format: "%.1f BPM pour %.0f", reprise.bpm, bpm))
+    check("le premier temps tombe sur le « un »", écartAuTempsFort(reprise.origin) < 0.05,
+          String(format: "%.0f ms du temps fort", écartAuTempsFort(reprise.origin) * 1000))
+} else {
+    check("la batterie reprend la grille", false, "rien à en tirer")
+}
+
+// La reprise ne part pas de la phase qu'on lui donne, elle la refait. On lui pose
+// donc une grille délibérément fausse — décalée d'un temps, ce qui est très
+// exactement l'erreur qu'on cherche à réparer — et le premier temps doit revenir au
+// même endroit qu'avec la bonne.
+var fausse = estimée
+fausse.origin += beat
+if let rattrapée = PremierTemps.affiner(fausse, batterie: track, image: image) {
+    check("une grille décalée d'un temps est rattrapée",
+          écartAuTempsFort(rattrapée.origin) < 0.05,
+          String(format: "%.0f ms du temps fort", écartAuTempsFort(rattrapée.origin) * 1000))
+} else {
+    check("une grille décalée d'un temps est rattrapée", false, "rien à en tirer")
+}
+
+// Sans batterie, rien à reprendre : la grille reçue doit être rendue intacte à
+// l'appelant, et non remplacée par une phase trouvée sur du vide.
+check("une piste sans batterie ne fait rien croire",
+      PremierTemps.affiner(estimée, batterie: .empty, image: image) == nil,
+      "aucune reprise")
+
 print()
 if failures == 0 {
     print("Tout est conforme.")

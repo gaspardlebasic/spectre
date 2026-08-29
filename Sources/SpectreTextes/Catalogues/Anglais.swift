@@ -110,6 +110,7 @@ extension Catalogue {
         .statutPistesIllisibles: "Stems unreadable; the mix stayed.",
         .statutAnalyseDe: "Analysing “%1$@”…",
         .statutReleveBatterie: "Reading the drums…",
+        .statutGrilleReprise: "Grid recovered from the drums",
         .statutBatterieRetiree: "Drums removed",
         .statutAucunCoup: "No hits found",
         .statutReleveAccords: "Reading the chords…",

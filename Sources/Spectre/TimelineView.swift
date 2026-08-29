@@ -297,6 +297,7 @@ struct SpectrogramSurface: NSViewRepresentable {
             context.coordinator.renderer = renderer
             model.renderer = renderer
             renderer.layout = model.spectrogram.layout
+            renderer.demiTons = model.player.transpose
             if model.spectrogram.columnCount > 0 { renderer.upload(model.spectrogram) }
         }
         view.delegate = context.coordinator
@@ -610,7 +611,9 @@ struct TimelineOverlay: View {
 
     private func drawOctaves(_ context: inout GraphicsContext, _ size: CGSize) {
         guard model.display.showGrid else { return }
-        let layout = model.spectrogram.layout
+        // Celle qu'on entend, et non celle de l'analyse : transposée, une raie de
+        // Do sonne un Ré, et c'est le trait du Ré qui doit passer dessus.
+        let layout = model.geometrieEntendue
         for marker in Pitch.octaveMarkers(from: layout.minFrequency, to: layout.maxFrequency,
                                           referenceA: model.display.referenceA) {
             let y = model.point(ofFrequency: marker.frequency)

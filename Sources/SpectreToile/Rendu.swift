@@ -66,6 +66,9 @@ public final class RenduSpectre: RenduSpectrogramme {
 
     /// Géométrie de l'axe des fréquences, nécessaire aux couleurs de notes.
     public var layout = BinLayout()
+    /// Transposition en cours, en demi-tons : elle décale la palette des notes, et
+    /// rien d'autre. Voir `RenduSpectrogramme`.
+    public var demiTons: Double = 0
 
     /// Ce que le rendu doit afficher, renseigné à chaque image par la fenêtre.
     public var viewport = Viewport()
@@ -235,7 +238,7 @@ public final class RenduSpectre: RenduSpectrogramme {
         u.log2FminSur1k = Float(log2(layout.minFrequency / 1000))
         u.lignesParOctave = Float(layout.binsPerOctave)
         u.demiTonLigne0 = Float(Pitch.midi(from: layout.minFrequency,
-                                           referenceA: display.referenceA))
+                                           referenceA: display.referenceA) + demiTons)
         u.teteDeLecture = Float(teteDeLecture ?? -1)
         u.boucleDebut = Float(boucle?.lowerBound ?? 0)
         u.boucleFin = Float(boucle?.upperBound ?? -1)

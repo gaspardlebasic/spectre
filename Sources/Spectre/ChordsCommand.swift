@@ -41,6 +41,9 @@ enum ChordsCommand {
         // qu'il faut lire ici pour que les chiffres veuillent dire quelque chose.
         var lu = T(.cliMixage)
         var basseSeule: AudioSource?
+        /// La piste de batterie, quand elle existe : c'est d'elle, et d'elle seule,
+        /// que le premier temps se lit. Voir `PremierTemps`.
+        var batterieSeule: [Float]?
         let wanted: Set<Stem> = arguments.contains("--sans-voix")
             ? [.bass, .other] : [.bass, .other, .vocals]
         if !arguments.contains("--mixage"), let fingerprint = source.fingerprint,
@@ -64,6 +67,7 @@ enum ChordsCommand {
                                          mono: banque.melangeMono([.bass]),
                                          fingerprint: fingerprint)
             }
+            batterieSeule = banque.melangeMono([.drums])
         }
 
         let started = Date()
@@ -74,7 +78,18 @@ enum ChordsCommand {
             FileHandle.standardError.write(Data((T(.cliMatriceVide) + "\n").utf8))
             return 1
         }
-        guard let tempo = TempoEstimator.estimate(spectrogram), tempo.bpm > 0 else {
+        // La grille passe par la batterie quand il y en a une : l'estimation sur
+        // l'image trouve la période, le relevé des percussions trouve le premier
+        // temps — et le relevé d'accords découpe le morceau avec cette grille-là,
+        // si bien qu'un « un » mal placé lui fait perdre la première mesure.
+        //
+        // Sur un mixage entier, le relevé des percussions confond tout ce qui claque
+        // et ne rend rien de net ; `PremierTemps` le dit en ne reprenant pas la
+        // grille, et c'est l'estimation d'origine qui reste.
+        guard let tempo = PremierTemps.grille(spectrogram,
+                                              signal: batterieSeule ?? source.mono,
+                                              frequence: source.sampleRate),
+              tempo.bpm > 0 else {
             FileHandle.standardError.write(Data((T(.cliAucuneGrille) + "\n").utf8))
             return 1
         }

@@ -111,6 +111,7 @@ extension Catalogue {
         .statutPistesIllisibles: "Pistes illisibles ; le mixage est resté.",
         .statutAnalyseDe: "Analyse de « %1$@ »…",
         .statutReleveBatterie: "Relevé de la batterie…",
+        .statutGrilleReprise: "Grille reprise sur la batterie",
         .statutBatterieRetiree: "Batterie retirée",
         .statutAucunCoup: "Aucun coup relevé",
         .statutReleveAccords: "Relevé des accords…",

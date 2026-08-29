@@ -309,6 +309,44 @@ elif [ "$SYSTEME" = "Darwin" ]; then
     fi
   fi
 
+  # ── Le premier temps, une fois les pistes là ───────────────────────────────
+  #
+  # Le relevé d'accords plus haut lit le mixage, et le mixage ne dit pas où est le
+  # premier temps : il faut savoir que ce coup-ci est une grosse caisse et celui-là
+  # une caisse claire, ce que seule la piste de batterie apprend. On refait donc le
+  # relevé **maintenant**, après que l'application a séparé le morceau — c'est le
+  # régime réel, celui dans lequel on travaille une minute après avoir ouvert un
+  # fichier.
+  #
+  # Ce qui se vérifie ici est la chaîne entière, et elle est longue : séparation →
+  # relevé de la batterie → reprise de la grille → découpage du morceau → noms
+  # d'accords. Le morceau témoin joue huit mesures, une par accord, et commence pile
+  # sur un temps : les huit doivent donc être relevées, et la première tombe à zéro.
+  # Une grille décalée d'un temps la perd, et c'est très exactement ce qui se
+  # passait avant que la batterie ne soit consultée.
+  if [ -f Resources/htdemucs.onnx ] \
+       && [ "$(find "$SPECTRE_RANGEMENT/pistes" -name '*.flac' ! -name '.*' 2>/dev/null | wc -l | tr -d ' ')" -ge 4 ]; then
+    titre "Le premier temps, sur les pistes séparées"
+    if "$BIN/Spectre" --accords "$OUT/temoin.wav" > "$OUT/accords-pistes.txt" 2>&1; then
+      gris "$(grep -m1 'BPM' "$OUT/accords-pistes.txt" | sed 's/^ *//')"
+      PREMIER="$(awk '$1 ~ /^[0-9]+\.[0-9][0-9]$/ { print $1; exit }' "$OUT/accords-pistes.txt")"
+      if [ "$PREMIER" = "0.00" ]; then
+        vert "le premier temps tombe au début du morceau — première mesure à 0,00 s"
+      else
+        rouge "la première mesure commence à ${PREMIER:-?} s au lieu de 0,00 s"
+      fi
+      MESURES="$(awk '$1 ~ /^[0-9]+\.[0-9][0-9]$/' "$OUT/accords-pistes.txt" | wc -l | tr -d ' ')"
+      if [ "$MESURES" -eq 8 ]; then
+        vert "les huit mesures jouées sont toutes relevées"
+      else
+        rouge "$MESURES mesures relevées au lieu de 8"
+      fi
+    else
+      rouge "le relevé sur les pistes séparées échoue"
+      cat "$OUT/accords-pistes.txt"
+    fi
+  fi
+
 else
   titre "L'application"
   # ── L'épreuve du paquet ────────────────────────────────────────────────────

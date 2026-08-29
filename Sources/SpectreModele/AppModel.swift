@@ -153,7 +153,12 @@ private let dureeDuTournePage = 0.32
     /// Les accords devinés — un par temps, ou un par mesure, ou un seul pour le
     /// passage sélectionné, selon la portée réglée. Vide tant que la séparation n'a
     /// pas eu lieu : il y faut la basse et l'accompagnement **séparément**.
+    /// Le relevé, **à la hauteur qu'on entend** : c'est lui qu'on affiche et qu'on
+    /// fait sonner. Voir `geometrieEntendue`.
     public private(set) var chords = ChordTrack.empty
+    /// Le même relevé, à la hauteur où il a été fait. Transposer ne relance rien :
+    /// c'est la même analyse, renommée.
+    @ObservationIgnored private var relevéDesAccords = ChordTrack.empty
     public private(set) var chordsPending = false
     /// Écrire les noms d'accords sous la grille.
     public var showChords = true
@@ -380,7 +385,7 @@ private let dureeDuTournePage = 0.32
         renderer?.layout = spectrogram.layout
         renderer?.upload(spectrogram)
         percussionCache.removeAll()
-        chords = .empty
+        poserLesAccords(.empty)
         chordsPending = false
         // La carte des notes de la nouvelle image. Elle part en tâche de fond ; le
         // relevé des accords la suivra dès qu'elle sera là.
@@ -398,6 +403,7 @@ private let dureeDuTournePage = 0.32
             // Ce que l'utilisatrice a réglé l'emporte sur ce que l'analyse propose.
             display = saved.display
             self.tempo = saved.tempo ?? tempo
+            grilleAutomatique = saved.tempo == nil
             loop = saved.loop
             player.speed = saved.speed
             player.transpose = saved.transpose
@@ -409,6 +415,7 @@ private let dureeDuTournePage = 0.32
             // Rien de connu : la grille vient de l'analyse, le cadrage montre tout,
             // et les réglages d'affichage restent ceux du morceau précédent.
             self.tempo = tempo
+            grilleAutomatique = true
             loop = nil
             playhead = 0
             needsFit = true
@@ -507,6 +514,10 @@ private let dureeDuTournePage = 0.32
             || abs(viewSize.height - self.viewSize.height) > 0.5
         self.viewSize = viewSize
         if needsFit { fitIfNeeded() }
+        // La palette des notes suit la transposition ; le reste de l'affichage la
+        // suit par `geometrieEntendue`, qui se lit à la demande.
+        renderer?.demiTons = player.transpose
+        accorderALaTonalite()
 
         if player.isPlaying {
             let t = player.currentTime
@@ -647,6 +658,11 @@ private let dureeDuTournePage = 0.32
         if let hover, spectrogram.columnCount > 0 {
             found = Snapping.nearest(to: hover, in: spectrogram, viewport: viewport,
                                      display: display, viewSize: viewSize)
+            // L'aimantation cherche dans la matrice, donc dans les fréquences de
+            // l'analyse ; ce qui en sort est lu, écrit et entendu, donc à la hauteur
+            // qu'on entend. La ligne se pose au même pixel de toute façon :
+            // `point(ofFrequency:)` transpose dans l'autre sens.
+            if facteurDeTransposition != 1 { found?.frequency *= facteurDeTransposition }
         }
         if found != snap { snap = found }
         // La sinusoïde suit l'aimantation : elle se tait donc d'elle-même dès que
@@ -1280,6 +1296,7 @@ private let dureeDuTournePage = 0.32
         if let ready = percussionCache[[.drums]] {
             percussion = ready
             percussionPending = false
+            reprendreLaGrille(ready)
             return
         }
         percussion = .empty
@@ -1295,6 +1312,10 @@ private let dureeDuTournePage = 0.32
                 guard self.percussionToken == token else { return }
                 self.percussion = track
                 self.percussionPending = false
+                // La piste de batterie est le seul endroit d'où le premier temps se
+                // lit vraiment : c'est maintenant, et pas avant, qu'on peut reprendre
+                // la grille.
+                self.reprendreLaGrille(track)
             }
         }
     }
@@ -1378,8 +1399,13 @@ private let dureeDuTournePage = 0.32
             ? chord.quality.intervals.map { 48 + chord.root + $0 }
             : notes.sorted { $0.level > $1.level }
                    .prefix(sinusoide.voixMaximales).map(\.midi).sorted()
+        // Les raies retenues sont déjà transposées — elles viennent du relevé
+        // affiché. Reste la fraction de demi-ton que l'arrondi a laissée de côté :
+        // sans elle, un morceau recalé de trente cents s'entendrait battre contre
+        // l'accord qu'on lui joue par-dessus.
+        let reste = pow(2, (player.transpose - Double(demiTonsEntiers)) / 12)
         return midi.map { Pitch.frequency(ofMidi: Double($0),
-                                          referenceA: display.referenceA) }
+                                          referenceA: display.referenceA) * reste }
     }
 
     /// Pourquoi la ligne d'accords est vide, quand elle l'est.
@@ -1406,11 +1432,11 @@ private let dureeDuTournePage = 0.32
         noteMap = .empty
         chordsAgain = false
         guard spectrogram.columnCount > 0 else {
-            chords = .empty
+            poserLesAccords(.empty)
             chordsPending = false
             return
         }
-        chords = .empty
+        poserLesAccords(.empty)
         chordsPending = true
         let matrix = spectrogram
         let referenceA = display.referenceA
@@ -1441,7 +1467,7 @@ private let dureeDuTournePage = 0.32
     /// souvent ce qu'on veut ; la remettre les y remet.
     private func releveAccords() {
         guard !noteMap.isEmpty, let tempo, tempo.bpm > 0 else {
-            chords = .empty
+            poserLesAccords(.empty)
             chordsPending = false
             return
         }
@@ -1478,7 +1504,7 @@ private let dureeDuTournePage = 0.32
                 // La carte a changé sous nos pieds : ce relevé-ci ne décrit plus
                 // l'image affichée.
                 guard self.noteMapToken == token else { return }
-                self.chords = track
+                self.poserLesAccords(track)
                 self.chordsPending = false
                 if self.chordsAgain {
                     self.chordsAgain = false
@@ -1682,9 +1708,53 @@ private let dureeDuTournePage = 0.32
         guard spectrogram.columnCount > 0 else { return }
         let matrix = spectrogram
         let signature = beatsPerBar
+        // Redemander la grille, c'est redonner la main au calcul : ce qui suivra —
+        // la reprise sur la batterie — a de nouveau le droit de la corriger.
+        grilleAutomatique = true
+        let batterie = percussion
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let grid = TempoEstimator.estimate(matrix, beatsPerBar: signature)
+            var grid = TempoEstimator.estimate(matrix, beatsPerBar: signature)
+            if let estimée = grid,
+               let reprise = PremierTemps.affiner(estimée, batterie: batterie, image: matrix) {
+                grid = reprise
+            }
             DispatchQueue.main.async { self?.tempo = grid }
+        }
+    }
+
+    /// Reprend la grille sur la piste de batterie, maintenant qu'elle existe.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────────
+    /// POURQUOI DEUX ESTIMATIONS, ET PAS UNE
+    ///
+    /// La première se fait à l'ouverture, sur le mixage : il faut bien une grille
+    /// tout de suite, la séparation dure une minute, et on ne va pas laisser
+    /// l'image sans mesures pendant ce temps-là. Elle trouve la période, ce dont
+    /// le mixage est capable.
+    ///
+    /// La seconde se fait ici, quand la piste de batterie est là. Elle trouve le
+    /// **premier temps**, ce dont le mixage n'est pas capable : il faut pour cela
+    /// savoir que ce coup-ci est une grosse caisse et celui-là une caisse claire.
+    /// Voir `PremierTemps`, qui dit le détail.
+    ///
+    /// Elle ne touche à rien si la grille a été réglée à la main, et ne touche à
+    /// rien non plus si la batterie n'a rien de net à dire — dans les deux cas,
+    /// c'est la grille reçue qui reste.
+    /// ─────────────────────────────────────────────────────────────────────────
+    private func reprendreLaGrille(_ batterie: PercussionTrack) {
+        guard grilleAutomatique, let grille = tempo, grille.bpm > 0,
+              spectrogram.columnCount > 0, !batterie.hits.isEmpty else { return }
+        let image = spectrogram
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let reprise = PremierTemps.affiner(grille, batterie: batterie,
+                                                     image: image) else { return }
+            DispatchQueue.main.async {
+                // La grille a pu changer sous nos pieds — un autre morceau, un
+                // réglage à la main : ce calcul-ci ne décrit plus rien.
+                guard let self, self.grilleAutomatique, self.tempo == grille else { return }
+                self.tempo = reprise
+                self.status = T(.statutGrilleReprise)
+            }
         }
     }
 
@@ -1693,6 +1763,7 @@ private let dureeDuTournePage = 0.32
     /// plus lieu d'être quand c'est l'utilisatrice qui l'a dictée.
     public func setTempo(_ value: Double) {
         guard value.isFinite else { return }
+        grilleAutomatique = false
         guard var grid = tempo else {
             tempo = TempoGrid(bpm: min(max(value, 20), 400), origin: playhead)
             return
@@ -1704,12 +1775,14 @@ private let dureeDuTournePage = 0.32
 
     public func nudgeTempo(by delta: Double) {
         guard var grid = tempo else { return }
+        grilleAutomatique = false
         grid.bpm = min(max(grid.bpm + delta, 20), 400)
         tempo = grid
     }
 
     /// Pose le premier temps à l'endroit de la tête de lecture.
     public func setDownbeatAtPlayhead() {
+        grilleAutomatique = false
         guard var grid = tempo else {
             tempo = TempoGrid(bpm: 120, origin: playhead)
             return
@@ -1722,6 +1795,7 @@ private let dureeDuTournePage = 0.32
         get { tempo?.beatsPerBar ?? 4 }
         set {
             guard var grid = tempo else { return }
+            grilleAutomatique = false
             grid.beatsPerBar = max(1, newValue)
             tempo = grid
         }
@@ -1738,10 +1812,79 @@ private let dureeDuTournePage = 0.32
         }
     }
 
+    // MARK: La tonalité
+
+    /// La géométrie de l'axe des fréquences **telle qu'on l'entend**.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────────
+    /// TRANSPOSER NE DÉPLACE RIEN, CELA RENOMME
+    ///
+    /// La matrice est faite sur le signal d'origine et ne bouge pas : une raie
+    /// analysée à 440 Hz reste à sa ligne. Mais deux demi-tons plus haut, c'est
+    /// 494 Hz qui sort du haut-parleur, et c'est donc 494 Hz que l'axe doit nommer.
+    /// Sans cela, la note lue sous le curseur, la couleur de la raie, la sinusoïde
+    /// qu'on entend en la désignant et le nom de l'accord désignent quatre hauteurs
+    /// pour un seul son.
+    ///
+    /// Tout passe par ici, et c'est ce qui garde l'ensemble d'aplomb : les repères
+    /// d'octave, la conversion point ↔ fréquence, l'aimantation sur une raie. Le
+    /// filtre de bande, lui, ne passe pas par ici et c'est délibéré — il coupe le
+    /// signal **avant** l'étireur, donc dans les fréquences de l'analyse.
+    /// ─────────────────────────────────────────────────────────────────────────
+    public var geometrieEntendue: BinLayout {
+        var géométrie = spectrogram.layout
+        let facteur = facteurDeTransposition
+        guard facteur != 1 else { return géométrie }
+        géométrie.minFrequency *= facteur
+        géométrie.maxFrequency *= facteur
+        return géométrie
+    }
+
+    /// Ce par quoi une fréquence de l'analyse est multipliée pour donner celle qu'on
+    /// entend.
+    private var facteurDeTransposition: Double { pow(2, player.transpose / 12) }
+
+    /// Vrai tant que la grille métrique est celle du calcul, et que personne n'y a
+    /// touché.
+    ///
+    /// Ce qui a été réglé à la main ne se fait pas reprendre par une machine : poser
+    /// soi-même le premier temps sur un passage rubato, puis voir la séparation le
+    /// déplacer une minute plus tard, serait la pire des surprises. Une session
+    /// retrouvée compte pour un réglage à la main — on ne sait pas ce qui, dedans,
+    /// a été touché, et le supposer intact reviendrait à défaire du travail.
+    @ObservationIgnored private var grilleAutomatique = true
+
+    /// Ce que l'affichage montre en ce moment, pour ne le refaire que quand la
+    /// réglette a bougé.
+    @ObservationIgnored private var tonaliteAffichee = 0.0
+
+    /// Range un relevé et l'accorde à la tonalité du moment. **La seule porte** :
+    /// poser `chords` directement laisserait un relevé à la hauteur de l'analyse au
+    /// milieu d'un affichage transposé, et le nom écrit sous l'image contredirait la
+    /// couleur des raies qu'il commente.
+    private func poserLesAccords(_ relevé: ChordTrack) {
+        relevéDesAccords = relevé
+        chords = relevé.transposé(de: demiTonsEntiers)
+    }
+
+    /// Remet l'affichage à la hauteur qu'on entend. Appelée à chaque image, elle ne
+    /// travaille que quand la réglette a bougé.
+    private func accorderALaTonalite() {
+        guard player.transpose != tonaliteAffichee else { return }
+        tonaliteAffichee = player.transpose
+        chords = relevéDesAccords.transposé(de: demiTonsEntiers)
+    }
+
+    /// Le décalage **entier**, celui qui renomme notes et accords. Une transposition
+    /// d'un demi-ton et demi ne correspond à aucun nom ; l'arrondi est la seule
+    /// réponse possible, et c'est aussi celle que la réglette encourage — ses crans
+    /// tombent sur les demi-tons.
+    private var demiTonsEntiers: Int { Int(player.transpose.rounded()) }
+
     /// Fréquence correspondant à une ordonnée de la vue (comptée depuis le haut).
     public func frequency(atPoint y: Double) -> Double {
         let bin = viewport.bin(atPoint: y, height: Double(viewSize.height))
-        return spectrogram.layout.frequency(atBin: bin)
+        return geometrieEntendue.frequency(atBin: bin)
     }
 
     public func time(atPoint x: Double) -> Double {
@@ -1754,8 +1897,12 @@ private let dureeDuTournePage = 0.32
     }
 
     /// Ordonnée d'une fréquence dans la vue, en points depuis le haut.
+    ///
+    /// La fréquence attendue est celle qu'on **entend**, comme celle que rend
+    /// `frequency(atPoint:)` : les deux sont réciproques, transposition comprise, et
+    /// tout ce qui se pose sur l'image le reste quand la réglette bouge.
     public func point(ofFrequency f: Double) -> Double {
-        viewport.point(ofBin: spectrogram.layout.bin(of: f), height: Double(viewSize.height))
+        viewport.point(ofBin: geometrieEntendue.bin(of: f), height: Double(viewSize.height))
     }
 
     public static func format(_ seconds: Double) -> String {

@@ -581,6 +581,18 @@ temps réel. Court-circuitée, elle laisse passer les échantillons du fichier t
 quels, ce que `check.sh` vérifie en rendant la chaîne hors ligne et en la
 comparant à la source (écart maximal 6·10⁻⁸, soit l'arrondi du flottant).
 
+**Ce qu'on voit suit ce qu'on entend.** Transposer ne recalcule rien — la matrice
+est faite sur le signal d'origine et ne bouge pas —, mais l'axe des fréquences est
+renommé : deux demi-tons plus haut, la raie analysée à 440 Hz sort à 494 Hz, et
+c'est 494 Hz que l'axe doit nommer. Les repères d'octave se déplacent donc sur
+l'image, les couleurs de notes changent de teinte, la note lue sous le curseur et
+la sinusoïde qu'on entend en désignant une raie montent d'autant, et les noms
+d'accords sont transposés. Sans cela, un seul son se voyait nommé de quatre façons
+différentes.
+
+Le filtre de bande, lui, ne suit pas, et c'est délibéré : il coupe le signal
+**avant** l'étireur, donc dans les fréquences de l'analyse.
+
 Encore faut-il pouvoir *revenir* à ×1,00. Un curseur continu ne retrouve jamais sa
 valeur neutre : il s'arrête à ×0,996, que l'affichage arrondit en « ×1.00 » — on
 se croit revenu à la normale sans l'être. Les deux curseurs ont donc un **cran** :
@@ -640,6 +652,31 @@ attaque. Son autocorrélation donne la période, pondérée par un a priori cent
 120 BPM sans lequel l'estimation choisit volontiers la moitié ou le double, qui
 corrèlent presque aussi bien. Une parabole sur le sommet affine sous la colonne,
 puis deux recherches de phase placent les temps, et parmi eux le premier.
+
+**Le premier temps est ensuite repris sur la piste de batterie.** Le mixage suffit
+à trouver la période — c'est une question de régularité, et la régularité survit au
+mélange — mais pas à trouver le « un ». La caisse claire est ce qui monte le plus
+haut et le plus large dans le spectre, si bien qu'une recherche du temps le plus
+énergique tombe volontiers sur le contretemps : sur le morceau témoin, elle plaçait
+le premier temps à 1,5 s alors que le morceau commence pile sur un temps, et le
+relevé d'accords y perdait sa première mesure.
+
+Le temps fort n'est pas le temps le plus fort. C'est celui où la grosse caisse
+tombe, où la caisse claire ne tombe pas, où la cymbale s'ouvre, et où l'harmonie
+change — quatre indices qui demandent tous de savoir *quel* instrument a joué. La
+séparation le dit. Dès qu'elle est finie, la grille est donc reprise : les coups
+sont repliés sur la période par une somme vectorielle, dont le module dit à quel
+point la batterie tient la mesure et l'argument dit où elle la pose ; puis chacune
+des quatre places possibles du « un » est notée sur les quatre indices, le
+changement d'harmonie étant lu dans l'image — laquelle, une fois séparée, n'a plus
+de percussions pour la brouiller. La barre d'état l'annonce d'un mot.
+
+Deux garde-fous : la période n'est cherchée qu'à un pour cent et demi de celle
+qu'on lui donne — assez pour rattraper un arrondi, pas assez pour aller chercher un
+autre tempo, l'octave restant l'affaire de l'a priori à 120 BPM — et **rien n'est
+repris quand la batterie n'a rien de net à dire**, ni quand la grille a été réglée à
+la main. Ce qu'on a posé soi-même sur un passage rubato ne se fait pas déplacer par
+une machine une minute plus tard.
 
 Selon le zoom, la grille montre les **phrases** (quatre mesures), les **mesures**,
 les **temps** ou les **subdivisions** — le pas le plus fin qui reste lisible, jamais
@@ -879,6 +916,14 @@ qu'elle tient debout, que le titre de sa fenêtre porte le nom du fichier — c'
 seule preuve, depuis l'extérieur, que le fichier lui a bien été transmis — et
 qu'aucun rapport de plantage n'a été écrit.
 
+Une fois l'application passée, le **relevé d'accords est refait sur les pistes
+séparées** — cette fois sans `--mixage`. C'est le seul endroit où la chaîne entière
+se vérifie : séparation, relevé de la batterie, reprise de la grille métrique,
+découpage du morceau, noms d'accords. Le morceau témoin commence pile sur un temps
+et joue huit mesures d'un accord chacune ; les huit doivent être relevées, et la
+première tomber à 0,00 s. Une grille décalée d'un temps en perd une, ce qui était
+le cas avant que la batterie ne soit consultée.
+
 Ce qui ne se mesure pas est photographié : `build/essai/fenetre.png` montre ce que
 l'application affiche, à regarder — le spectrogramme, la rangée des noms d'accords,
 les trois lignes de batterie. La photographie vise la fenêtre par son numéro et non
@@ -946,6 +991,14 @@ Deux harnais hors écran, sans fenêtre, sans fichier audio et sans périphériq
   trente points l'un de l'autre — vérifié sur tout l'intervalle de zoom, et non aux
   seuls seuils —, une phrase suit la signature, une borne retombe sur le multiple le
   plus proche, et un pas nul la laisse libre.
+- **Premier temps** — sur un motif de batterie de synthèse dont on connaît les
+  instants, et une image harmonique qui change d'accord à chaque mesure, la grille
+  reprise doit rendre le tempo joué et poser le « un » à moins de cinquante
+  millisecondes du vrai. Le contrôle qui compte est le troisième : on repasse une
+  grille **délibérément décalée d'un temps** — l'erreur même qu'on cherche à
+  réparer — et le premier temps doit revenir au même endroit. Une piste sans
+  batterie, elle, ne doit rien faire croire : la reprise se refuse plutôt que de
+  poser une phase sur du vide.
 - **Sinusoïde d'écoute** — fréquence sortie, arrivée du glissando, et absence de
   saut à l'attaque, au bond d'octave et à l'extinction : l'écart entre deux
   échantillons ne doit jamais dépasser ce qu'exige la sinusoïde elle-même.

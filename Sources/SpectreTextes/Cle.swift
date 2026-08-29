@@ -66,6 +66,8 @@ public enum Cle: String, CaseIterable, Sendable {
     case statutSeparationPourcent, statutSeparationRestant, statutSeparationEnCours
     case statutPistesIllisibles, statutAnalyseDe
     case statutReleveBatterie, statutBatterieRetiree, statutAucunCoup
+    /// La grille métrique vient d'être reprise sur la piste de batterie.
+    case statutGrilleReprise
     case statutReleveAccords, statutAccordsGrilleDabord, statutAccordsRienDeTenu
     case statutPistesEffacees
     case dureeSecondes, dureeMinutes, dureeMinutesSecondes

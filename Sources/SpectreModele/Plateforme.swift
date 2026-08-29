@@ -154,6 +154,15 @@ public protocol ReglagesModifiables: PreferencesGlobales {
 /// Direct3D, une texture OpenGL — ne le regarde pas.
 public protocol RenduSpectrogramme: AnyObject {
     var layout: BinLayout { get set }
+    /// Transposition en cours, en demi-tons.
+    ///
+    /// Elle ne déplace rien : la matrice reste ce qu'elle est, et le nuanceur la lit
+    /// au même endroit. Elle décale la seule chose qui parle de hauteur — la palette
+    /// des notes —, pour qu'une raie jouée deux demi-tons plus haut porte la couleur
+    /// du Ré et non celle du Do. Passer par la géométrie pour l'obtenir déplacerait
+    /// aussi la référence de la pente en dB par octave, et l'image entière
+    /// changerait de clarté à chaque coup de réglette.
+    var demiTons: Double { get set }
     /// Incrémenté à chaque téléversement, pour que la vue sache que l'image a
     /// changé sous elle sans comparer des millions de valeurs.
     var generation: Int { get }

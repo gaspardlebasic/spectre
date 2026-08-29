@@ -145,7 +145,9 @@ public struct Frise<Lecteur: LecteurAudio> {
 
     private func octaves() {
         guard modele.display.showGrid else { return }
-        let geometrie = modele.spectrogram.layout
+        // Celle qu'on entend, et non celle de l'analyse : transposée, une raie de
+        // Do sonne un Ré, et c'est le trait du Ré qui doit passer dessus.
+        let geometrie = modele.geometrieEntendue
         for repere in Pitch.octaveMarkers(from: geometrie.minFrequency,
                                           to: geometrie.maxFrequency,
                                           referenceA: modele.display.referenceA) {

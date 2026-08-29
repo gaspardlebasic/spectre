@@ -115,6 +115,7 @@ extension Catalogue {
         .statutPistesIllisibles: "Ścieżki nie do odczytania; został miks.",
         .statutAnalyseDe: "Analiza „%1$@”…",
         .statutReleveBatterie: "Odczyt perkusji…",
+        .statutGrilleReprise: "Siatka odtworzona z perkusji",
         .statutBatterieRetiree: "Perkusja usunięta",
         .statutAucunCoup: "Nie wykryto żadnego uderzenia",
         .statutReleveAccords: "Odczyt akordów…",
