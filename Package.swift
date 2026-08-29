@@ -400,7 +400,7 @@ func modulesPartages() -> [Target] {
         .executableTarget(
             name: "GestesCheck",
             dependencies: ["SpectreCore", "SpectreTextes", "SpectreModele",
-                           "SpectreDessin"],
+                           "SpectreDessin", "SpectreToile"],
             path: "Tools/GestesCheck"
         ),
     ]

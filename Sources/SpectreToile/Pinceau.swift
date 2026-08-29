@@ -166,15 +166,46 @@ public struct Pinceau {
     /// Le contour est donc échantillonné et rempli d'un seul chemin. Superposer
     /// deux formes arrondies donnerait le même dessin et une couture partout où
     /// leurs bords se croisent : sur un fond translucide, la double couche se voit.
+    /// Les quatre rayons, ramenés à ce que le rectangle peut porter.
+    ///
+    /// Un coin est borné par les **deux côtés qu'il touche**, et non par le plus
+    /// petit côté du rectangle. La différence n'est pas théorique : un bouton de la
+    /// colonne des pistes fait 54 sur 40, et son arrondi de dôme vaut 27 — la moitié
+    /// de sa largeur, donc un demi-cercle complet. Borné par `min(54, 40) / 2`, il
+    /// retombait à 20, et les deux boutons extrêmes croisaient la capsule au lieu de
+    /// l'épouser : très exactement ce que la règle des coins concentriques cherche à
+    /// éviter, défait par le bornage censé la servir.
+    ///
+    /// La règle est celle de `border-radius` : on ne rogne que si deux coins d'un
+    /// même côté s'y disputent la place, et alors **tous** les rayons sont réduits du
+    /// même facteur, ce qui garde la forme proportionnée plutôt que d'écraser un
+    /// coin sur deux.
+    ///
+    /// Publique et pure pour être vérifiable sans fenêtre : `GestesCheck` la repasse.
+    public static func rayonsAjustes(largeur: Double, hauteur: Double,
+                                     hautGauche: Double, hautDroite: Double,
+                                     basDroite: Double, basGauche: Double)
+        -> (hautGauche: Double, hautDroite: Double, basDroite: Double, basGauche: Double) {
+        var hg = max(hautGauche, 0), hd = max(hautDroite, 0)
+        var bd = max(basDroite, 0), bg = max(basGauche, 0)
+        func part(_ côté: Double, _ a: Double, _ b: Double) -> Double {
+            a + b <= 0 ? 1 : max(côté, 0) / (a + b)
+        }
+        let facteur = min(1, part(largeur, hg, hd), part(largeur, bg, bd),
+                          part(hauteur, hg, bg), part(hauteur, hd, bd))
+        if facteur < 1 { hg *= facteur; hd *= facteur; bd *= facteur; bg *= facteur }
+        return (hg, hd, bd, bg)
+    }
+
     public func arrondiInegal(_ x: Double, _ y: Double, _ largeur: Double,
                               _ hauteur: Double,
                               hautGauche: Double, hautDroite: Double,
                               basDroite: Double, basGauche: Double,
                               _ couleur: UInt32) {
-        let limite = min(largeur, hauteur) / 2
-        func borne(_ r: Double) -> Double { min(max(r, 0), limite) }
-        let hg = borne(hautGauche), hd = borne(hautDroite)
-        let bd = borne(basDroite), bg = borne(basGauche)
+        guard largeur > 0, hauteur > 0 else { return }
+        let (hg, hd, bd, bg) = Self.rayonsAjustes(
+            largeur: largeur, hauteur: hauteur, hautGauche: hautGauche,
+            hautDroite: hautDroite, basDroite: basDroite, basGauche: basGauche)
         var points: [Double] = []
         // Six segments par quart de tour : à trente points de rayon, le plus grand
         // que la colonne demande, la corde s'écarte de l'arc de moins d'un dixième

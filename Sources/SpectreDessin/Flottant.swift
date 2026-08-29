@@ -36,7 +36,12 @@ import SpectreToile
 public final class Flottant {
     public init() {}
 
-    /// Les mesures sont celles de `StemColumn` sur le Mac, point pour point.
+    /// Les mesures sont celles de `StemColumn` sur le Mac.
+    ///
+    /// Relevées sur la capture macOS, et à tenir : capsule de 62 × 177, arrondie de
+    /// 31 — la moitié de sa largeur, donc des extrémités en demi-cercle ; quatre
+    /// boutons de 54 × 40, séparés de 3, encastrés de 4 ; dôme de 27 en haut du
+    /// premier et en bas du dernier, 8 pour les six autres coins.
     ///
     /// Elles ne sont pas un goût. La capsule qui entoure les quatre boutons a des
     /// extrémités en demi-cercle, de rayon `largeur / 2`. Pour que le premier et le
@@ -58,9 +63,14 @@ public final class Flottant {
 
     private static let interieur = 4.0
     private static let hauteurBouton = 40.0
+    private static let largeurBouton = largeur - 2 * interieur   // 54
     private static let ecart = 3.0
-    private static let rayonDome = largeur / 2 - interieur
-    private static let rayonInterne = 9.0
+    /// Vingt-sept points, soit la moitié de la largeur d'un bouton : le demi-cercle
+    /// complet, et rien de plus. Au-delà, les deux coins du haut se disputeraient la
+    /// largeur et seraient rognés tous les deux — ce serait la même forme, obtenue
+    /// de travers.
+    private static let rayonDome = largeurBouton / 2
+    private static let rayonInterne = 8.0
     /// Sous la réglette du haut : un clic dans les vingt premiers points trace une
     /// boucle, et la colonne n'a pas à disputer cette bande-là.
     private static let haut = hauteurDeLaReglette + 8

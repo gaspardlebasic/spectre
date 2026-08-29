@@ -6,6 +6,7 @@ import WinSDK
 import SpectreDessin
 import SpectreModele
 import SpectreTextes
+import SpectreToile
 
 // Vérification des gestes.
 //
@@ -554,6 +555,41 @@ controle("et ce clic-là n'a rien fait d'autre", modele.playhead == teteAvantLAv
          "la tête de lecture n'a pas bougé")
 
 try? FileManager.default.removeItem(at: atelier)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LA FORME DES BOUTONS DE LA COLONNE
+//
+// Le sélecteur de pistes est le seul endroit de l'application où deux formes
+// arrondies doivent coïncider : quatre boutons inscrits dans une capsule. Ce qui
+// les fait coïncider est un seul calcul — les rayons de chaque coin, ramenés à ce
+// que le rectangle peut porter —, et il s'est trompé longtemps sans que rien ne le
+// dise, parce qu'une forme un peu fausse reste une forme.
+// ─────────────────────────────────────────────────────────────────────────────
+
+print("\n=== La forme des boutons de la colonne ===")
+
+// Un bouton de la colonne : 54 × 40, dôme de 27 en haut, 8 en bas.
+let extreme = Pinceau.rayonsAjustes(largeur: 54, hauteur: 40, hautGauche: 27,
+                                    hautDroite: 27, basDroite: 8, basGauche: 8)
+controle("le dôme d'un bouton extrême n'est pas rogné",
+         abs(extreme.hautGauche - 27) < 1e-9 && abs(extreme.basGauche - 8) < 1e-9,
+         String(format: "%.1f en haut, %.1f en bas", extreme.hautGauche, extreme.basGauche))
+
+// Le même rectangle avec un rayon impossible : les deux coins du haut demandent
+// 56 points de large là où il n'y en a que 54. Tout est réduit du même facteur —
+// la forme reste proportionnée, elle ne s'écrase pas d'un côté.
+let trop = Pinceau.rayonsAjustes(largeur: 54, hauteur: 40, hautGauche: 28,
+                                 hautDroite: 28, basDroite: 8, basGauche: 8)
+controle("un rayon impossible réduit les quatre du même facteur",
+         abs(trop.hautGauche - 27) < 1e-6 && abs(trop.hautDroite - 27) < 1e-6
+             && abs(trop.basGauche - 54.0 / 56 * 8) < 1e-6,
+         String(format: "%.2f et %.2f", trop.hautGauche, trop.basGauche))
+
+controle("un coin ne dépasse jamais le côté qu'il touche",
+         Pinceau.rayonsAjustes(largeur: 10, hauteur: 10, hautGauche: 99,
+                               hautDroite: 99, basDroite: 99, basGauche: 99)
+             .hautGauche == 5,
+         "99 demandés sur 10 points de côté, 5 rendus")
 
 print("")
 if echecs == 0 {
