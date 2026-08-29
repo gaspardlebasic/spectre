@@ -28,9 +28,9 @@ la chaîne d'agent) et prend l'une de cinq formes :
 | système | ce que le bouton dit | où il mène |
 |---|---|---|
 | **macOS** | « Télécharger pour macOS — 104 Mo » | l'archive de la dernière *release* |
-| **Windows** | « Le portage Windows est en cours » | `WINDOWS.md`, avec l'avancement : 3 étapes sur 11 |
-| **Linux** | « Linux est prévu après Windows » | le dépôt |
-| **iPhone, Android** | « Spectre est une application de bureau » | l'archive quand même, en second |
+| **Windows** | « Télécharger pour Windows — 23 Mo » | l'installeur x64, ou ARM64 si le navigateur avoue l'architecture |
+| **Linux** | « Télécharger pour Linux » | le `.deb` de l'architecture, l'AppImage juste en dessous |
+| **iPhone, Android** | « Spectre est une application de bureau » | l'archive quand même |
 | inconnu | la forme macOS | l'archive |
 
 L'adresse du téléchargement est
@@ -77,16 +77,18 @@ horizontaux fins, et quatre bandes saturées.
 - **Des filets partout** : un trait de 1 px sépare chaque section, comme les
   lignes d'octave de l'image. Les titres sont posés sur ces filets. La grille
   verticale du fond reprend l'espacement de la réglette temporelle.
-- **La ligne de crête de l'icône** — la courbe blanche ondulée — est reprise en SVG
-  en haut de page, tracée au chargement, et sert de séparateur entre deux sections.
+- **L'en-tête a pour fond une vraie capture** — `la musique en mode guitar hero`,
+  pleine largeur, sous deux dégradés qui la rendent au noir en bas et à gauche. Le
+  texte se lit donc sur du noir, et la couleur reste visible à droite. Le titre
+  « Spectre » y est petit : la page montre l'application, elle ne s'annonce pas.
 - **Typographie** : la pile système (San Francisco sur Mac, Segoe sur Windows,
   Inter/Roboto ailleurs), et un chasse-fixe pour les valeurs — durées, tailles,
   commandes — comme dans l'application.
 - **Les captures** sont montrées **sans cadre ni ombre** : elles sont déjà noires,
-  elles se fondent dans la page et c'est le sujet. Un filet de la couleur de la
-  section les souligne.
-- **Peu d'animation** : les lignes se tracent à l'apparition, rien ne bouge tout
-  seul ensuite. `prefers-reduced-motion` coupe tout.
+  elles se fondent dans la page et c'est le sujet. Un court trait de la couleur de
+  la section ouvre chaque titre, et un filet gris souligne le haut de l'image.
+- **Aucune animation** : rien ne bouge tout seul, et `prefers-reduced-motion`
+  coupe jusqu'aux transitions du survol.
 
 La page tient en une colonne, se lit du haut vers le bas, et fonctionne au
 téléphone : les captures larges défilent alors horizontalement dans leur cadre
@@ -94,24 +96,25 @@ plutôt que de rétrécir jusqu'à l'illisible.
 
 ## Les images
 
-Les six captures existantes, redimensionnées à 1 800 px de large au plus,
-converties en WebP avec une version PNG de secours, et servies en
-`loading="lazy"` sauf la première.
+Cinq captures de `Resources/Captures`, converties en WebP — redimensionnées à
+1 800 px de large au plus — et servies en `loading="lazy"` sauf la première.
 
-| capture | section |
-|---|---|
-| `le morceau en un coup d'oeil` | l'en-tête, et « Tout le morceau dans une image » |
-| `les voicings de chaque accords` | les accords |
-| `voix, accords, batterie` | les accords, et la ligne de batterie |
-| `choix des pistes` | la séparation |
-| `faire boucler une section au ralenti` | la boucle et le ralenti |
-| `la musique en mode guitar hero` | « Une couleur par note » |
+| capture | fichier | section |
+|---|---|---|
+| `la musique en mode guitar hero` | `img/fond.webp` | le fond de l'en-tête |
+| `choix des pistes` | `img/pistes.webp` | la séparation en quatre pistes |
+| `faire boucler une section au ralenti` | `img/boucle.webp` | le playback |
+| `voix, accords, batterie` | `img/voix-accords-batterie.webp` | le spectre et la batterie |
+| `les voicings de chaque accords` | `img/voicings.webp` | les accords et le tempo |
 
-Deux images fabriquées en plus, par recadrage de la grande :
+Et **l'image de partage**, `img/og.jpg`, 1 200 × 630 : ce qui s'affiche quand on
+colle le lien dans un message.
 
-- **la bannière de l'en-tête** — une bande large et sombre derrière le titre,
-- **l'image de partage** — 1 200 × 630, ce qui s'affiche quand on colle le lien
-  dans un message.
+Refaire une capture, c'est donc une seule commande, par exemple :
+
+```
+cwebp -q 82 "Resources/Captures/choix des pistes.png" -o docs/img/pistes.webp
+```
 
 ## Ce que la page ne fait pas
 

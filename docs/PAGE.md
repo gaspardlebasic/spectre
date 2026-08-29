@@ -1,10 +1,15 @@
-# Le texte de la page — version 2
+# Le texte de la page — version 3
 
-Plus court, et sans emphase. Le français est la référence ; les quatre autres en
-sont la traduction.
+Court, et sans emphase. Le français et l'anglais sont écrits ensemble ; l'espagnol,
+l'allemand et le polonais en sont la traduction.
 
-Chaque section : un titre, une ou deux phrases, une capture. Les quatre couleurs
-de l'icône marquent les sections, dans leur ordre d'apparition dans l'icône.
+Quatre sections, une par capture. Un titre, une phrase, l'image. Les quatre
+couleurs de l'icône marquent les sections, dans leur ordre d'apparition dans
+l'icône.
+
+L'en-tête n'a plus de ligne de crête : il a pour fond un vrai spectrogramme de
+l'application — `la musique en mode guitar hero` — rendu au noir par un dégradé,
+et le titre y est petit.
 
 ---
 ---
@@ -13,98 +18,44 @@ de l'icône marquent les sections, dans leur ordre d'apparition dans l'icône.
 
 # Spectre
 
-### Une aide à l'écoute active de la musique.
-
-Un spectrogramme qui donne à chaque note sa couleur, relève les accords et sépare
-les quatre pistes.
+### Un lecteur de musique synesthésique pour musicien·nes
 
 **[ Télécharger pour macOS ]**
 Libre et gratuit · macOS 15 ou plus récent · 104 Mo
 
 ---
 
-## Tout le morceau dans une image  ·  *turquoise*
+## Séparation automatique en quatre pistes : voix, basse, batterie et instruments  ·  *turquoise*
 
-Le fichier est analysé une fois, à l'ouverture. Ensuite, zoomer ou défiler ne fait
-que relire une matrice déjà en mémoire : n'importe quel instant est immédiat.
-
-Chaque fréquence est recalée de son propre retard d'analyse, de sorte que les
-graves ne traînent pas derrière la caisse claire.
-
-> *capture : le morceau en un coup d'œil*
-
----
-
-## Une couleur par note
-
-Les douze teintes suivent le cycle des quintes : deux notes proches harmoniquement
-sont proches en couleur. Elles ont toutes la même clarté, donc à niveau égal
-aucune ne paraît plus forte qu'une autre.
-
-> *capture : la musique en mode guitar hero*
-
----
-
-## Détection automatique des accords  ·  *violet*
-
-Les accords sont écrits sous l'image, mesure par mesure. Le curseur s'aimante sur
-la raie la plus proche et donne la note, sa fréquence et son écart en cents.
-
-Survoler un accord entoure ses notes dans l'image, à l'octave où elles sont
-jouées.
-
-> *captures : les voicings de chaque accord · voix, accords, batterie*
-
----
-
-## Séparation des pistes  ·  *rose*
-
-Basse, batterie, voix, reste — par le modèle open source **Demucs v4**, sur le GPU
-de la machine, sans internet. Cinq minutes de musique en vingt-six secondes, en
-tâche de fond.
-
-Le spectrogramme est recalculé sur les pistes gardées : une basse seule n'a
-presque plus de partielles qui se croisent, et le curseur tombe sur la bonne raie.
-Retirer la voix donne un playback.
+Par le modèle d'intelligence artificielle à poids ouverts Demucs v4.
 
 > *capture : choix des pistes*
 
 ---
 
-## Ralentir, boucler, transposer  ·  *jaune*
+## Transformer n'importe quel morceau en playback  ·  *violet*
 
-Un glisser dans la réglette trace une boucle, calée sur la grille des mesures.
-
-La vitesse et la hauteur se règlent séparément. Les valeurs intermédiaires de
-hauteur recalent un enregistrement désaccordé.
+Boucler une section, la transposer ou la ralentir, retirer la voix, isoler la
+basse…
 
 > *capture : faire boucler une section au ralenti*
 
 ---
 
-## N'entendre que ce qu'on regarde
+## Le spectre sonore présenté comme un musicien l'entend  ·  *rose*
 
-La lecture est limitée à la portion du spectre visible : zoomer sur les graves
-isole la basse. Cliquer dans l'image déplace la tête de lecture et fait sonner la
-raie désignée.
+Une échelle de couleurs calée sur le cycle des quintes, et une visualisation
+dédiée à la batterie.
 
----
-
-## La batterie sur trois lignes  ·  *jaune*
-
-Une fois séparée, la batterie quitte le spectrogramme et prend trois lignes en
-dessous : grosse caisse, caisse claire, cymbales.
+> *capture : voix, accords, batterie*
 
 ---
 
-## Usages
+## Détection automatique des accords et du tempo  ·  *jaune*
 
-- Relever un morceau à l'oreille
-- Apprendre un solo au ralenti
-- Se faire un playback
-- Démêler un voicing de piano
-- Vérifier un accord
-- Travailler sur un enregistrement désaccordé
+De quoi commencer à relever un morceau, et vérifier le voicing de chaque accord.
+
+> *capture : les voicings de chaque accords*
 
 ---
 
@@ -119,10 +70,6 @@ quarantaine au téléchargement. Après l'avoir glissée dans `Applications` :
 xattr -dr com.apple.quarantine /Applications/Spectre.app
 ```
 
-Ou un clic droit sur l'application, « Ouvrir », et confirmer une fois. Le même
-blocage frappe les fichiers audio téléchargés ; le message désigne alors le
-fichier, ce qui est trompeur.
-
 **Ou construire soi-même** — Xcode n'est pas nécessaire, l'application est dans
 `build/Spectre.app` :
 
@@ -135,10 +82,10 @@ cd spectre && ./build.sh
 
 ## Autres plateformes
 
-**Windows** — le portage est terminé : onze étapes sur onze. Il n'y a pas encore
-de version publiée ; `build.ps1` fabrique l'application.
+**Windows** — livré, en x64 et en ARM64, avec la séparation des pistes.
 
-**Linux** — prévu après Windows.
+**Linux** — livré, en .deb et en AppImage, pour Intel et ARM, avec la séparation
+des pistes.
 
 ---
 
@@ -163,90 +110,35 @@ Research)
 
 # Spectre
 
-### A tool for listening to music closely.
-
-A spectrogram that gives every note its own colour, reads out the chords, and
-separates the four stems.
+### A synesthetic music player for musicians
 
 **[ Download for macOS ]**
 Free and open source · macOS 15 or later · 104 MB
 
-*The interface is in French for now.*
+---
+
+## Automatic separation into four stems: vocals, bass, drums and instruments
+
+Using the open-weights AI model Demucs v4.
 
 ---
 
-## The whole track in one image  ·  *teal*
+## Transform any tune into a backing track
 
-The file is analysed once, when it opens. After that, zooming or scrolling only
-re-reads a matrix already in memory, so any point in the track is immediate.
-
-Each frequency is shifted back by its own analysis delay, so the low end doesn't
-lag behind the snare.
+Loop a section, transpose it or slow it down, remove the voice, isolate the bass…
 
 ---
 
-## One colour per note
+## The sound spectrum in a way that makes sense for musicians
 
-The twelve hues follow the circle of fifths: notes that are close harmonically
-are close in colour. They all share the same lightness, so at equal level none
-looks louder than another.
-
----
-
-## Automatic chord detection  ·  *purple*
-
-Chords are written under the image, bar by bar. The cursor snaps to the nearest
-partial and gives the note, its frequency and how far off it is in cents.
-
-Hovering a chord rings its notes in the image, at the octave where they are
-played.
+Using a colour scale that matches the cycle of fifths, and a dedicated drum
+visualisation.
 
 ---
 
-## Stem separation  ·  *pink*
+## Auto-detect chords and tempo
 
-Bass, drums, vocals, other — using the open-source **Demucs v4** model, on the
-machine's GPU, with no internet. Five minutes of audio in twenty-six seconds, in
-the background.
-
-The spectrogram is recomputed on whichever stems are kept: an isolated bass has
-almost no crossing partials left, so the cursor lands on the right line. Drop the
-vocal and you have a backing track.
-
----
-
-## Slow down, loop, transpose  ·  *yellow*
-
-Dragging in the ruler draws a loop, aligned to the bar grid.
-
-Speed and pitch are set independently. Intermediate pitch values bring an
-out-of-tune recording back to concert pitch.
-
----
-
-## Hear only what you're looking at
-
-Playback is limited to the visible part of the spectrum: zoom into the low end
-and the bass is isolated. Clicking in the image moves the playhead and sounds the
-line you clicked.
-
----
-
-## Drums on three lines  ·  *yellow*
-
-Once separated, the drums leave the spectrogram and take three lines below it:
-kick, snare, cymbals.
-
----
-
-## Uses
-
-- Working a song out by ear
-- Learning a solo slowly
-- Making a backing track
-- Untangling a piano voicing
-- Checking a chord
-- Working with an out-of-tune recording
+Get started transcribing a song, and check the voicing of each chord.
 
 ---
 
@@ -261,10 +153,6 @@ download. Once it is in `Applications`:
 xattr -dr com.apple.quarantine /Applications/Spectre.app
 ```
 
-Or right-click the app, choose "Open", and confirm once. The same block catches
-downloaded audio files; the warning then names the audio file, which is
-misleading.
-
 **Or build it yourself** — Xcode is not required, the app lands in
 `build/Spectre.app`:
 
@@ -277,10 +165,10 @@ cd spectre && ./build.sh
 
 ## Other platforms
 
-**Windows** — the port is finished: eleven steps out of eleven. There is no
-published build yet; `build.ps1` makes the app.
+**Windows** — shipped, for x64 and ARM64, with stem separation.
 
-**Linux** — planned after Windows.
+**Linux** — shipped, as a .deb and an AppImage, for Intel and ARM, with stem
+separation.
 
 ---
 
@@ -303,90 +191,36 @@ Free software · Source on GitHub · Separation by Demucs v4 (Meta AI Research)
 
 # Spectre
 
-### Una ayuda para la escucha activa.
-
-Un espectrograma que da a cada nota su color, detecta los acordes y separa las
-cuatro pistas.
+### Un reproductor de música sinestésico para músicos
 
 **[ Descargar para macOS ]**
 Libre y gratuito · macOS 15 o posterior · 104 MB
 
-*La interfaz está en francés por ahora.*
+---
+
+## Separación automática en cuatro pistas: voz, bajo, batería e instrumentos
+
+Con el modelo de inteligencia artificial de pesos abiertos Demucs v4.
 
 ---
 
-## Todo el tema en una imagen  ·  *turquesa*
+## Convertir cualquier tema en una base instrumental
 
-El archivo se analiza una vez, al abrirlo. Después, hacer zoom o desplazarse solo
-relee una matriz que ya está en memoria: cualquier punto del tema es inmediato.
-
-Cada frecuencia se recoloca según su propio retardo de análisis, de modo que los
-graves no van por detrás de la caja.
+Hacer un bucle con una sección, transponerla o ralentizarla, quitar la voz, aislar
+el bajo…
 
 ---
 
-## Un color por nota
+## El espectro sonoro presentado como lo oye un músico
 
-Los doce tonos siguen el círculo de quintas: dos notas cercanas armónicamente son
-cercanas en color. Todas tienen la misma claridad, así que a igual nivel ninguna
-parece más fuerte que otra.
-
----
-
-## Detección automática de acordes  ·  *violeta*
-
-Los acordes se escriben debajo de la imagen, compás a compás. El cursor se imanta
-a la raya más cercana y da la nota, su frecuencia y su desviación en cents.
-
-Al pasar por encima de un acorde se rodean sus notas en la imagen, en la octava
-en que se tocan.
+Una escala de colores que sigue el círculo de quintas, y una visualización
+dedicada a la batería.
 
 ---
 
-## Separación de pistas  ·  *rosa*
+## Detección automática de acordes y tempo
 
-Bajo, batería, voz y resto — con el modelo de código abierto **Demucs v4**, en la
-GPU del equipo y sin internet. Cinco minutos de audio en veintiséis segundos, en
-segundo plano.
-
-El espectrograma se recalcula sobre las pistas que se conservan: un bajo aislado
-casi no tiene parciales que se crucen, y el cursor cae en la raya correcta. Al
-quitar la voz queda una base instrumental.
-
----
-
-## Ralentizar, hacer bucles, transponer  ·  *amarillo*
-
-Arrastrar en la regla traza un bucle, ajustado a la cuadrícula de compases.
-
-La velocidad y la afinación se ajustan por separado. Los valores intermedios de
-afinación recolocan una grabación desafinada.
-
----
-
-## Oír solo lo que se está mirando
-
-La reproducción se limita a la parte visible del espectro: al ampliar los graves,
-el bajo queda aislado. Al hacer clic en la imagen se mueve la cabeza de lectura y
-suena la raya señalada.
-
----
-
-## La batería en tres líneas  ·  *amarillo*
-
-Una vez separada, la batería deja el espectrograma y ocupa tres líneas debajo:
-bombo, caja, platos.
-
----
-
-## Usos
-
-- Sacar un tema de oído
-- Aprender un solo despacio
-- Hacerse una base instrumental
-- Desenredar un voicing de piano
-- Comprobar un acorde
-- Trabajar con una grabación desafinada
+Lo justo para empezar a sacar un tema y comprobar el voicing de cada acorde.
 
 ---
 
@@ -401,10 +235,6 @@ que macOS la pone en cuarentena al descargarla. Una vez en `Aplicaciones`:
 xattr -dr com.apple.quarantine /Applications/Spectre.app
 ```
 
-O clic derecho sobre la aplicación, «Abrir», y confirmar una vez. El mismo bloqueo
-alcanza a los archivos de audio descargados; el aviso señala entonces el archivo,
-lo cual despista.
-
 **O compilarla uno mismo** — no hace falta Xcode, la aplicación queda en
 `build/Spectre.app`:
 
@@ -417,10 +247,10 @@ cd spectre && ./build.sh
 
 ## Otras plataformas
 
-**Windows** — el port está terminado: once etapas de once. Aún no hay versión
-publicada; `build.ps1` genera la aplicación.
+**Windows** — publicado, en x64 y ARM64, con separación de pistas.
 
-**Linux** — previsto después de Windows.
+**Linux** — publicado, como .deb y AppImage, para Intel y ARM, con separación de
+pistas.
 
 ---
 
@@ -443,92 +273,36 @@ Software libre · Código en GitHub · Separación con Demucs v4 (Meta AI Resear
 
 # Spectre
 
-### Eine Hilfe zum genauen Hören.
-
-Ein Spektrogramm, das jedem Ton seine Farbe gibt, die Akkorde erkennt und die
-vier Spuren trennt.
+### Ein synästhetischer Musikplayer für Musiker·innen
 
 **[ Für macOS herunterladen ]**
 Frei und quelloffen · macOS 15 oder neuer · 104 MB
 
-*Die Oberfläche ist vorerst auf Französisch.*
+---
+
+## Automatische Trennung in vier Spuren: Gesang, Bass, Schlagzeug und Instrumente
+
+Mit dem KI-Modell Demucs v4, dessen Gewichte offen liegen.
 
 ---
 
-## Das ganze Stück in einem Bild  ·  *Türkis*
+## Jedes Stück in ein Playback verwandeln
 
-Die Datei wird beim Öffnen einmal analysiert. Danach liest Zoomen oder Scrollen
-nur eine Matrix, die bereits im Speicher liegt: Jede Stelle des Stücks ist sofort
-da.
-
-Jede Frequenz wird um ihre eigene Analyseverzögerung zurückgeschoben, sodass die
-Bässe der Snare nicht hinterherhinken.
+Einen Abschnitt loopen, transponieren oder verlangsamen, den Gesang entfernen, den
+Bass isolieren …
 
 ---
 
-## Eine Farbe pro Ton
+## Das Klangspektrum so, wie ein Musiker es hört
 
-Die zwölf Farbtöne folgen dem Quintenzirkel: harmonisch benachbarte Töne sind
-farblich benachbart. Alle haben dieselbe Helligkeit, also wirkt bei gleichem
-Pegel kein Ton lauter als ein anderer.
-
----
-
-## Automatische Akkorderkennung  ·  *Violett*
-
-Die Akkorde stehen Takt für Takt unter dem Bild. Der Cursor rastet auf der
-nächstgelegenen Linie ein und nennt den Ton, seine Frequenz und die Abweichung in
-Cent.
-
-Fährt man über einen Akkord, werden seine Töne im Bild eingekreist, in der
-Oktave, in der sie gespielt werden.
+Eine Farbskala nach dem Quintenzirkel, und eine eigene Darstellung für das
+Schlagzeug.
 
 ---
 
-## Spurtrennung  ·  *Pink*
+## Akkorde und Tempo automatisch erkennen
 
-Bass, Schlagzeug, Gesang, Rest — mit dem quelloffenen Modell **Demucs v4**, auf
-der GPU des Rechners, ohne Internet. Fünf Minuten Audio in sechsundzwanzig
-Sekunden, im Hintergrund.
-
-Das Spektrogramm wird auf den behaltenen Spuren neu berechnet: Ein isolierter
-Bass hat kaum noch sich kreuzende Teiltöne, und der Cursor trifft die richtige
-Linie. Ohne Gesang bleibt ein Playback.
-
----
-
-## Verlangsamen, loopen, transponieren  ·  *Gelb*
-
-Ein Zug im Lineal zeichnet einen Loop, am Taktraster ausgerichtet.
-
-Tempo und Tonhöhe werden getrennt eingestellt. Zwischenwerte der Tonhöhe rücken
-eine verstimmte Aufnahme zurecht.
-
----
-
-## Nur hören, was man ansieht
-
-Die Wiedergabe ist auf den sichtbaren Teil des Spektrums begrenzt: Zoomt man in
-die Tiefen, ist der Bass isoliert. Ein Klick ins Bild setzt den Abspielkopf und
-lässt die angeklickte Linie klingen.
-
----
-
-## Schlagzeug auf drei Linien  ·  *Gelb*
-
-Einmal getrennt, verlässt das Schlagzeug das Spektrogramm und bekommt drei Linien
-darunter: Bassdrum, Snare, Becken.
-
----
-
-## Wofür
-
-- Ein Stück nach Gehör heraushören
-- Ein Solo langsam lernen
-- Sich ein Playback bauen
-- Ein Klavier-Voicing entwirren
-- Einen Akkord überprüfen
-- Mit einer verstimmten Aufnahme arbeiten
+Genug, um ein Stück herauszuhören und das Voicing jedes Akkords zu prüfen.
 
 ---
 
@@ -543,10 +317,6 @@ beim Herunterladen unter Quarantäne. Sobald sie in `Programme` liegt:
 xattr -dr com.apple.quarantine /Applications/Spectre.app
 ```
 
-Oder Rechtsklick auf die App, „Öffnen", und einmal bestätigen. Dieselbe Sperre
-trifft heruntergeladene Audiodateien; die Meldung nennt dann die Audiodatei, was
-in die Irre führt.
-
 **Oder selbst bauen** — Xcode wird nicht gebraucht, die App liegt danach in
 `build/Spectre.app`:
 
@@ -559,10 +329,10 @@ cd spectre && ./build.sh
 
 ## Andere Plattformen
 
-**Windows** — die Portierung ist fertig: elf von elf Schritten. Es gibt noch keine
-veröffentlichte Version; `build.ps1` baut die Anwendung.
+**Windows** — veröffentlicht, für x64 und ARM64, mit Spurtrennung.
 
-**Linux** — nach Windows geplant.
+**Linux** — veröffentlicht, als .deb und AppImage, für Intel und ARM, mit
+Spurtrennung.
 
 ---
 
@@ -585,89 +355,34 @@ Freie Software · Quellcode auf GitHub · Trennung mit Demucs v4 (Meta AI Resear
 
 # Spectre
 
-### Pomoc w uważnym słuchaniu muzyki.
-
-Spektrogram, który nadaje każdemu dźwiękowi kolor, rozpoznaje akordy i rozdziela
-cztery ścieżki.
+### Synestezyjny odtwarzacz muzyki dla muzyków
 
 **[ Pobierz na macOS ]**
 Wolne i otwarte · macOS 15 lub nowszy · 104 MB
 
-*Interfejs jest na razie po francusku.*
+---
+
+## Automatyczne rozdzielenie na cztery ścieżki: wokal, bas, perkusja i instrumenty
+
+Modelem sztucznej inteligencji o otwartych wagach Demucs v4.
 
 ---
 
-## Cały utwór na jednym obrazie  ·  *turkus*
+## Zamienić dowolny utwór w podkład
 
-Plik jest analizowany raz, przy otwarciu. Potem powiększanie i przewijanie tylko
-odczytuje macierz, która już jest w pamięci: każde miejsce utworu jest
-natychmiast dostępne.
-
-Każda częstotliwość jest cofnięta o własne opóźnienie analizy, więc dół nie
-wlecze się za werblem.
+Zapętlić fragment, przetransponować go lub zwolnić, usunąć wokal, wyizolować bas…
 
 ---
 
-## Jeden kolor na dźwięk
+## Widmo dźwięku pokazane tak, jak słyszy je muzyk
 
-Dwanaście barw układa się według koła kwintowego: dźwięki bliskie harmonicznie są
-bliskie kolorem. Wszystkie mają tę samą jasność, więc przy równym poziomie żaden
-nie wygląda głośniej od innego.
+Skala kolorów zgodna z kołem kwintowym i osobna wizualizacja perkusji.
 
 ---
 
-## Automatyczne rozpoznawanie akordów  ·  *fiolet*
+## Automatyczne wykrywanie akordów i tempa
 
-Akordy są wypisywane pod obrazem, takt po takcie. Kursor przyciąga się do
-najbliższego prążka i podaje dźwięk, jego częstotliwość i odchylenie w centach.
-
-Najechanie na akord obwodzi jego składniki na obrazie, w oktawie, w której są
-grane.
-
----
-
-## Rozdzielanie ścieżek  ·  *róż*
-
-Bas, perkusja, wokal, reszta — modelem otwartoźródłowym **Demucs v4**, na GPU
-komputera, bez internetu. Pięć minut nagrania w dwadzieścia sześć sekund, w tle.
-
-Spektrogram jest przeliczany na zachowanych ścieżkach: wyizolowany bas prawie nie
-ma krzyżujących się składowych, więc kursor trafia we właściwy prążek. Bez wokalu
-zostaje podkład.
-
----
-
-## Zwolnić, zapętlić, transponować  ·  *żółć*
-
-Przeciągnięcie po linijce rysuje pętlę, dopasowaną do siatki taktów.
-
-Tempo i wysokość ustawia się osobno. Pośrednie wartości wysokości prostują
-rozstrojone nagranie.
-
----
-
-## Słyszeć tylko to, na co się patrzy
-
-Odtwarzanie jest ograniczone do widocznej części widma: powiększenie dołu izoluje
-bas. Kliknięcie w obraz przesuwa głowicę i wybrzmiewa wskazanym prążkiem.
-
----
-
-## Perkusja na trzech liniach  ·  *żółć*
-
-Po rozdzieleniu perkusja opuszcza spektrogram i zajmuje trzy linie poniżej:
-stopa, werbel, talerze.
-
----
-
-## Zastosowania
-
-- Wyciąganie utworu ze słuchu
-- Nauka solówki na wolnych obrotach
-- Zrobienie sobie podkładu
-- Rozplątanie fortepianowego voicingu
-- Sprawdzenie akordu
-- Praca z rozstrojonym nagraniem
+Tyle, żeby zacząć wyciągać utwór ze słuchu i sprawdzić voicing każdego akordu.
 
 ---
 
@@ -682,10 +397,6 @@ ją kwarantannie po pobraniu. Gdy znajdzie się w `Aplikacje`:
 xattr -dr com.apple.quarantine /Applications/Spectre.app
 ```
 
-Albo prawy przycisk na aplikacji, „Otwórz", i jedno potwierdzenie. Ta sama blokada
-dotyka pobranych plików dźwiękowych; komunikat wskazuje wtedy plik audio, co
-wprowadza w błąd.
-
 **Albo zbudować samodzielnie** — Xcode nie jest potrzebny, aplikacja ląduje w
 `build/Spectre.app`:
 
@@ -698,10 +409,10 @@ cd spectre && ./build.sh
 
 ## Inne platformy
 
-**Windows** — port jest gotowy: jedenaście kroków z jedenastu. Nie ma jeszcze
-opublikowanej wersji; `build.ps1` buduje aplikację.
+**Windows** — opublikowany, w wersjach x64 i ARM64, z rozdzielaniem ścieżek.
 
-**Linux** — planowany po Windows.
+**Linux** — opublikowany, jako .deb i AppImage, dla Intela i ARM, z rozdzielaniem
+ścieżek.
 
 ---
 

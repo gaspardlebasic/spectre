@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Spectre — a tool for listening to music closely</title>
-<meta name="description" content="A spectrogram for transcribing music by ear: a colour per note, automatic chord detection, stem separation. For macOS.">
+<title>Spectre — a synesthetic music player for musicians</title>
+<meta name="description" content="A music player that separates the stems, colours every note and reads out the chords. For macOS, Windows and Linux.">
 <meta name="theme-color" content="#000000">
 <link rel="icon" href="img/icone.png">
 <link rel="apple-touch-icon" href="img/icone.png">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Spectre">
-<meta property="og:description" content="A spectrogram for transcribing music by ear.">
+<meta property="og:description" content="A synesthetic music player for musicians.">
 <meta property="og:image" content="https://gaspardlebasic.github.io/spectre/img/og.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <style>
@@ -23,6 +23,9 @@
   --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box}
+/* `display:flex` l'emportait sur l'attribut `hidden` : la ligne `apt install` du
+   bloc Linux se voyait sur Mac et sur PC, où elle n'a rien à faire. */
+[hidden]{display:none !important}
 html{-webkit-text-size-adjust:100%}
 body{
   margin:0; background:var(--bg); color:var(--fg);
@@ -54,41 +57,49 @@ img{max-width:100%; height:auto; display:block}
 .langs button:hover{color:var(--fg)}
 .langs button[aria-current="true"]{color:var(--fg); border-bottom-color:var(--fg)}
 
-/* ---- en-tête ---- */
-.hero{padding:clamp(56px,11vw,120px) 0 0}
-h1{
-  margin:0; font-size:clamp(58px,14vw,148px); line-height:.92;
-  font-weight:600; letter-spacing:-.045em;
+/* ---- en-tête ----
+   Le fond est un vrai spectrogramme de l'application, pas un décor : c'est ce que
+   la page raconte ensuite. Il est posé sous un dégradé qui le rend au noir en bas,
+   pour que le texte se lise et que l'en-tête n'ait pas de bord. */
+.hero{position:relative; overflow:hidden; padding:clamp(56px,10vw,104px) 0 clamp(52px,9vw,96px)}
+.hero .fond{
+  position:absolute; inset:0; z-index:0; pointer-events:none;
+  background:
+    linear-gradient(180deg,rgba(0,0,0,.62) 0%,rgba(0,0,0,.44) 42%,rgba(0,0,0,.84) 82%,#000 100%),
+    linear-gradient(90deg,rgba(0,0,0,.68) 0%,rgba(0,0,0,.1) 60%,rgba(0,0,0,0) 100%),
+    url("img/fond.webp") center/cover no-repeat;
 }
-.tagline{margin:.6em 0 0; font-size:clamp(19px,2.7vw,28px); line-height:1.3; letter-spacing:-.02em; max-width:22ch}
-.cta{margin:clamp(30px,5vw,46px) 0 0}
+h1{
+  margin:0; font-size:clamp(34px,5.4vw,58px); line-height:1.05;
+  font-weight:600; letter-spacing:-.035em;
+}
+.tagline{margin:.5em 0 0; font-size:clamp(17px,2vw,22px); line-height:1.35; letter-spacing:-.015em; max-width:30ch; color:var(--fg)}
+.cta{margin:clamp(26px,4vw,38px) 0 0}
 .btn{
-  display:inline-block; padding:15px 28px; text-decoration:none;
+  display:inline-block; padding:14px 26px; text-decoration:none;
   font-weight:550; letter-spacing:-.01em;
+  background:rgba(0,0,0,.35);
   border:1px solid transparent;
   border-image:linear-gradient(90deg,var(--teal),var(--purple),var(--pink),var(--yellow)) 1;
   transition:background .18s ease;
 }
-.btn:hover{background:rgba(255,255,255,.07)}
-.btn.quiet{border-image:none; border-color:var(--hair)}
-.meta{margin:14px 0 0; color:var(--dim); font:400 14px/1.5 var(--mono); letter-spacing:0}
+.btn:hover{background:rgba(255,255,255,.1)}
+.meta{margin:14px 0 0; color:#a9a9a9; font:400 13.5px/1.5 var(--mono); letter-spacing:0}
 .alt{margin:8px 0 0; font-size:14px}
-.alt a{color:var(--dim); text-underline-offset:3px}
+.alt a{color:#a9a9a9; text-underline-offset:3px}
 .alt a:hover{color:var(--fg)}
-.crete{width:100%; height:clamp(90px,13vw,150px); margin:clamp(44px,7vw,80px) 0 0; opacity:.92}
 
 /* ---- une capture, un titre ---- */
-.shot{padding:clamp(52px,8vw,96px) 0 0}
-.rule{display:flex; align-items:center; gap:14px; padding-bottom:20px}
-.num{font:500 12px/1 var(--mono); letter-spacing:.1em; color:var(--c); flex:none}
-.rule h2{margin:0; font-size:clamp(20px,3.1vw,34px); line-height:1.15; font-weight:550; letter-spacing:-.03em}
-.rule .fill{flex:1 1 40px; height:1px; background:var(--c); opacity:.6; min-width:16px}
+.shot{padding:clamp(48px,7vw,84px) 0 0}
+.shot .tick{display:block; width:26px; height:2px; background:var(--c); opacity:.85; margin-bottom:16px}
+.shot h2{margin:0; font-size:clamp(19px,2.6vw,28px); line-height:1.2; font-weight:550; letter-spacing:-.025em; max-width:26ch}
+.shot .sub{margin:8px 0 22px; color:var(--dim); max-width:56ch}
 figure{margin:0}
 figure img{border-top:1px solid var(--hair)}
 
 /* ---- installer, plateformes, pied ---- */
-.block{padding:clamp(56px,9vw,104px) 0 0}
-.block h2{margin:0 0 18px; font-size:clamp(20px,3.1vw,34px); font-weight:550; letter-spacing:-.03em}
+.block{padding:clamp(52px,8vw,92px) 0 0}
+.block h2{margin:0 0 18px; font-size:clamp(19px,2.6vw,28px); font-weight:550; letter-spacing:-.025em}
 .block p{margin:0 0 16px; max-width:62ch; color:var(--dim)}
 .block p strong{color:var(--fg); font-weight:550}
 .block p code{font:400 .88em/1 var(--mono); color:var(--fg)}
@@ -102,15 +113,14 @@ figure img{border-top:1px solid var(--hair)}
   font:500 11px/1 var(--mono); letter-spacing:.06em; padding:7px 9px; cursor:pointer;
 }
 .cmd button:hover{color:var(--fg); border-color:var(--fg)}
-footer{margin-top:clamp(64px,10vw,120px); border-top:1px solid var(--hair); padding:26px 0 60px}
+footer{margin-top:clamp(56px,9vw,104px); border-top:1px solid var(--hair); padding:26px 0 60px}
 footer .wrap{display:flex; flex-wrap:wrap; gap:10px 22px; color:var(--dim); font-size:14px}
 footer a{text-underline-offset:3px}
 footer a:hover{color:var(--fg)}
 
 @media (max-width:640px){
   body{font-size:16px}
-  .rule{align-items:flex-start; flex-wrap:wrap}
-  .rule .fill{flex-basis:100%; order:3; margin-top:4px}
+  .hero .fond{background-position:center, center, 68% center}
   .cmd{flex-direction:column; align-items:stretch; gap:10px}
   .cmd code{overflow-x:auto}
 }
@@ -125,45 +135,44 @@ footer a:hover{color:var(--fg)}
 </div></header>
 
 <main>
-<section class="hero"><div class="wrap">
+<section class="hero">
+  <div class="fond" aria-hidden="true"></div>
+  <div class="wrap">
   <h1>Spectre</h1>
-  <p class="tagline" data-t="tagline">A tool for listening to music closely.</p>
+  <p class="tagline" data-t="tagline">A synesthetic music player for musicians.</p>
   <div class="cta">
     <a class="btn" id="btn" href="https://github.com/gaspardlebasic/spectre/releases/latest/download/Spectre.zip">Download for macOS</a>
     <p class="meta" id="btnmeta">Free and open source · macOS 15 or later · 104 MB</p>
     <p class="alt" id="btnalt" hidden><a id="btnalta" href="https://github.com/gaspardlebasic/spectre/releases/latest/download/Spectre.zip"></a></p>
   </div>
-  <img class="crete" src="img/crete.svg" alt="" width="1200" height="200">
 </div></section>
 
 <section class="shot" style="--c:var(--teal)"><div class="wrap">
-  <div class="rule"><b class="num">01</b><h2 data-t="s1">The whole track in one image</h2><i class="fill"></i></div>
-  <figure><img src="img/apercu.webp" width="2000" height="1314" alt="" data-alt="s1"></figure>
+  <i class="tick"></i>
+  <h2 data-t="s1">Automatic separation into four stems: vocals, bass, drums and instruments</h2>
+  <p class="sub" data-t="s1b">Using the open-weights AI model Demucs v4.</p>
+  <figure style="max-width:920px"><img src="img/pistes.webp" width="1200" height="918" alt="" data-alt="s1"></figure>
 </div></section>
 
 <section class="shot" style="--c:var(--purple)"><div class="wrap">
-  <div class="rule"><b class="num">02</b><h2 data-t="s2">One colour per note</h2><i class="fill"></i></div>
-  <figure><img src="img/couleurs.webp" width="1600" height="1124" alt="" data-alt="s2" loading="lazy"></figure>
+  <i class="tick"></i>
+  <h2 data-t="s2">Transform any tune into a backing track</h2>
+  <p class="sub" data-t="s2b">Loop a section, transpose it or slow it down, remove the voice, isolate the bass…</p>
+  <figure><img src="img/boucle.webp" width="1706" height="920" alt="" data-alt="s2" loading="lazy"></figure>
 </div></section>
 
 <section class="shot" style="--c:var(--pink)"><div class="wrap">
-  <div class="rule"><b class="num">03</b><h2 data-t="s3">Automatic chord detection</h2><i class="fill"></i></div>
-  <figure style="max-width:430px"><img src="img/voicings.webp" width="574" height="852" alt="" data-alt="s3" loading="lazy"></figure>
+  <i class="tick"></i>
+  <h2 data-t="s3">The sound spectrum in a way that makes sense for musicians</h2>
+  <p class="sub" data-t="s3b">Using a colour scale that matches the cycle of fifths, and a dedicated drum visualisation.</p>
+  <figure style="max-width:640px"><img src="img/voix-accords-batterie.webp" width="934" height="1150" alt="" data-alt="s3" loading="lazy"></figure>
 </div></section>
 
 <section class="shot" style="--c:var(--yellow)"><div class="wrap">
-  <div class="rule"><b class="num">04</b><h2 data-t="s4">Vocals, chords, drums</h2><i class="fill"></i></div>
-  <figure style="max-width:640px"><img src="img/voix-accords-batterie.webp" width="934" height="1150" alt="" data-alt="s4" loading="lazy"></figure>
-</div></section>
-
-<section class="shot" style="--c:var(--teal)"><div class="wrap">
-  <div class="rule"><b class="num">05</b><h2 data-t="s5">Stem separation: bass, drums, vocals, other</h2><i class="fill"></i></div>
-  <figure style="max-width:920px"><img src="img/pistes.webp" width="1200" height="984" alt="" data-alt="s5" loading="lazy"></figure>
-</div></section>
-
-<section class="shot" style="--c:var(--purple)"><div class="wrap">
-  <div class="rule"><b class="num">06</b><h2 data-t="s6">Loop and slow down a section</h2><i class="fill"></i></div>
-  <figure><img src="img/boucle.webp" width="1706" height="920" alt="" data-alt="s6" loading="lazy"></figure>
+  <i class="tick"></i>
+  <h2 data-t="s4">Auto-detect chords and tempo</h2>
+  <p class="sub" data-t="s4b">Get started transcribing a song, and check the voicing of each chord.</p>
+  <figure style="max-width:430px"><img src="img/voicings.webp" width="574" height="852" alt="" data-alt="s4" loading="lazy"></figure>
 </div></section>
 
 <section class="block"><div class="wrap">
@@ -232,12 +241,17 @@ let winArm = false;
 const linArm = /aarch64|arm64|armv8/i.test(navigator.userAgent);
 
 const T = {
-en:{title:"Spectre — a tool for listening to music closely",
- desc:"A spectrogram for transcribing music by ear: a colour per note, automatic chord detection, stem separation. For macOS, Windows and Linux.",
- tagline:"A tool for listening to music closely.",
- s1:"The whole track in one image", s2:"One colour per note",
- s3:"Automatic chord detection", s4:"Vocals, chords, drums",
- s5:"Stem separation: bass, drums, vocals, other", s6:"Loop and slow down a section",
+en:{title:"Spectre — a synesthetic music player for musicians",
+ desc:"A music player that separates the stems, gives every note a colour and reads out the chords. For macOS, Windows and Linux.",
+ tagline:"A synesthetic music player for musicians.",
+ s1:"Automatic separation into four stems: vocals, bass, drums and instruments",
+ s1b:"Using the open-weights AI model Demucs v4.",
+ s2:"Transform any tune into a backing track",
+ s2b:"Loop a section, transpose it or slow it down, remove the voice, isolate the bass…",
+ s3:"The sound spectrum in a way that makes sense for musicians",
+ s3b:"Using a colour scale that matches the cycle of fifths, and a dedicated drum visualisation.",
+ s4:"Auto-detect chords and tempo",
+ s4b:"Get started transcribing a song, and check the voicing of each chord.",
  dlMac:"Download for macOS", dlWin:"Download for Windows", dlLin:"Download for Linux",
  mMac:"Free and open source · macOS 15 or later · 104 MB",
  mWin:"Free and open source · Windows 10 or later · Intel and AMD · 23 MB",
@@ -263,12 +277,17 @@ en:{title:"Spectre — a tool for listening to music closely",
  privP:"When something breaks, Spectre sends the report on its own, so that it gets fixed. Never part of it: your file names, your folders, or what you listen to. Nothing else is measured. It says so once, at first launch.",
  footFree:"Free software", footSrc:"Source on GitHub", footLic:"Licence", footDemucs:"Separation by Demucs v4"},
 
-fr:{title:"Spectre — une aide à l'écoute active de la musique",
- desc:"Un spectrogramme pour transcrire la musique à l'oreille : une couleur par note, détection automatique des accords, séparation des pistes. Pour macOS, Windows et Linux.",
- tagline:"Une aide à l'écoute active de la musique.",
- s1:"Tout le morceau dans une image", s2:"Une couleur par note",
- s3:"Détection automatique des accords", s4:"Voix, accords, batterie",
- s5:"Séparation des pistes : basse, batterie, voix, autres", s6:"Boucler et ralentir une section",
+fr:{title:"Spectre — un lecteur de musique synesthésique pour musicien·nes",
+ desc:"Un lecteur de musique qui sépare les pistes, donne à chaque note sa couleur et relève les accords. Pour macOS, Windows et Linux.",
+ tagline:"Un lecteur de musique synesthésique pour musicien·nes.",
+ s1:"Séparation automatique en quatre pistes : voix, basse, batterie et instruments",
+ s1b:"Par le modèle d'intelligence artificielle à poids ouverts Demucs v4.",
+ s2:"Transformer n'importe quel morceau en playback",
+ s2b:"Boucler une section, la transposer ou la ralentir, retirer la voix, isoler la basse…",
+ s3:"Le spectre sonore présenté comme un musicien l'entend",
+ s3b:"Une échelle de couleurs calée sur le cycle des quintes, et une visualisation dédiée à la batterie.",
+ s4:"Détection automatique des accords et du tempo",
+ s4b:"De quoi commencer à relever un morceau, et vérifier le voicing de chaque accord.",
  dlMac:"Télécharger pour macOS", dlWin:"Télécharger pour Windows", dlLin:"Télécharger pour Linux",
  mMac:"Libre et gratuit · macOS 15 ou plus récent · 104 Mo",
  mWin:"Libre et gratuit · Windows 10 ou plus récent · Intel et AMD · 23 Mo",
@@ -294,12 +313,17 @@ fr:{title:"Spectre — une aide à l'écoute active de la musique",
  privP:"Quand quelque chose casse, Spectre en envoie le rapport toute seule, pour que ce soit corrigé. N'en font jamais partie : le nom de vos fichiers, vos dossiers, ni ce que vous écoutez. Rien d'autre n'est mesuré. Elle le dit une fois, au premier lancement.",
  footFree:"Logiciel libre", footSrc:"Code source sur GitHub", footLic:"Licence", footDemucs:"Séparation par Demucs v4"},
 
-es:{title:"Spectre — una ayuda para la escucha activa",
- desc:"Un espectrograma para sacar música de oído: un color por nota, detección automática de acordes, separación de pistas. Para macOS, Windows y Linux.",
- tagline:"Una ayuda para la escucha activa.",
- s1:"Todo el tema en una imagen", s2:"Un color por nota",
- s3:"Detección automática de acordes", s4:"Voz, acordes, batería",
- s5:"Separación de pistas: bajo, batería, voz, resto", s6:"Hacer un bucle y ralentizar",
+es:{title:"Spectre — un reproductor de música sinestésico para músicos",
+ desc:"Un reproductor de música que separa las pistas, da a cada nota su color y detecta los acordes. Para macOS, Windows y Linux.",
+ tagline:"Un reproductor de música sinestésico para músicos.",
+ s1:"Separación automática en cuatro pistas: voz, bajo, batería e instrumentos",
+ s1b:"Con el modelo de inteligencia artificial de pesos abiertos Demucs v4.",
+ s2:"Convertir cualquier tema en una base instrumental",
+ s2b:"Hacer un bucle con una sección, transponerla o ralentizarla, quitar la voz, aislar el bajo…",
+ s3:"El espectro sonoro presentado como lo oye un músico",
+ s3b:"Una escala de colores que sigue el círculo de quintas, y una visualización dedicada a la batería.",
+ s4:"Detección automática de acordes y tempo",
+ s4b:"Lo justo para empezar a sacar un tema y comprobar el voicing de cada acorde.",
  dlMac:"Descargar para macOS", dlWin:"Descargar para Windows", dlLin:"Descargar para Linux",
  mMac:"Libre y gratuito · macOS 15 o posterior · 104 MB",
  mWin:"Libre y gratuito · Windows 10 o posterior · Intel y AMD · 23 MB",
@@ -325,12 +349,17 @@ es:{title:"Spectre — una ayuda para la escucha activa",
  privP:"Cuando algo se rompe, Spectre envía el informe por su cuenta, para que se corrija. Nunca forman parte de él: los nombres de sus archivos, sus carpetas ni lo que escucha. No se mide nada más. Lo dice una vez, en el primer arranque.",
  footFree:"Software libre", footSrc:"Código en GitHub", footLic:"Licencia", footDemucs:"Separación con Demucs v4"},
 
-de:{title:"Spectre — eine Hilfe zum aufmerksamen Hören",
- desc:"Ein Spektrogramm zum Heraushören von Musik: eine Farbe pro Ton, automatische Akkorderkennung, Spurtrennung. Für macOS, Windows und Linux.",
- tagline:"Eine Hilfe zum aufmerksamen Hören.",
- s1:"Das ganze Stück in einem Bild", s2:"Eine Farbe pro Ton",
- s3:"Automatische Akkorderkennung", s4:"Gesang, Akkorde, Schlagzeug",
- s5:"Spurtrennung: Bass, Schlagzeug, Gesang, Rest", s6:"Abschnitt loopen und verlangsamen",
+de:{title:"Spectre — ein synästhetischer Musikplayer für Musiker·innen",
+ desc:"Ein Musikplayer, der die Spuren trennt, jedem Ton seine Farbe gibt und die Akkorde erkennt. Für macOS, Windows und Linux.",
+ tagline:"Ein synästhetischer Musikplayer für Musiker·innen.",
+ s1:"Automatische Trennung in vier Spuren: Gesang, Bass, Schlagzeug und Instrumente",
+ s1b:"Mit dem KI-Modell Demucs v4, dessen Gewichte offen liegen.",
+ s2:"Jedes Stück in ein Playback verwandeln",
+ s2b:"Einen Abschnitt loopen, transponieren oder verlangsamen, den Gesang entfernen, den Bass isolieren …",
+ s3:"Das Klangspektrum so, wie ein Musiker es hört",
+ s3b:"Eine Farbskala nach dem Quintenzirkel, und eine eigene Darstellung für das Schlagzeug.",
+ s4:"Akkorde und Tempo automatisch erkennen",
+ s4b:"Genug, um ein Stück herauszuhören und das Voicing jedes Akkords zu prüfen.",
  dlMac:"Für macOS herunterladen", dlWin:"Für Windows herunterladen", dlLin:"Für Linux herunterladen",
  mMac:"Frei und quelloffen · macOS 15 oder neuer · 104 MB",
  mWin:"Frei und quelloffen · Windows 10 oder neuer · Intel und AMD · 23 MB",
@@ -356,12 +385,17 @@ de:{title:"Spectre — eine Hilfe zum aufmerksamen Hören",
  privP:"Wenn etwas kaputtgeht, schickt Spectre den Bericht von selbst, damit es behoben wird. Niemals dabei: Ihre Dateinamen, Ihre Ordner oder was Sie hören. Sonst wird nichts erfasst. Sie sagt es einmal, beim ersten Start.",
  footFree:"Freie Software", footSrc:"Quellcode auf GitHub", footLic:"Lizenz", footDemucs:"Trennung mit Demucs v4"},
 
-pl:{title:"Spectre — pomoc w uważnym słuchaniu muzyki",
- desc:"Spektrogram do wyciągania muzyki ze słuchu: jeden kolor na dźwięk, automatyczne rozpoznawanie akordów, rozdzielanie ścieżek. Na macOS, Windows i Linux.",
- tagline:"Pomoc w uważnym słuchaniu muzyki.",
- s1:"Cały utwór na jednym obrazie", s2:"Jeden kolor na dźwięk",
- s3:"Automatyczne rozpoznawanie akordów", s4:"Wokal, akordy, perkusja",
- s5:"Rozdzielanie ścieżek: bas, perkusja, wokal, reszta", s6:"Zapętlenie i spowolnienie fragmentu",
+pl:{title:"Spectre — synestezyjny odtwarzacz muzyki dla muzyków",
+ desc:"Odtwarzacz muzyki, który rozdziela ścieżki, nadaje każdemu dźwiękowi kolor i rozpoznaje akordy. Na macOS, Windows i Linux.",
+ tagline:"Synestezyjny odtwarzacz muzyki dla muzyków.",
+ s1:"Automatyczne rozdzielenie na cztery ścieżki: wokal, bas, perkusja i instrumenty",
+ s1b:"Modelem sztucznej inteligencji o otwartych wagach Demucs v4.",
+ s2:"Zamienić dowolny utwór w podkład",
+ s2b:"Zapętlić fragment, przetransponować go lub zwolnić, usunąć wokal, wyizolować bas…",
+ s3:"Widmo dźwięku pokazane tak, jak słyszy je muzyk",
+ s3b:"Skala kolorów zgodna z kołem kwintowym i osobna wizualizacja perkusji.",
+ s4:"Automatyczne wykrywanie akordów i tempa",
+ s4b:"Tyle, żeby zacząć wyciągać utwór ze słuchu i sprawdzić voicing każdego akordu.",
  dlMac:"Pobierz na macOS", dlWin:"Pobierz na Windows", dlLin:"Pobierz na Linux",
  mMac:"Wolne i otwarte · macOS 15 lub nowszy · 104 MB",
  mWin:"Wolne i otwarte · Windows 10 lub nowszy · Intel i AMD · 23 MB",
@@ -452,14 +486,14 @@ function apply(lang){
     // La tranche la plus probable sous le bouton, l'autre juste en dessous : on ne
     // peut pas savoir à coup sûr, et cacher celle qu'il faut derrière une page de
     // releases est le meilleur moyen qu'elle ne soit jamais trouvée.
-    btn.textContent = t.dlWin; btn.classList.remove("quiet");
+    btn.textContent = t.dlWin;
     btn.href = winArm ? DL_WIN_ARM : DL_WIN_X64;
     meta.textContent = winArm ? t.mWinArm : t.mWin;
     alta.textContent = winArm ? t.altWinX64 : t.altWinArm;
     alta.href = winArm ? DL_WIN_X64 : DL_WIN_ARM;
     alt.hidden = false;
   } else if (os === "linux"){
-    btn.textContent = t.dlLin; btn.classList.remove("quiet");
+    btn.textContent = t.dlLin;
     btn.href = linArm ? DL_LIN_DEB_ARM : DL_LIN_DEB;
     meta.textContent = linArm ? t.mLinArm : t.mLin;
     // L'AppImage sous le bouton plutôt que la version Mac : quelqu'un qui arrive ici
@@ -471,7 +505,7 @@ function apply(lang){
     document.getElementById("cLin").textContent =
       "sudo apt install ./Spectre-" + (linArm ? "arm64" : "amd64") + ".deb";
   } else {
-    btn.textContent = t.dlMac; btn.href = DL; btn.classList.remove("quiet");
+    btn.textContent = t.dlMac; btn.href = DL;
     meta.textContent = (os === "mobile") ? t.mMob : t.mMac;
     alt.hidden = true;
   }
