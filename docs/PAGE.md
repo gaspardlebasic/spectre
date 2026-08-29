@@ -21,7 +21,7 @@ et le titre y est petit.
 ### Un lecteur de musique synesthésique pour musicien·nes
 
 **[ Télécharger pour macOS ]**
-Libre et gratuit · macOS 15 ou plus récent · 104 Mo
+Libre et gratuit · macOS 15 ou plus récent · 115 Mo
 
 ---
 
@@ -61,7 +61,7 @@ De quoi commencer à relever un morceau, et vérifier le voicing de chaque accor
 
 ## Installer
 
-**[ Télécharger pour macOS ]** · 104 Mo · macOS 15 ou plus récent
+**[ Télécharger pour macOS ]** · 115 Mo · macOS 15 ou plus récent
 
 L'application n'est pas signée par un identifiant Apple : macOS la met en
 quarantaine au téléchargement. Après l'avoir glissée dans `Applications` :
@@ -113,7 +113,7 @@ Research)
 ### A synesthetic music player for musicians
 
 **[ Download for macOS ]**
-Free and open source · macOS 15 or later · 104 MB
+Free and open source · macOS 15 or later · 115 MB
 
 ---
 
@@ -144,7 +144,7 @@ Get started transcribing a song, and check the voicing of each chord.
 
 ## Install
 
-**[ Download for macOS ]** · 104 MB · macOS 15 or later
+**[ Download for macOS ]** · 115 MB · macOS 15 or later
 
 The app is not signed with an Apple developer ID, so macOS quarantines it on
 download. Once it is in `Applications`:
@@ -194,7 +194,7 @@ Free software · Source on GitHub · Separation by Demucs v4 (Meta AI Research)
 ### Un reproductor de música sinestésico para músicos
 
 **[ Descargar para macOS ]**
-Libre y gratuito · macOS 15 o posterior · 104 MB
+Libre y gratuito · macOS 15 o posterior · 115 MB
 
 ---
 
@@ -226,7 +226,7 @@ Lo justo para empezar a sacar un tema y comprobar el voicing de cada acorde.
 
 ## Instalar
 
-**[ Descargar para macOS ]** · 104 MB · macOS 15 o posterior
+**[ Descargar para macOS ]** · 115 MB · macOS 15 o posterior
 
 La aplicación no está firmada con un identificador de desarrollador de Apple, así
 que macOS la pone en cuarentena al descargarla. Una vez en `Aplicaciones`:
@@ -276,7 +276,7 @@ Software libre · Código en GitHub · Separación con Demucs v4 (Meta AI Resear
 ### Ein synästhetischer Musikplayer für Musiker·innen
 
 **[ Für macOS herunterladen ]**
-Frei und quelloffen · macOS 15 oder neuer · 104 MB
+Frei und quelloffen · macOS 15 oder neuer · 115 MB
 
 ---
 
@@ -308,7 +308,7 @@ Genug, um ein Stück herauszuhören und das Voicing jedes Akkords zu prüfen.
 
 ## Installieren
 
-**[ Für macOS herunterladen ]** · 104 MB · macOS 15 oder neuer
+**[ Für macOS herunterladen ]** · 115 MB · macOS 15 oder neuer
 
 Die App ist nicht mit einer Apple-Entwickler-ID signiert, deshalb stellt macOS sie
 beim Herunterladen unter Quarantäne. Sobald sie in `Programme` liegt:
@@ -358,7 +358,7 @@ Freie Software · Quellcode auf GitHub · Trennung mit Demucs v4 (Meta AI Resear
 ### Synestezyjny odtwarzacz muzyki dla muzyków
 
 **[ Pobierz na macOS ]**
-Wolne i otwarte · macOS 15 lub nowszy · 104 MB
+Wolne i otwarte · macOS 15 lub nowszy · 115 MB
 
 ---
 
@@ -388,7 +388,7 @@ Tyle, żeby zacząć wyciągać utwór ze słuchu i sprawdzić voicing każdego 
 
 ## Instalacja
 
-**[ Pobierz na macOS ]** · 104 MB · macOS 15 lub nowszy
+**[ Pobierz na macOS ]** · 115 MB · macOS 15 lub nowszy
 
 Aplikacja nie jest podpisana identyfikatorem dewelopera Apple, więc macOS poddaje
 ją kwarantannie po pobraniu. Gdy znajdzie się w `Aplikacje`:
