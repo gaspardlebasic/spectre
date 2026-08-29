@@ -317,7 +317,7 @@ extension Catalogue {
         .majTitre: "Spectre %1$@ ist da",
         .majCorps: "Sie haben Version %1$@.",
         .majTelecharger: "Herunterladen",
-        .majPlusTard: "Später",
+        .majIgnorer: "Diese Version überspringen",
 
         // MARK: La fenêtre des réglages
         .reglagesPistesSeparees: "Getrennte Spuren",

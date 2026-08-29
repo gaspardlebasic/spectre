@@ -287,3 +287,45 @@ public enum Bienvenue {
     /// qui doit rejouer la question après avoir changé de rangement.
     public static func oublierPourLeHarnais() { dejaVu = nil }
 }
+
+/// La version dont on ne veut plus entendre parler.
+///
+/// « Ignorer cette version » a remplacé « Plus tard », qui ne valait que pour le
+/// lancement en cours : la question revenait donc à chaque ouverture, et la seule
+/// façon d'en sortir était de mettre à jour. Un numéro écrit sur le disque suffit à
+/// la retirer — et la retire **pour cette version-là seulement**, ce qui est tout
+/// l'intérêt : la livraison suivante repose la question, une fois.
+///
+/// Même forme que `Bienvenue`, et pour la même raison : les deux systèmes qui
+/// dessinent eux-mêmes leur interface posent la question à chaque image.
+public enum MiseAJourEcartee {
+    private static var temoin: URL? {
+        Storage.root?.appendingPathComponent("maj-ecartee", isDirectory: false)
+    }
+
+    /// `nil` tant qu'on n'a pas lu le disque, `""` quand il n'y a rien à y lire :
+    /// deux états qu'un simple `String?` confondrait, et la confusion coûterait une
+    /// lecture de fichier par image.
+    private static var lue: String?
+
+    /// Le numéro écarté, ou `nil` si aucun ne l'est.
+    public static var version: String? {
+        if lue == nil {
+            lue = temoin.flatMap { try? String(contentsOf: $0, encoding: .utf8) }?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        }
+        let valeur = lue ?? ""
+        return valeur.isEmpty ? nil : valeur
+    }
+
+    /// Cette version ne sera plus proposée. Écrit tout de suite, comme le témoin du
+    /// diaporama : une séance qui finit mal ne doit pas reposer la question.
+    public static func ecarter(_ version: String) {
+        lue = version
+        guard let temoin else { return }
+        try? Data((version + "\n").utf8).write(to: temoin, options: .atomic)
+    }
+
+    /// Rend au processus un disque neuf. N'existe que pour le harnais.
+    public static func oublierPourLeHarnais() { lue = nil }
+}

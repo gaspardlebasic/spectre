@@ -116,20 +116,42 @@ public struct MorceauRecent: Identifiable, Equatable, Sendable {
 
     /// La version trouvée en face, quand elle est plus récente que celle qui tourne.
     public private(set) var livraison: MiseAJour.Livraison?
-    /// « Plus tard » a été cliqué : on ne repose pas la question de ce lancement-ci.
-    @ObservationIgnored private var ecartee = false
+    /// La modale a été refermée : on ne repose pas la question de ce lancement-ci.
+    @ObservationIgnored private var refermee = false
 
     /// La modale de mise à jour est-elle à l'écran ?
     ///
     /// **Après le diaporama**, et c'est cette ligne qui le dit. Sans elle, quelqu'un
     /// qui installe l'application le jour d'une livraison verrait les deux
     /// superposées.
-    public var miseAJourAMontrer: Bool { !diaporama && !ecartee && livraison != nil }
+    ///
+    /// Et jamais pour une version écartée : celle-là a reçu sa réponse une fois pour
+    /// toutes, la reposer à chaque ouverture ne ferait qu'apprendre à cliquer sans
+    /// lire.
+    public var miseAJourAMontrer: Bool {
+        guard !diaporama, !refermee, let livraison else { return false }
+        return livraison.version != MiseAJourEcartee.version
+    }
 
     /// La version qui tourne, telle qu'elle s'écrit dans la modale.
     public var versionCourante: String { Spectre.version }
 
-    public func plusTard() { ecartee = true }
+    /// Referme la modale pour ce lancement-ci, sans rien décider de plus.
+    ///
+    /// C'est ce que fait Échap, et ce que fait « Télécharger » en partant : le choix
+    /// durable, c'est l'autre bouton.
+    public func fermerLaMiseAJour() { refermee = true }
+
+    /// « Ignorer cette version » : elle ne sera plus proposée, à aucun lancement.
+    ///
+    /// Le numéro part sur le disque tout de suite — voir `MiseAJourEcartee`. La
+    /// livraison suivante, elle, reposera la question : on écarte une version, pas
+    /// les mises à jour.
+    public func ignorerCetteVersion() {
+        refermee = true
+        guard let livraison else { return }
+        MiseAJourEcartee.ecarter(livraison.version)
+    }
 
     /// Ouvre la page des versions dans le navigateur, et referme la modale.
     ///
@@ -138,7 +160,7 @@ public struct MorceauRecent: Identifiable, Equatable, Sendable {
     /// paquet, on remplace l'application.
     public func telecharger() {
         guard let livraison else { return }
-        ecartee = true
+        refermee = true
         exterieur.ouvrirLaPage(livraison.page)
     }
 

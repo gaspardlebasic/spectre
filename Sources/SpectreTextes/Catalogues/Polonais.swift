@@ -316,7 +316,7 @@ extension Catalogue {
         .majTitre: "Spectre %1$@ jest dostępny",
         .majCorps: "Masz wersję %1$@.",
         .majTelecharger: "Pobierz",
-        .majPlusTard: "Później",
+        .majIgnorer: "Pomiń tę wersję",
 
         // MARK: La fenêtre des réglages
         .reglagesPistesSeparees: "Rozdzielone ścieżki",

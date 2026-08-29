@@ -266,9 +266,48 @@ do {
     let autre = Lancement(pistes: RangementDEssai(), exterieur: exterieur)
     autre.proposer(.init(version: "0.9", page: page))
     verifie(autre.miseAJourAMontrer, "sur un lancement neuf, elle se montre")
-    autre.plusTard()
-    verifie(!autre.miseAJourAMontrer, "« Plus tard » la referme sans rien ouvrir")
+    autre.fermerLaMiseAJour()
+    verifie(!autre.miseAJourAMontrer, "Échap la referme sans rien ouvrir")
     verifie(exterieur.pages == [page], "et sans rien ouvrir dans le navigateur")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+titre("« Ignorer cette version » tient d'un lancement à l'autre")
+
+// Le défaut qu'on cherche ici est celui qu'a remplacé ce bouton : « Plus tard » ne
+// valait que pour la séance en cours, donc la question revenait à chaque ouverture
+// et la seule façon d'en sortir était de mettre à jour. Ce qui se vérifie, c'est
+// donc le lancement **suivant** — et qu'une version de plus repose bien la question.
+do {
+    try? gestionnaire.removeItem(at: rangement.appendingPathComponent("maj-ecartee"))
+    MiseAJourEcartee.oublierPourLeHarnais()
+    let exterieur = ExterieurDEssai()
+    let page = URL(string: "https://github.com/exemple/spectre/releases/tag/v0.9")!
+
+    let ignoree = Lancement(pistes: RangementDEssai(), exterieur: exterieur)
+    ignoree.fermerLeDiaporama()
+    ignoree.proposer(.init(version: "0.9", page: page))
+    verifie(ignoree.miseAJourAMontrer, "elle se montre une première fois")
+    ignoree.ignorerCetteVersion()
+    verifie(!ignoree.miseAJourAMontrer, "le bouton la referme")
+    verifie(exterieur.pages.isEmpty, "sans rien ouvrir dans le navigateur")
+
+    MiseAJourEcartee.oublierPourLeHarnais()
+    verifie(MiseAJourEcartee.version == "0.9",
+            "le numéro est écrit sur le disque tout de suite, pas à la fermeture")
+
+    let apres = Lancement(pistes: RangementDEssai(), exterieur: exterieur)
+    apres.fermerLeDiaporama()
+    apres.proposer(.init(version: "0.9", page: page))
+    verifie(!apres.miseAJourAMontrer, "au lancement suivant, elle ne revient pas")
+
+    let suivante = Lancement(pistes: RangementDEssai(), exterieur: exterieur)
+    suivante.fermerLeDiaporama()
+    suivante.proposer(.init(version: "0.10",
+                            page: URL(string: "https://exemple/v0.10")!))
+    verifie(suivante.miseAJourAMontrer,
+            "mais la livraison d'après repose la question : on écarte une version, pas les mises à jour")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
