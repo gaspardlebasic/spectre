@@ -63,6 +63,9 @@ public final class Accueil<Lecteur: LecteurAudio> {
 
     private var souris = CGPoint(x: -1000, y: -1000)
     private var appuiEnAttente: CGPoint?
+    /// Vrai le temps que la page se dessine sous une couche : elle se voit encore au
+    /// travers du voile, mais elle ne répond plus. Voir `dessinerLaPage`.
+    private var sourde = false
 
     public func sourisA(_ p: CGPoint) { souris = p }
     public func appuiA(_ p: CGPoint) { souris = p; appuiEnAttente = p }
@@ -95,7 +98,10 @@ public final class Accueil<Lecteur: LecteurAudio> {
             return true
         }
         if lancement.miseAJourAMontrer {
-            if touche == .echappement { lancement.plusTard() } else { lancement.telecharger() }
+            // Échap referme pour cette séance seulement : une touche pressée au
+            // hasard ne doit pas écarter une version pour toujours.
+            if touche == .echappement { lancement.fermerLaMiseAJour() }
+            else { lancement.telecharger() }
             return true
         }
         return false
@@ -110,10 +116,18 @@ public final class Accueil<Lecteur: LecteurAudio> {
     /// première ligne *est* le dernier morceau : ce qui se faisait tout seul se fait
     /// d'un clic, et les neuf autres fois on choisit.
     public func dessinerLaPage(_ p: Pinceau, largeur: Double, hauteur: Double) {
-        // Ce qui n'a touché aucun bouton est jeté en fin d'image. Un appui gardé
-        // d'une image à l'autre agirait à retardement, sur la page ou la couche qui
-        // se trouve là à ce moment-là — et ce ne serait pas celle qu'on visait.
-        defer { appuiEnAttente = nil }
+        // La page est dessinée **avant** les couches, dans la même image. Tant qu'une
+        // couche recouvre la fenêtre, l'appui est à elle : le lire ici le lui volerait,
+        // et « Suivant » comme « Passer » resteraient sans effet — c'est le défaut que
+        // Windows et Linux ont porté, le Mac y échappant parce que là, c'est SwiftUI
+        // qui range les clics.
+        //
+        // Et rien n'est jeté ici : `dessinerLesCouches` est appelée à chaque image,
+        // après tout le reste, et c'est **le seul endroit** où l'appui de l'image
+        // expire. Un second endroit qui jetterait, c'est très exactement le défaut
+        // qu'on vient de réparer.
+        sourde = couvreLaFenetre
+        defer { sourde = false }
         let morceaux = modele.lancement.morceaux
         let lignes = min(morceaux.count, Self.lignesVisibles)
         let hauteurDeLaListe = morceaux.isEmpty ? 24
@@ -163,8 +177,7 @@ public final class Accueil<Lecteur: LecteurAudio> {
         let survolee = zone.contains(souris)
         let corbeille = CGRect(x: zone.maxX - 34, y: zone.minY + 8, width: 22, height: 22)
 
-        if let appui = appuiEnAttente, zone.contains(appui) {
-            appuiEnAttente = nil
+        if let appui = appuiPris(dans: zone) {
             // La corbeille d'abord : elle est **dans** la ligne, et un clic dessus
             // qui rouvrirait le morceau serait le contraire de ce qu'on demandait.
             if corbeille.contains(appui) {
@@ -206,6 +219,10 @@ public final class Accueil<Lecteur: LecteurAudio> {
     /// visible que lorsque la première est refermée. Ici, on empile.
     public func dessinerLesCouches(_ p: Pinceau, largeurFenetre: Double,
                                    hauteurFenetre: Double) {
+        // **Le seul endroit où l'appui de l'image expire**, et il vient en dernier :
+        // ce qui n'a touché aucun bouton est jeté ici. Un appui gardé d'une image à
+        // l'autre agirait à retardement, sur la page ou la couche qui se trouve là à
+        // ce moment-là — et ce ne serait pas celle qu'on visait.
         defer { appuiEnAttente = nil }
         if modele.lancement.diaporama {
             diaporama(p, largeurFenetre: largeurFenetre, hauteurFenetre: hauteurFenetre)
@@ -329,7 +346,15 @@ public final class Accueil<Lecteur: LecteurAudio> {
     private func miseAJour(_ p: Pinceau, largeurFenetre: Double, hauteurFenetre: Double) {
         let lancement = modele.lancement
         guard let livraison = lancement.livraison else { return }
-        let largeur = min(440, largeurFenetre - 60)
+
+        // Les deux boutons sont mesurés avant que le carton ait une largeur : en
+        // allemand « Diese Version überspringen » prend le double de « Später », et
+        // une largeur écrite en dur le ferait déborder dans une langue que l'auteur
+        // ne relit pas.
+        let largeurIgnorer = max(110.0, p.largeur(T(.majIgnorer), taille: 11.5) + 32)
+        let largeurTelecharger = max(130.0, p.largeur(T(.majTelecharger), taille: 11.5) + 32)
+        let largeur = min(max(440, 2 * Self.marge + largeurIgnorer + 10 + largeurTelecharger),
+                          largeurFenetre - 60)
         let interieur = largeur - 2 * Self.marge
 
         let corps = T(.majCorps, lancement.versionCourante)
@@ -351,18 +376,18 @@ public final class Accueil<Lecteur: LecteurAudio> {
                      taille: 11.5, Pinceau.blanc(0.72))
 
         let bas = y + hauteur - Self.marge - 34
-        let telecharger = CGRect(x: x + largeur - Self.marge - 130, y: bas,
-                                 width: 130, height: 34)
-        let plusTard = CGRect(x: telecharger.minX - 10 - 110, y: bas,
-                              width: 110, height: 34)
+        let telecharger = CGRect(x: x + largeur - Self.marge - largeurTelecharger, y: bas,
+                                 width: largeurTelecharger, height: 34)
+        let ignorer = CGRect(x: telecharger.minX - 10 - largeurIgnorer, y: bas,
+                             width: largeurIgnorer, height: 34)
 
-        if presse(plusTard) { lancement.plusTard(); return }
+        if presse(ignorer) { lancement.ignorerCetteVersion(); return }
         if presse(telecharger) { lancement.telecharger(); return }
 
-        p.arrondi(plusTard.minX, plusTard.minY, plusTard.width, plusTard.height,
-                  rayon: 8, Pinceau.blanc(plusTard.contains(souris) ? 0.16 : 0.09))
-        p.texte(T(.majPlusTard), x: plusTard.minX, y: plusTard.midY,
-                largeur: plusTard.width, taille: 11.5, Pinceau.blanc(0.85),
+        p.arrondi(ignorer.minX, ignorer.minY, ignorer.width, ignorer.height,
+                  rayon: 8, Pinceau.blanc(ignorer.contains(souris) ? 0.16 : 0.09))
+        p.texte(T(.majIgnorer), x: ignorer.minX, y: ignorer.midY,
+                largeur: ignorer.width, taille: 11.5, Pinceau.blanc(0.85),
                 alignement: .centre)
 
         p.arrondi(telecharger.minX, telecharger.minY, telecharger.width,
@@ -374,9 +399,15 @@ public final class Accueil<Lecteur: LecteurAudio> {
     }
 
     /// Ce rectangle vient-il d'être cliqué ? Consomme l'appui, comme le panneau.
-    private func presse(_ zone: CGRect) -> Bool {
-        guard let appui = appuiEnAttente, zone.contains(appui) else { return false }
+    private func presse(_ zone: CGRect) -> Bool { appuiPris(dans: zone) != nil }
+
+    /// L'appui de cette image, s'il tombe là. Le consomme.
+    ///
+    /// Le seul chemin par lequel la page et les couches lisent un clic — et donc le
+    /// seul endroit où `sourde` a besoin d'être regardé.
+    private func appuiPris(dans zone: CGRect) -> CGPoint? {
+        guard !sourde, let appui = appuiEnAttente, zone.contains(appui) else { return nil }
         appuiEnAttente = nil
-        return true
+        return appui
     }
 }

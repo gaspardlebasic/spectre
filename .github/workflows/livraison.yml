@@ -476,23 +476,17 @@ jobs:
           cat > notes.md <<NOTES
           ## Ce qui change
 
-          **Spectre ne chauffe plus l'ordinateur quand on la laisse tranquille.** Une
-          fenêtre ouverte sur un morceau analysé, rien en lecture, l'application
-          passée au second plan : elle occupait un cœur entier — 15 % du processeur
-          sur un PC à huit fils — à redessiner soixante fois par seconde une image
-          que personne ne voyait. Elle ne dessine plus rien quand sa fenêtre est
-          réduite ou recouverte, et dix images par seconde au lieu de soixante quand
-          rien ne bouge. Le premier geste la réveille aussitôt : rien n'est perdu au
-          toucher, et le son continue de jouer derrière une autre fenêtre.
+          **La présentation du premier lancement se referme.** Sous Windows et sous
+          Linux, « Suivant » et « Passer » ne faisaient rien : le clic arrivait bien,
+          et il était jeté avant d'être lu. On était donc accueilli par une modale
+          qu'on ne pouvait chasser qu'au clavier, la première fois qu'on ouvrait
+          l'application. C'est réparé, et c'est la raison de cette livraison.
 
-          **L'application s'ouvre sur ses morceaux.** Sans fichier, elle montre ceux
-          qu'on a déjà travaillés plutôt qu'une fenêtre vide, se présente une fois au
-          premier lancement, et dit sa version.
-
-          **Sur un Raspberry Pi, on saura enfin pourquoi.** Les paquets ARM
-          s'installent sur un Pi mais ne s'y ouvrent pas — son pilote graphique
-          s'arrête à OpenGL 3.1, et Spectre en demande 3.3. Le refus le dit
-          maintenant en clair au lieu de laisser accuser le paquet.
+          **Une version proposée peut être écartée pour de bon.** « Plus tard » ne
+          valait que pour la séance en cours — la question revenait à chaque
+          ouverture, et rien ne la faisait taire. « Ignorer cette version » la
+          remplace : ce numéro-là ne sera plus proposé. La livraison d'après reposera
+          la question une fois, car on écarte une version, pas les mises à jour.
 
           ## macOS
 

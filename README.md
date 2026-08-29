@@ -192,6 +192,11 @@ demande un numéro à GitHub, sans jeton, sans identifiant, et ouvre une page si
 numéro est plus grand. `SPECTRE_MAJ=non` retire la question pour qui ne veut pas
 qu'on la pose.
 
+**« Ignorer cette version »** referme la modale pour de bon : ce numéro-là ne sera
+plus proposé, à aucun lancement. La livraison d'après, elle, reposera la question une
+fois — on écarte une version, pas les mises à jour. Échap referme sans rien décider,
+et la question revient à l'ouverture suivante.
+
 ## Ce que Spectre envoie, et ce qu'elle n'envoie jamais
 
 **Quand quelque chose casse, Spectre en envoie le rapport toute seule**, sans rien

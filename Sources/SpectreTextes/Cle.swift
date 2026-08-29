@@ -166,7 +166,7 @@ public enum Cle: String, CaseIterable, Sendable {
 
     // MARK: - La mise à jour
 
-    case majTitre, majCorps, majTelecharger, majPlusTard
+    case majTitre, majCorps, majTelecharger, majIgnorer
 
     // MARK: - La fenêtre des réglages
 

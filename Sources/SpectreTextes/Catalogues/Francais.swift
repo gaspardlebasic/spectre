@@ -312,7 +312,7 @@ extension Catalogue {
         .majTitre: "Spectre %1$@ est disponible",
         .majCorps: "Vous avez la version %1$@.",
         .majTelecharger: "Télécharger",
-        .majPlusTard: "Plus tard",
+        .majIgnorer: "Ignorer cette version",
 
         // MARK: La fenêtre des réglages
         .reglagesPistesSeparees: "Pistes séparées",

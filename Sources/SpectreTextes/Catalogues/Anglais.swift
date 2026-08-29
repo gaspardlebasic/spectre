@@ -311,7 +311,7 @@ extension Catalogue {
         .majTitre: "Spectre %1$@ is out",
         .majCorps: "You have version %1$@.",
         .majTelecharger: "Download",
-        .majPlusTard: "Later",
+        .majIgnorer: "Skip this version",
 
         // MARK: La fenêtre des réglages
         .reglagesPistesSeparees: "Separated stems",

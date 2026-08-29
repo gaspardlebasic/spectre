@@ -302,7 +302,7 @@ struct ModaleDeMiseAJour: View {
                         .foregroundStyle(.white.opacity(0.72))
                     HStack(spacing: 10) {
                         Spacer()
-                        Button(T(.majPlusTard)) { model.lancement.plusTard() }
+                        Button(T(.majIgnorer)) { model.lancement.ignorerCetteVersion() }
                             .controlSize(.large)
                         Button(T(.majTelecharger)) { model.lancement.telecharger() }
                             .buttonStyle(.borderedProminent)
@@ -311,7 +311,7 @@ struct ModaleDeMiseAJour: View {
                     }
                 }
                 .padding(26)
-                .frame(width: 420, alignment: .leading)
+                .frame(width: 470, alignment: .leading)
                 .verre(.regulier, in: .rect(cornerRadius: 16))
             }
         }
