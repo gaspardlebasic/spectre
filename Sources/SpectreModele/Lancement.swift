@@ -117,7 +117,17 @@ public struct MorceauRecent: Identifiable, Equatable, Sendable {
     /// La version trouvée en face, quand elle est plus récente que celle qui tourne.
     public private(set) var livraison: MiseAJour.Livraison?
     /// La modale a été refermée : on ne repose pas la question de ce lancement-ci.
-    @ObservationIgnored private var refermee = false
+    ///
+    /// **Observé, et il faut qu'il le soit.** Ce drapeau a porté `@ObservationIgnored`
+    /// de sa naissance jusqu'à la 0.7, et la modale de mise à jour restait alors
+    /// collée à l'écran sur le Mac : les deux boutons faisaient leur travail, mais
+    /// SwiftUI n'apprenait jamais que `miseAJourAMontrer` venait de changer, et il n'y
+    /// avait plus aucun moyen de refermer la fenêtre. Windows et Linux y échappaient
+    /// — eux relisent l'état à chaque image, et se moquent de savoir qui les prévient.
+    ///
+    /// La leçon vaut pour tout ce qu'on ajoutera ici : ce que la vue lit doit être
+    /// observé, et `@ObservationIgnored` est réservé à ce qu'aucune vue ne regarde.
+    private var refermee = false
 
     /// La modale de mise à jour est-elle à l'écran ?
     ///

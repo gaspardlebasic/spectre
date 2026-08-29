@@ -195,7 +195,8 @@ qu'on la pose.
 **« Ignorer cette version »** referme la modale pour de bon : ce numéro-là ne sera
 plus proposé, à aucun lancement. La livraison d'après, elle, reposera la question une
 fois — on écarte une version, pas les mises à jour. Échap referme sans rien décider,
-et la question revient à l'ouverture suivante.
+et la question revient à l'ouverture suivante. Échap referme aussi la présentation du
+premier lancement : aucune des deux modales ne se traverse à la seule souris.
 
 ## Ce que Spectre envoie, et ce qu'elle n'envoie jamais
 
