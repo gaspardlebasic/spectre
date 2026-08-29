@@ -1,3 +1,4 @@
+import Observation
 import Foundation
 import SpectreCore
 import SpectreModele
@@ -308,6 +309,55 @@ do {
                             page: URL(string: "https://exemple/v0.10")!))
     verifie(suivante.miseAJourAMontrer,
             "mais la livraison d'après repose la question : on écarte une version, pas les mises à jour")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+titre("La modale de mise à jour prévient quand elle s'en va")
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LE CONTRÔLE QUI VIENT D'UNE MODALE COLLÉE À L'ÉCRAN
+//
+// La 0.7 est partie avec une modale de mise à jour qu'on ne pouvait pas refermer sur
+// le Mac. Les deux boutons faisaient pourtant leur travail — les contrôles d'au-
+// dessus le disaient déjà, et ils avaient raison : `miseAJourAMontrer` passait bien à
+// faux. Ce qui manquait, c'est que **personne n'était prévenu**. Le drapeau portait
+// `@ObservationIgnored`, SwiftUI ne redessinait donc pas, et la fenêtre restait sous
+// un voile noir jusqu'à ce qu'on quitte l'application.
+//
+// Windows et Linux n'ont jamais rien vu : eux relisent l'état à chaque image. C'est
+// exactement le genre de défaut qu'un harnais qui lit une propriété ne peut pas
+// attraper — il faut écouter, et non regarder. D'où `withObservationTracking`, qui
+// est la couture que SwiftUI emploie lui-même.
+// ─────────────────────────────────────────────────────────────────────────────
+
+do {
+    let page = URL(string: "https://github.com/exemple/spectre/releases/tag/v0.9")!
+
+    /// Le changement d'état a-t-il réveillé qui l'observait ?
+    func previent(_ geste: (Lancement) -> Void) -> Bool {
+        try? gestionnaire.removeItem(at: rangement.appendingPathComponent("maj-ecartee"))
+        MiseAJourEcartee.oublierPourLeHarnais()
+        let lancement = Lancement(pistes: RangementDEssai(), exterieur: ExterieurDEssai())
+        lancement.fermerLeDiaporama()
+        lancement.proposer(.init(version: "0.9", page: page))
+
+        final class Reveil { var eu = false }
+        let reveil = Reveil()
+        // On lit ce que la vue lit — et rien d'autre : c'est cette lecture-là qui
+        // inscrit la dépendance, exactement comme le corps d'une `View`.
+        withObservationTracking { _ = lancement.miseAJourAMontrer }
+                       onChange: { reveil.eu = true }
+        geste(lancement)
+        return reveil.eu && !lancement.miseAJourAMontrer
+    }
+
+    verifie(previent { $0.ignorerCetteVersion() },
+            "« Ignorer cette version » prévient la vue, et pas seulement le modèle")
+    verifie(previent { $0.telecharger() },
+            "« Télécharger » aussi : la modale s'en va au lieu de rester collée")
+    verifie(previent { $0.fermerLaMiseAJour() },
+            "et Échap de même")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

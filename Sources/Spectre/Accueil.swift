@@ -232,7 +232,11 @@ struct Diaporama: View {
 
     private var pied: some View {
         HStack(spacing: 12) {
+            // Échap le referme aussi, comme sur les deux autres systèmes : une
+            // présentation dont on ne sort qu'à la souris est une présentation dont
+            // on ne sort pas le jour où la souris n'est pas lue.
             Button(T(.bienvenuePasser)) { model.lancement.fermerLeDiaporama() }
+                .keyboardShortcut(.cancelAction)
                 .buttonStyle(.plain)
                 .foregroundStyle(.white.opacity(0.5))
             Spacer()
@@ -314,6 +318,12 @@ struct ModaleDeMiseAJour: View {
                 .frame(width: 470, alignment: .leading)
                 .verre(.regulier, in: .rect(cornerRadius: 16))
             }
+            // Échap referme, comme sous Windows et sous Linux — et sans rien décider :
+            // une touche pressée au hasard n'écarte pas une version pour toujours. Ce
+            // chemin-là est aussi la sortie de secours du jour où un bouton se
+            // tromperait ; la 0.7 est partie sans lui, et la modale y était un
+            // cul-de-sac.
+            .onExitCommand { model.lancement.fermerLaMiseAJour() }
         }
     }
 }

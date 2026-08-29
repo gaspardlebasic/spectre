@@ -476,11 +476,21 @@ jobs:
           cat > notes.md <<NOTES
           ## Ce qui change
 
+          **La modale de mise à jour se referme sur le Mac.** Elle ne se refermait pas :
+          « Ignorer cette version » comme « Télécharger » faisaient leur travail, mais
+          la fenêtre restait sous son voile noir, et il fallait quitter l'application.
+          C'est le défaut de la 0.7, et c'est la raison de cette livraison. Échap
+          referme désormais les deux modales du lancement, sur les trois systèmes.
+
+          **Si vous êtes en 0.6 ou en 0.7**, la modale que vous avez sous les yeux est
+          celle qui ne se referme pas. Quittez l'application, installez celle-ci, et
+          elle ne reviendra plus.
+
+          Pour mémoire, la 0.7 apportait ceci, que cette version garde :
+
           **La présentation du premier lancement se referme.** Sous Windows et sous
           Linux, « Suivant » et « Passer » ne faisaient rien : le clic arrivait bien,
-          et il était jeté avant d'être lu. On était donc accueilli par une modale
-          qu'on ne pouvait chasser qu'au clavier, la première fois qu'on ouvrait
-          l'application. C'est réparé, et c'est la raison de cette livraison.
+          et il était jeté avant d'être lu.
 
           **Une version proposée peut être écartée pour de bon.** « Plus tard » ne
           valait que pour la séance en cours — la question revenait à chaque
