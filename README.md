@@ -666,6 +666,14 @@ Le pourcentage est donné en part d'**un cœur**, et le nombre de fils est rappe
 dessous : c'est très exactement en divisant un cœur plein par huit qu'on lit « 15 % »
 et qu'on prend un défaut pour un détail.
 
+Le relevé **attend d'abord que l'application ait fini ce qu'elle a commencé**, et
+signale la passe où elle calculait encore. Ce n'était pas le cas de la première
+version, et le paquet publié l'a montré aussitôt : « fenêtre cachée, zéro image,
+557 % d'un cœur ». Les deux nombres étaient justes. Ce qui brûlait cinq cœurs était
+la séparation des pistes, qu'ouvrir un morceau déclenche — pas la boucle, qui ne
+dessinait effectivement plus rien. Un instrument qui compte juste et qui laisse
+conclure faux est pire qu'un instrument absent.
+
 `.\essai.ps1` et `./essai.sh` en font une exigence, et une seule : fenêtre cachée,
 **zéro image**. Ce n'est pas une vitesse, c'est un comptage — il ne dépend ni de la
 carte ni de la charge de la machine, et ne peut donc pas échouer au hasard.

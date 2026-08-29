@@ -476,15 +476,20 @@ func unTour() -> Bool {
 /// vue du seul qui compte ici, `spectre_rendu_cachee` — et la mesure revient toute
 /// seule, sans un geste et sans un serveur d'affichage réel.
 func mesurerLeRepos(secondes: Double) -> String {
-    // On laisse d'abord l'analyse finir, comme le relevé de fluidité : mesurer un
-    // repos pendant qu'un cœur calcule la matrice mesurerait l'analyse.
-    for _ in 0..<600 {
+    // On laisse d'abord l'application finir ce qu'elle a commencé, et l'attente est
+    // **longue**. Ouvrir un morceau pour la première fois déclenche la séparation
+    // des pistes — c'est ce qui remplit la ligne de batterie — et Demucs occupe
+    // alors tous les cœurs pendant des minutes. Mesurer le repos là-dessus donne le
+    // coût de la séparation en croyant donner celui de la boucle : c'est l'erreur
+    // que ce relevé a faite, sur le paquet publié, avant qu'on l'attrape.
+    //
+    // Cinq minutes, et non l'infini : si l'application ne s'arrête toujours pas, on
+    // mesure quand même et le rapport le dit. Un harnais qui pend n'apprend rien.
+    let repos = Horloge.maintenant() + 300
+    while modele.quelqueChoseBouge, Horloge.maintenant() < repos {
         _ = viderLesEvenements()
         viderLaFilePrincipale()
         dessinerEtPresenter()
-        if modele.spectrogram.columnCount > 0 || modele.source == nil,
-           modele.progress == nil, !modele.percussionPending,
-           !modele.chordsPending { break }
     }
 
     func passe(_ nom: String) -> Repos.Passe {
@@ -493,13 +498,18 @@ func mesurerLeRepos(secondes: Double) -> String {
         let chauffe = Horloge.maintenant() + 0.5
         while Horloge.maintenant() < chauffe { _ = unTour() }
         imagesDessinees = 0
+        var travaillait = false
         let departHorloge = Horloge.maintenant()
         let departProcesseur = Horloge.tempsProcesseur()
-        while Horloge.maintenant() - departHorloge < secondes { _ = unTour() }
+        while Horloge.maintenant() - departHorloge < secondes {
+            if modele.quelqueChoseBouge { travaillait = true }
+            _ = unTour()
+        }
         return Repos.Passe(nom: nom,
                            secondes: Horloge.maintenant() - departHorloge,
                            images: imagesDessinees,
-                           processeur: Horloge.tempsProcesseur() - departProcesseur)
+                           processeur: Horloge.tempsProcesseur() - departProcesseur,
+                           travaillait: travaillait)
     }
 
     var relevés = [passe("fenêtre montrée, rien en lecture")]

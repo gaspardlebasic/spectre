@@ -135,6 +135,26 @@ do {
         print(texte)
         echecs += 1
     }
+
+    // Le cas qui a failli faire conclure de travers : zéro image dessinée, et cinq
+    // cœurs occupés — par la séparation des pistes, qu'ouvrir un morceau déclenche.
+    // Les deux nombres étaient justes ; lus ensemble sans cet avertissement, ils
+    // accusaient la boucle d'un travail qui n'était pas le sien.
+    let pendantUnCalcul = Repos.Passe(nom: "essai", secondes: 5, images: 0,
+                                      processeur: 25, travaillait: true)
+    let avecAvis = Repos.rapport([pendantUnCalcul], fils: 8)
+    if avecAvis.contains("calculait encore") {
+        print("  ✓ une passe mesurée pendant un calcul le dit")
+    } else {
+        print("  ✗ une passe mesurée pendant un calcul passe pour du repos")
+        echecs += 1
+    }
+    if Repos.rapport([passe], fils: 8).contains("calculait encore") {
+        print("  ✗ l'avertissement paraît sur une passe qui ne calculait rien")
+        echecs += 1
+    } else {
+        print("  ✓ et une passe au repos ne porte pas l'avertissement")
+    }
 }
 
 // MARK: - Le temps de processeur

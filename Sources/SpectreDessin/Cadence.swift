@@ -139,12 +139,24 @@ public enum Repos {
         public let images: Int
         /// Temps de processeur consommé pendant la passe, tous fils confondus.
         public let processeur: Double
+        /// L'application calculait-elle encore pendant la passe ?
+        ///
+        /// **Sans ce drapeau, le relevé ment.** Un morceau qu'on ouvre pour la
+        /// première fois déclenche la séparation des pistes — c'est ce qui remplit
+        /// la ligne de batterie — et Demucs occupe alors tous les cœurs pendant des
+        /// minutes. Le relevé disait « 557 % d'un cœur, fenêtre cachée » et zéro
+        /// image dessinée : les deux étaient vrais, et lus ensemble ils accusaient
+        /// la boucle d'un travail qui n'était pas le sien. Un instrument qui compte
+        /// juste et qui laisse conclure faux est pire qu'un instrument absent.
+        public let travaillait: Bool
 
-        public init(nom: String, secondes: Double, images: Int, processeur: Double) {
+        public init(nom: String, secondes: Double, images: Int, processeur: Double,
+                    travaillait: Bool = false) {
             self.nom = nom
             self.secondes = secondes
             self.images = images
             self.processeur = processeur
+            self.travaillait = travaillait
         }
 
         /// Images par seconde.
@@ -169,6 +181,11 @@ public enum Repos {
                                  + "%5.2f s de processeur   %5.1f %% d'un cœur",
                                  nom, passe.images, passe.cadence,
                                  passe.processeur, passe.partDUnCoeur))
+            if passe.travaillait {
+                lignes.append("      ⚠ l'application calculait encore — analyse, "
+                              + "relevé ou séparation. Le temps de processeur porte "
+                              + "ce calcul-là, et non le coût du repos.")
+            }
         }
         // Le nombre de fils est dit, sans quoi le pourcentage ne se compare à rien :
         // c'est très exactement le malentendu qui a laissé passer le défaut.

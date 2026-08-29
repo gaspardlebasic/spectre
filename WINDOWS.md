@@ -1662,6 +1662,18 @@ ci-dessus, et `.\essai.ps1` en fait une exigence : **fenêtre réduite, zéro im
 Un comptage, et non une vitesse : il ne dépend ni de la carte ni de la charge, et
 ne peut donc pas échouer au hasard, contrairement au relevé de fluidité.
 
+L'instrument a d'ailleurs failli mentir dès sa première sortie, et cela vaut d'être
+retenu. Lancé sur le paquet publié, il a rendu : **fenêtre cachée, zéro image, 557 %
+d'un cœur.** Les deux nombres étaient justes. La boucle ne dessinait effectivement
+plus rien ; ce qui brûlait cinq cœurs était la **séparation des pistes**, qu'ouvrir
+un morceau déclenche pour remplir la ligne de batterie, et qui dure des minutes. Lus
+ensemble et sans autre indication, les deux chiffres accusaient la boucle d'un
+travail qui n'était pas le sien.
+
+`--repos` attend donc maintenant que l'application ait fini — cinq minutes au plus —
+et marque toute passe mesurée pendant un calcul. Un instrument qui compte juste et
+qui laisse conclure faux est pire qu'un instrument absent.
+
 Mais `--repos` demande une fenêtre, donc un bureau. `prlctl exec` tombe dans la
 session 0, où Direct3D refuse la chaîne d'échange : la mesure ne peut pas se faire
 d'ici. D'où `CadenceCheck`, qui éprouve la **règle** sans fenêtre, sans carte et
