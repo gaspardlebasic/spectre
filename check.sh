@@ -149,6 +149,18 @@ if [ -x "$BIN/GestesCheck" ]; then
   "$BIN/GestesCheck"
 fi
 
+# L'allure de la boucle : à quelle vitesse elle tourne selon ce qui se passe.
+#
+# Windows et Linux seulement, comme les gestes, et pour la même raison — macOS
+# tourne dans la boucle de SwiftUI, qui ne redessine que ce qui a changé et n'a
+# donc jamais eu ce défaut. Ce que ce harnais garde, c'est qu'une fenêtre que
+# personne ne regarde ne se dessine plus : voir `SpectreDessin/Cadence.swift`.
+if [ -x "$BIN/CadenceCheck" ]; then
+  echo
+  echo "=== La cadence ==="
+  "$BIN/CadenceCheck"
+fi
+
 echo
 echo "=== Rendu ==="
 if [ "$(uname)" = "Darwin" ]; then

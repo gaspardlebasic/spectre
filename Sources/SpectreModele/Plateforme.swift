@@ -1,6 +1,9 @@
 import Foundation
 import SpectreCore
 import SpectreTextes
+#if canImport(WinSDK)
+import WinSDK
+#endif
 
 // Ce que le modèle d'application demande au système, et rien de plus.
 //
@@ -54,6 +57,41 @@ public enum Reglages {
 public enum Horloge {
     public static func maintenant() -> Double {
         Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000
+    }
+
+    /// Temps de processeur consommé par l'application depuis son démarrage, en
+    /// secondes, tous fils confondus.
+    ///
+    /// Ce n'est pas du temps qui passe, c'est du temps qu'on brûle : rapporté au
+    /// temps écoulé, il donne la part d'un cœur que l'application occupe — le
+    /// nombre même que le gestionnaire des tâches affiche, à ceci près qu'il le
+    /// divise par le nombre de fils de la machine. C'est ce que `--repos` mesure,
+    /// et la seule façon d'éprouver une consommation au repos sans regarder un
+    /// graphique par-dessus l'épaule de quelqu'un.
+    ///
+    /// Ni `clock()` ni l'horloge ci-dessus ne conviennent : le premier compte le
+    /// temps de l'appelant seul sous Windows, la seconde compte les secondes qui
+    /// passent, et l'on veut précisément la différence entre les deux.
+    public static func tempsProcesseur() -> Double {
+        #if canImport(WinSDK)
+        var creation = FILETIME(), fin = FILETIME()
+        var noyau = FILETIME(), utilisateur = FILETIME()
+        guard GetProcessTimes(GetCurrentProcess(), &creation, &fin,
+                              &noyau, &utilisateur) else { return 0 }
+        // Un `FILETIME` compte les centaines de nanosecondes sur deux mots de
+        // trente-deux bits, et il n'est pas aligné : le recomposer à la main est ce
+        // que Microsoft demande, et non un `unsafeBitCast` vers un entier de
+        // soixante-quatre bits.
+        func secondes(_ t: FILETIME) -> Double {
+            (Double(t.dwHighDateTime) * 4_294_967_296 + Double(t.dwLowDateTime))
+                / 10_000_000
+        }
+        return secondes(noyau) + secondes(utilisateur)
+        #else
+        var t = timespec()
+        guard clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t) == 0 else { return 0 }
+        return Double(t.tv_sec) + Double(t.tv_nsec) / 1_000_000_000
+        #endif
     }
 }
 

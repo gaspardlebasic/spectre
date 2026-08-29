@@ -411,6 +411,17 @@ func modulesPartages() -> [Target] {
                            "SpectreDessin", "SpectreToile"],
             path: "Tools/GestesCheck"
         ),
+        // L'allure de la boucle, éprouvée sans fenêtre.
+        //
+        // Même raison d'être ici que `GestesCheck`, et une raison de plus : le
+        // défaut qu'il garde — un cœur brûlé derrière une fenêtre recouverte — ne
+        // se voyait que dans un gestionnaire des tâches, sur une machine où
+        // quelqu'un était assis. La règle, elle, se vérifie partout.
+        .executableTarget(
+            name: "CadenceCheck",
+            dependencies: ["SpectreModele", "SpectreDessin"],
+            path: "Tools/CadenceCheck"
+        ),
     ]
     return liste
 }

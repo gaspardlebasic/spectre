@@ -50,3 +50,25 @@ func cadenceDeLEcran() -> Double {
     let obtenu = EnumDisplaySettingsW(nil, DWORD(bitPattern: -1), &mode)
     return obtenu ? Double(mode.dmDisplayFrequency) : 0
 }
+
+/// Dort au plus `secondes`, et **se réveille dès qu'une entrée arrive**.
+///
+/// `Sleep` ne conviendrait pas : au repos, la boucle dort un dixième de seconde
+/// entre deux images, et un `Sleep` ferait attendre ce dixième-là au premier clic.
+/// `MsgWaitForMultipleObjectsEx` rend la main à la première molette, au premier
+/// mouvement de souris, à la première touche — la latence du geste reste donc
+/// celle d'une boucle à pleine cadence, alors que le coût est celui d'une boucle
+/// arrêtée. Voir `SpectreDessin/Cadence.swift`.
+///
+/// `QS_ALLINPUT` et `MWMO_INPUTAVAILABLE` sont des macros, et sont donc récrites
+/// ici — la seconde importe autant que la première : sans elle, un message déjà
+/// dans la file au moment de l'appel ne réveille rien, et la boucle dort alors
+/// pendant qu'un geste attend.
+func dormirJusquAUneEntree(_ secondes: Double) {
+    // QS_ALLINPUT = QS_INPUT | QS_POSTMESSAGE | QS_TIMER | QS_PAINT | QS_HOTKEY
+    //             | QS_SENDMESSAGE
+    let toutesLesEntrees = DWORD(0x04FF)
+    let dejaLa = DWORD(0x0004)              // MWMO_INPUTAVAILABLE
+    _ = MsgWaitForMultipleObjectsEx(0, nil, DWORD(max(secondes, 0) * 1000),
+                                    toutesLesEntrees, dejaLa)
+}

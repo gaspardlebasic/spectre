@@ -496,6 +496,17 @@ int spectre_rendu_presenter(SpectreRendu *rendu) {
     return SUCCEEDED(hr) ? 1 : 0;
 }
 
+int spectre_rendu_cachee(SpectreRendu *rendu) {
+    if (!rendu || !rendu->chaine) { return 0; }
+    // `DXGI_PRESENT_TEST` ne présente rien : il ne fait que rendre l'état
+    // qu'aurait rendu une vraie présentation. C'est très exactement ce que
+    // Microsoft prescrit après un `DXGI_STATUS_OCCLUDED` — cesser de dessiner et
+    // interroger de temps en temps — et la seule façon de savoir qu'une fenêtre
+    // réduite est revenue sans lui dessiner une image pour la forme.
+    HRESULT hr = IDXGISwapChain2_Present(rendu->chaine, 0, DXGI_PRESENT_TEST);
+    return hr == DXGI_STATUS_OCCLUDED ? 1 : 0;
+}
+
 void spectre_rendu_attendre(SpectreRendu *rendu) {
     if (rendu && rendu->attente) {
         // Une seconde de patience au plus : un pilote qui ne réclame plus rien —

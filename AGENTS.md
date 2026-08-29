@@ -66,9 +66,9 @@ ordre.
 | Commande | Ce qu'elle fait |
 |----------|-----------------|
 | `./build.sh` | Compile et assemble `build/Spectre.app` (signature ad-hoc, enregistrement LaunchServices). |
-| `./check.sh` | Les harnais hors écran : les cinq langues, couche numérique, WAV, sessions, page de lancement, batterie, accords, analyse, rendu, séparation, lecture. Aucun fichier audio, aucune fenêtre. |
+| `./check.sh` | Les harnais hors écran : les cinq langues, couche numérique, WAV, sessions, page de lancement, batterie, accords, analyse, rendu, séparation, lecture, et l'allure de la boucle. Aucun fichier audio, aucune fenêtre. |
 | `./essai.sh` | **L'épreuve complète, application comprise** — voir plus bas. |
-| `.\essai.ps1` | La même épreuve, sous Windows : quatorze harnais, la fenêtre, et un relevé de fluidité. |
+| `.\essai.ps1` | La même épreuve, sous Windows : quatorze harnais, la fenêtre, un relevé de fluidité, et un relevé de repos. |
 | `./modele.sh` | Refabrique `Resources/htdemucs.onnx` (les poids de Demucs, ~166 Mo, hors dépôt). |
 | `.\build.ps1` | Assemble `build\Spectre` sous Windows — l'exécutable et ce qu'il lui faut — et l'éprouve dans un dossier propre. |
 | `.\paquet.ps1` | Refait l'icône, assemble, et fabrique l'installeur Windows et son archive — menu Démarrer, désinstallation, associations de fichiers. |
@@ -76,6 +76,7 @@ ordre.
 | `.\logo.ps1` | Refabrique `Resources\Spectre.ico` à partir du `.icns`, et la ressource que l'exécutable porte. |
 | `./logo.sh` | Refabrique l'icône. |
 | `swift build -c release` | Compile tout, sans assembler le paquet. |
+| `SpectreWindows.exe --repos 5` | Ce que l'application coûte quand on ne lui demande rien : elle réduit sa propre fenêtre, compte les images, et dit ce qu'elle a brûlé. `SpectreLinux --repos 5` fait de même. |
 | `Chrono morceau.mp3` | Chronomètre l'ouverture et la séparation étape par étape (`Tools/Chrono`). Travaille dans un rangement à part : `SPECTRE_RANGEMENT=/tmp/mesure SPECTRE_MODELE=$PWD/Resources/htdemucs.onnx`. |
 
 Xcode n'est pas nécessaire ; SwiftPM suffit. **Construire** demande macOS 26 : le

@@ -210,6 +210,35 @@ if ($Fluidite -gt 0) {
         "$images images, fenêtre visible"
 }
 
+# ── Le repos ─────────────────────────────────────────────────────────────────
+
+# Ce que l'application coûte quand on ne lui demande rien.
+#
+# Contrairement à la fluidité, **on exige ici**, et l'on peut : ce qui est vérifié
+# n'est pas une vitesse mais un comptage, et un comptage ne dépend ni de la carte
+# ni de la charge de la machine. Une fenêtre réduite doit dessiner **zéro** image ;
+# une fenêtre devant, à laquelle on ne demande rien, doit en dessiner dix par
+# seconde et non soixante. Les deux nombres sont dans la règle, et la règle est
+# éprouvée à part par `CadenceCheck`.
+#
+# C'est le contrôle qui manquait : le défaut d'origine — un cœur brûlé derrière une
+# fenêtre recouverte — a vécu jusqu'à ce que quelqu'un ouvre le gestionnaire des
+# tâches. Voir `SpectreDessin/Cadence.swift`.
+Etape "Le repos"
+$repos = (Lancer "$bin\SpectreWindows.exe" @($temoin, "--repos", "3")).Sortie
+$repos | Where-Object { $_ -notmatch '^Spectre :' } | ForEach-Object { Write-Host "    $_" }
+$cachee = $repos | Select-String "fenêtre réduite\s+(\d+) images"
+$devant = $repos | Select-String "rien en lecture\s+(\d+) images \(\s*([\d.,]+)/s"
+Verdict "fenêtre réduite : plus une seule image" `
+    ($null -ne $cachee -and [int]$cachee.Matches.Groups[1].Value -eq 0) `
+    $(if ($cachee) { "$($cachee.Matches.Groups[1].Value) images" } else { "pas de relevé" })
+if ($devant) {
+    $parSeconde = [double]($devant.Matches.Groups[2].Value -replace ',', '.')
+    Verdict "fenêtre devant, rien à faire : la boucle se met au repos" `
+        ($parSeconde -lt 30) `
+        ("{0:N1} images par seconde" -f $parSeconde)
+}
+
 # ── L'image, pour l'œil ──────────────────────────────────────────────────────
 
 Write-Host "`nÀ regarder : $gpu"

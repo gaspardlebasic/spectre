@@ -513,6 +513,28 @@ ENCLOS
       rouge "le relevé de fluidité échoue — voir $OUT/fluidite.log"
     fi
 
+    # Et ce que l'application coûte quand on ne lui demande **rien**.
+    #
+    # Contrairement à la fluidité, on exige ici, et l'on peut : ce qui est vérifié
+    # n'est pas une vitesse mais un comptage, et un comptage ne dépend ni de la
+    # carte ni de la charge de la machine. Une fenêtre cachée doit dessiner zéro
+    # image. C'est le contrôle qui manquait — le défaut d'origine, un cœur brûlé
+    # derrière une fenêtre recouverte, a vécu jusqu'à ce que quelqu'un ouvre un
+    # moniteur système. Voir `SpectreDessin/Cadence.swift`.
+    if env SPECTRE_RANGEMENT="$SPECTRE_RANGEMENT" "$PWD/$PAQUET" \
+         "$PWD/$OUT/temoin.wav" --repos 3 > "$OUT/repos.log" 2>&1; then
+      grep -A4 '^Au repos' "$OUT/repos.log" | sed 's/^/    /'
+      CACHEE="$(grep 'fenêtre cachée' "$OUT/repos.log" \
+                | grep -oE '[0-9]+ images' | grep -oE '^[0-9]+')"
+      if [ "${CACHEE:-1}" = "0" ]; then
+        vert "fenêtre cachée : plus une seule image dessinée"
+      else
+        rouge "fenêtre cachée : ${CACHEE:-?} images dessinées pour personne"
+      fi
+    else
+      rouge "le relevé de repos échoue — voir $OUT/repos.log"
+    fi
+
     # Un fichier de cœur écrit pendant l'épreuve dit ce qu'aucune de ces
     # vérifications ne dirait : que l'application est tombée en silence, dans un fil
     # que personne ne regardait.

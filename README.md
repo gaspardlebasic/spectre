@@ -129,6 +129,18 @@ pilotes graphiques, ALSA — vient du système, et c'est délibéré : un paquet
 embarquerait sa propre `libGL` ne verrait pas la carte de la machine sur laquelle il
 tourne. Il faut donc **OpenGL 3.3**, et Wayland ou X11.
 
+**Et sur un Raspberry Pi ?** Les paquets ARM s'y installent — c'est bien la même
+architecture — mais **l'application ne s'y ouvrira pas**, et il vaut mieux le savoir
+avant de télécharger 150 Mo. Le pilote graphique d'un Pi 4 ou d'un Pi 5, `v3d`,
+s'arrête à OpenGL 3.1. Il sait OpenGL ES 3.1, ce qui est une autre spécification et
+ne remplace pas la première. Ce n'est pas une question de version de Mesa ni de
+distribution : c'est ce que la puce expose. Un refus le dit maintenant en clair —
+« cette carte n'offre qu'OpenGL 3.1 » — plutôt que de laisser accuser le paquet.
+
+Les paquets ARM visent donc les machines ARM qui ont un pilote OpenGL complet :
+serveurs et machines virtuelles ARM64, portables sous ARM. Faire tourner Spectre sur
+un Pi demanderait de porter le nuanceur sur OpenGL ES, ce qui n'est pas fait.
+
 Le fichier `.desktop` embarqué dans l'AppImage met Spectre au menu et dans le
 « Ouvrir avec » des fichiers audio, mais seulement pour qui utilise
 `AppImageLauncher` ou `appimaged`. Le `.deb` le fait tout seul.
@@ -600,6 +612,80 @@ animé en 0,32 s, avec départ et arrivée en douceur, et s'interrompt net dès 
 touche au trackpad. En fin de fichier, quand il n'y a plus rien à découvrir, la
 destination se confond avec la position courante et il ne se passe simplement
 rien.
+
+## Ce que l'application coûte quand elle ne fait rien
+
+Une fenêtre ouverte, un morceau analysé, rien en lecture : **l'application ne doit
+alors presque rien coûter**. Ce n'était pas le cas, et le rapport qui l'a dit venait
+d'un PC : un Core i5 de huitième génération affichait 15 % de processeur, application
+au second plan et rien en train de jouer. Quinze pour cent de huit fils, c'est un
+cœur plein.
+
+La boucle de Windows et celle de Linux dessinaient une image complète à chaque tour,
+sans jamais se demander si quelque chose avait changé — et sans se demander si
+quelqu'un regardait. Le second point est le pire des deux : une fenêtre recouverte
+par une autre cesse d'être cadencée par la carte graphique, si bien que la boucle ne
+dormait plus du tout et tournait aussi vite que le processeur le permettait, pour
+des images que personne ne verrait jamais.
+
+Il y a maintenant **trois allures**, et une règle qui choisit :
+
+| ce qui se passe | ce que fait la boucle |
+|---|---|
+| lecture, analyse, séparation, tourne-page, ou une main sur la fenêtre depuis moins d'une seconde | la cadence de l'écran, comme avant |
+| fenêtre devant, mais rien qui bouge | dix images par seconde |
+| fenêtre réduite ou recouverte | plus une seule image |
+
+Le premier geste réveille la pleine cadence **avant** que le dixième de seconde soit
+écoulé : la boucle au repos ne dort pas sur une minuterie, elle dort sur la file des
+évènements, et une molette la rend tout de suite. Rien n'est donc perdu au toucher,
+et c'est la seule chose qui ne se négocie pas.
+
+Le son, lui, ne passe pas par cette boucle : un morceau qui joue derrière une autre
+fenêtre continue de s'entendre alors que plus rien ne se dessine.
+
+Deux instruments le vérifient, et aucun ne demande d'être devant l'écran.
+`CadenceCheck` éprouve la règle sans fenêtre, sans carte et sans bureau — il tourne
+partout, à chaque `check.sh`. Et l'application sait se mesurer elle-même :
+
+```bash
+SpectreLinux morceau.mp3 --repos 5
+```
+
+Elle réduit sa propre fenêtre, compte les images, et dit ce qu'elle a brûlé :
+
+```
+Au repos
+  fenêtre montrée, rien en lecture      50 images ( 10,0/s)    0,21 s de processeur     4,2 % d'un cœur
+  fenêtre cachée                         0 images (  0,0/s)    0,01 s de processeur     0,2 % d'un cœur
+
+  8 fils sur cette machine : 100 % d'un cœur s'y lit 12 % dans le gestionnaire des tâches.
+```
+
+Le pourcentage est donné en part d'**un cœur**, et le nombre de fils est rappelé
+dessous : c'est très exactement en divisant un cœur plein par huit qu'on lit « 15 % »
+et qu'on prend un défaut pour un détail.
+
+`.\essai.ps1` et `./essai.sh` en font une exigence, et une seule : fenêtre cachée,
+**zéro image**. Ce n'est pas une vitesse, c'est un comptage — il ne dépend ni de la
+carte ni de la charge de la machine, et ne peut donc pas échouer au hasard.
+
+Ce que la règle a changé, mesuré sur la même machine avec le même instrument — une
+machine virtuelle ARM en rendu logiciel, où chaque image coûte cher et où l'écart se
+lit donc très bien :
+
+| | images dessinées | processeur |
+|---|---|---|
+| fenêtre devant, rien qui bouge — **avant** | 22,4/s | 476 % d'un cœur |
+| fenêtre devant, rien qui bouge — après | 6,3/s | 152 % d'un cœur |
+| fenêtre cachée — **avant** | 23,1/s | 482 % d'un cœur |
+| fenêtre cachée — après | **0/s** | **0,3 % d'un cœur** |
+
+La ligne qui compte est la dernière : cachée, l'ancienne boucle dessinait *autant* que
+visible. C'était très exactement le cas dont le rapport était parti.
+
+macOS n'a jamais eu ce défaut : son interface est en SwiftUI, qui ne redessine que ce
+qui a changé.
 
 ## Vitesse et transposition
 

@@ -709,6 +709,34 @@ private let dureeDuTournePage = 0.32
     /// n'est plus désagréable qu'une vue qui continue de glisser sous les doigts.
     public func cancelTurn() { turn = nil }
 
+    /// Vrai quand l'image suivante ne montrera pas la même chose que celle-ci.
+    ///
+    /// C'est ce que la boucle de fenêtre demande au modèle pour savoir si elle doit
+    /// tourner à la cadence de l'écran ou se mettre au repos — voir
+    /// `SpectreDessin/Cadence.swift`, qui dit pourquoi la question se pose.
+    ///
+    /// La liste est **volontairement large**. Se tromper vers le haut coûte
+    /// quelques images de trop, ce que personne ne remarque ; se tromper vers le
+    /// bas fige l'écran, ce que tout le monde remarque. Chaque terme est donc
+    /// une source d'animation, et non un état qui *pourrait* bouger :
+    ///
+    /// - la lecture déplace la tête, et fait tourner la page ;
+    /// - le tourne-page s'anime tout seul pendant une demi-seconde ;
+    /// - l'analyse, la séparation, le relevé de batterie et celui d'accords
+    ///   écrivent tous dans la barre d'état, et l'avancement y monte.
+    ///
+    /// Ce qui n'y est **pas**, et qui n'a pas à y être : le survol, les gestes, la
+    /// molette. Ceux-là passent par la fenêtre, qui le dit à la cadence, et non par
+    /// le modèle. Un modèle ne sait pas qu'une souris existe.
+    public var quelqueChoseBouge: Bool {
+        player.isPlaying
+            || turn != nil
+            || progress != nil
+            || calculEnCours
+            || percussionPending
+            || chordsPending
+    }
+
     private func advanceTurn() {
         guard let turn else { return }
         let elapsed = Horloge.maintenant() - turn.start

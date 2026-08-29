@@ -558,6 +558,11 @@ jobs:
           du système en vient — les pilotes graphiques et le son. Il faut une carte
           qui sache OpenGL 3.3, et Wayland ou X11.
 
+          **Pas sur un Raspberry Pi.** Les paquets ARM s'y installent, mais
+          l'application ne s'y ouvre pas : le pilote `v3d` d'un Pi 4 ou d'un Pi 5
+          s'arrête à OpenGL 3.1. Ils visent les machines ARM munies d'un pilote
+          OpenGL complet — serveurs, machines virtuelles ARM64, portables sous ARM.
+
           Le fichier \`.desktop\` embarqué dans l'AppImage met Spectre au menu et dans
           le « Ouvrir avec » des fichiers audio, mais seulement si l'on utilise
           \`AppImageLauncher\` ou \`appimaged\` ; le \`.deb\` le fait tout seul.
