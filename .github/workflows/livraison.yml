@@ -474,21 +474,25 @@ jobs:
           # document d'entrée dont le délimiteur est indenté ne se ferme pas, et le
           # shell avale alors tout le reste du script sans se plaindre.
           cat > notes.md <<NOTES
-          ## Cette version signale ses pannes toute seule
+          ## Ce qui change
 
-          Quand quelque chose casse, Spectre en envoie le rapport sans rien demander,
-          pour que ce soit corrigé. Elle le dit au premier lancement, au milieu de la
-          fenêtre, une fois.
+          **Spectre ne chauffe plus l'ordinateur quand on la laisse tranquille.** Une
+          fenêtre ouverte sur un morceau analysé, rien en lecture, l'application
+          passée au second plan : elle occupait un cœur entier — 15 % du processeur
+          sur un PC à huit fils — à redessiner soixante fois par seconde une image
+          que personne ne voyait. Elle ne dessine plus rien quand sa fenêtre est
+          réduite ou recouverte, et dix images par seconde au lieu de soixante quand
+          rien ne bouge. Le premier geste la réveille aussitôt : rien n'est perdu au
+          toucher, et le son continue de jouer derrière une autre fenêtre.
 
-          **N'en font jamais partie : le nom de vos fichiers, vos dossiers, ni ce que
-          vous écoutez.** Rien d'autre n'est mesuré — ni ce que vous faites de
-          l'application, ni combien de temps vous l'ouvrez. Ce qui part est la version
-          de Spectre, le système, l'architecture, la carte graphique, et la panne. Le
-          détail est dans
-          [docs/RAPPORTS.md](https://github.com/gaspardlebasic/spectre/blob/main/docs/RAPPORTS.md).
+          **L'application s'ouvre sur ses morceaux.** Sans fichier, elle montre ceux
+          qu'on a déjà travaillés plutôt qu'une fenêtre vide, se présente une fois au
+          premier lancement, et dit sa version.
 
-          Et le plancher macOS descend à **macOS 15** : les Mac d'avant macOS 26
-          ouvrent Spectre, sans le verre et sans le dire.
+          **Sur un Raspberry Pi, on saura enfin pourquoi.** Les paquets ARM
+          s'installent sur un Pi mais ne s'y ouvrent pas — son pilote graphique
+          s'arrête à OpenGL 3.1, et Spectre en demande 3.3. Le refus le dit
+          maintenant en clair au lieu de laisser accuser le paquet.
 
           ## macOS
 
