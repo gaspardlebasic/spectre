@@ -269,6 +269,8 @@ extension Catalogue {
         .pistesPlafondAide: "Siedmiominutowy utwór kosztuje około 300 MB. Powyżej limitu najdawniej otwierane utwory odchodzą w całości — nigdy ten, którego się słucha — i są przeliczane na nowo.",
         .pistesViderLeCache: "Wyczyść pamięć",
         .pistesViderLeCacheAide: "Wyrzuć wszystkie zachowane ścieżki. Każdy utwór trzeba będzie rozdzielić od nowa, około pół minuty na utwór.",
+        .pistesOuvrirLeDossier: "Otwórz folder",
+        .pistesOuvrirLeDossierAide: "Pokaż w menedżerze plików folder, w którym leżą rozdzielone ścieżki.",
         .pistesPoidsAbsents: "Wagi Demucsa nie są zainstalowane — zobacz `modele.sh`. Bez nich utwór czyta się taki, jaki jest.",
         .pistesPoidsAbsentsWin: "Wagi Demucsa nie są zainstalowane — zobacz `modele.sh`. Bez nich utwór czyta się taki, jaki jest.",
         .pistesOnnxAbsent: "ONNX Runtime nie jest zainstalowany: uruchom .\\onnx.ps1, a potem uruchom aplikację ponownie.",
@@ -292,11 +294,36 @@ extension Catalogue {
         .accueilRaccourci: "albo ⌘O",
         .accueilAnalyse: "Analiza…",
 
+        // MARK: La page de lancement
+        .lancementReprendre: "Wróć do utworu",
+        .lancementAucunMorceau: "Nie otwarto jeszcze żadnego utworu.",
+        .lancementOuvrirUnFichier: "Otwórz plik…",
+        .lancementRetirer: "Usuń z listy i wyrzuć jego rozdzielone ścieżki",
+        .lancementSepare: "ścieżki rozdzielone",
+
+        // MARK: Le diaporama du premier lancement
+        .bienvenueTitreBoucle: "Zapętlić fragment i zwolnić go",
+        .bienvenueCorpsBoucle: "Shift + przeciągnięcie po spektrogramie wybiera fragment i zapętla go. Suwaki Prędkość i Transpozycja w panelu ustawień zwalniają go, nie rozstrajając, i transponują, nie zwalniając.",
+        .bienvenueTempoBoucle: "Tempo jest wykrywane samo przy otwarciu. Kiedy trafia obok, panel je poprawia: liczbę można wpisać ręcznie, a „1 tutaj” stawia pierwszą miarę taktu tam, gdzie stoi głowica.",
+        .bienvenueTitrePistes: "Cztery ścieżki, rozdzielone na Twoim komputerze",
+        .bienvenueCorpsPistes: "Wokal, bas, perkusja i reszta są rozdzielane od razu przy otwarciu utworu, a potem zachowywane na kolejne razy. Obliczenie trwa kilka minut; dolny pasek mówi, gdzie jest, a utworu można w tym czasie słuchać.",
+        .bienvenueRapports: "Kiedy coś się zepsuje, Spectre sam wysyła raport. Nazwy Twoich plików, Twoje foldery ani to, czego słuchasz, nigdy się w nim nie znajdują.",
+        .bienvenueSuivant: "Dalej",
+        .bienvenueCommencer: "Zaczynamy",
+        .bienvenuePasser: "Pomiń",
+
+        // MARK: La mise à jour
+        .majTitre: "Spectre %1$@ jest dostępny",
+        .majCorps: "Masz wersję %1$@.",
+        .majTelecharger: "Pobierz",
+        .majPlusTard: "Później",
+
         // MARK: La fenêtre des réglages
         .reglagesPistesSeparees: "Rozdzielone ścieżki",
         .reglagesTailleMaximale: "Maksymalny rozmiar pamięci",
         .reglagesOccupe: "Zajęte",
         .reglagesViderPoints: "Wyczyść…",
+        .reglagesOuvrirLeDossier: "Otwórz folder",
         .reglagesViderBouton: "Wyczyść",
         .reglagesAnnuler: "Anuluj",
         .reglagesCacheExplication: "Siedmiominutowy utwór kosztuje około 250 MB. Powyżej limitu najdawniej otwierane utwory odchodzą w całości — nigdy ten, którego się słucha — i przeliczają się na nowo w pół minuty.",
@@ -327,10 +354,6 @@ extension Catalogue {
         .winFriseOuvrir: "Otwórz plik: Ctrl + O",
 
         // MARK: Komunikat przy pierwszym uruchomieniu
-        .avisRapportsTitre: "Spectre sam zgłasza swoje awarie",
-        .avisRapportsCorps: "Kiedy coś się zepsuje, Spectre sam wysyła raport, o nic nie pytając. To właśnie pozwala to naprawić: nikt nie zadaje sobie trudu, żeby opisać awarię, a awaria, o której nikt się nie dowie, zostaje.",
-        .avisRapportsSecret: "Nigdy nie trafiają tam nazwy plików, foldery ani to, czego słuchasz. Nic więcej nie jest mierzone — ani to, co robisz w programie, ani jak długo go używasz.",
-        .avisRapportsCompris: "Rozumiem",
 
         // MARK: La ligne de commande
         .cliFichierIntrouvable: "Nie znaleziono pliku: %1$@",

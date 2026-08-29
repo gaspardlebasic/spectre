@@ -66,9 +66,9 @@ ordre.
 | Commande | Ce qu'elle fait |
 |----------|-----------------|
 | `./build.sh` | Compile et assemble `build/Spectre.app` (signature ad-hoc, enregistrement LaunchServices). |
-| `./check.sh` | Les harnais hors écran : les cinq langues, couche numérique, WAV, sessions, batterie, accords, analyse, rendu, séparation, lecture. Aucun fichier audio, aucune fenêtre. |
+| `./check.sh` | Les harnais hors écran : les cinq langues, couche numérique, WAV, sessions, page de lancement, batterie, accords, analyse, rendu, séparation, lecture, et l'allure de la boucle. Aucun fichier audio, aucune fenêtre. |
 | `./essai.sh` | **L'épreuve complète, application comprise** — voir plus bas. |
-| `.\essai.ps1` | La même épreuve, sous Windows : quatorze harnais, la fenêtre, et un relevé de fluidité. |
+| `.\essai.ps1` | La même épreuve, sous Windows : quatorze harnais, la fenêtre, un relevé de fluidité, et un relevé de repos. |
 | `./modele.sh` | Refabrique `Resources/htdemucs.onnx` (les poids de Demucs, ~166 Mo, hors dépôt). |
 | `.\build.ps1` | Assemble `build\Spectre` sous Windows — l'exécutable et ce qu'il lui faut — et l'éprouve dans un dossier propre. |
 | `.\paquet.ps1` | Refait l'icône, assemble, et fabrique l'installeur Windows et son archive — menu Démarrer, désinstallation, associations de fichiers. |
@@ -76,6 +76,7 @@ ordre.
 | `.\logo.ps1` | Refabrique `Resources\Spectre.ico` à partir du `.icns`, et la ressource que l'exécutable porte. |
 | `./logo.sh` | Refabrique l'icône. |
 | `swift build -c release` | Compile tout, sans assembler le paquet. |
+| `SpectreWindows.exe --repos 5` | Ce que l'application coûte quand on ne lui demande rien : elle réduit sa propre fenêtre, compte les images, et dit ce qu'elle a brûlé. `SpectreLinux --repos 5` fait de même. |
 | `Chrono morceau.mp3` | Chronomètre l'ouverture et la séparation étape par étape (`Tools/Chrono`). Travaille dans un rangement à part : `SPECTRE_RANGEMENT=/tmp/mesure SPECTRE_MODELE=$PWD/Resources/htdemucs.onnx`. |
 
 Xcode n'est pas nécessaire ; SwiftPM suffit. **Construire** demande macOS 26 : le
@@ -178,7 +179,7 @@ Cinq modules de plus vivent entre les deux, et **ils ne sont d'aucune plateforme
 | `SpectreSocle` | Le journal, et l'appel qui vide la file principale. Le seul module partagé qui porte des `#if`, un par plateforme, chacun avec sa raison. | `CPont` |
 | `SpectreToile` | `Pinceau` : le vocabulaire de dessin — `remplir`, `tracer`, `texte`, `arrondi` — calqué sur le `GraphicsContext` de SwiftUI ; et le rendu du spectrogramme. | `CPont`, `SpectreModele` |
 | `SpectreSon` | Le lecteur, la sinusoïde d'écoute, le décodeur. | `CPont`, `SpectreModele` |
-| `SpectreDessin` | **L'interface dessinée** : la frise, le panneau de réglages, la batterie, la barre d'état, les commandes, la colonne des pistes, les infobulles, les icônes ; **les gestes**, et le relevé de fluidité. | `SpectreModele`, `SpectreToile` |
+| `SpectreDessin` | **L'interface dessinée** : la frise, le panneau de réglages, la batterie, la barre d'état, les commandes, la colonne des pistes, la page de lancement, les infobulles, les icônes ; **les gestes**, et le relevé de fluidité. | `SpectreModele`, `SpectreToile` |
 | `SpectreSeparation` | Le moteur d'inférence de Demucs, et le rangement des pistes. | `CPont`, `SpectreModele` |
 
 Ils sont tous sortis de la couche Windows, et **toujours pour la même raison** : en
@@ -217,6 +218,14 @@ chemin numérique portable.
 
 ## Les pièges connus
 
+- **`SPECTRE_BIENVENUE=non` et `SPECTRE_MAJ=non`.** Le diaporama du premier
+  lancement est fait pour couvrir toute la fenêtre, et une épreuve tourne dans un
+  rangement neuf — donc chaque passage serait un premier lancement, et il n'y aurait
+  rien à photographier. La mise à jour, elle, irait interroger GitHub à chaque
+  exécution pour une réponse dont l'épreuve ne fait rien. `essai.sh`, `essai.ps1` et
+  `recette.sh` posent les deux ; `LancementCheck` et `GestesCheck` les **reposent**
+  pour eux-mêmes, parce qu'une chose qui se lit dans l'environnement ne s'éprouve pas
+  depuis un script qui l'a posée.
 - **Le cache des pistes séparées.** L'application range sessions et pistes dans le
   dossier de l'utilisateur, avec un plafond : séparer des morceaux de synthèse dans
   ce dossier efface les pistes des vrais morceaux, et des minutes de GPU avec elles.

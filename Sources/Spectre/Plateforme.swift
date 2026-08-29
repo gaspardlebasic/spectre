@@ -26,6 +26,7 @@ extension SpectreModele.AppModel where Lecteur == Player {
                   pistes: RangementApple(),
                   dialogue: DialogueApple(),
                   récentsDuSystème: RecentsApple(),
+                  extérieur: ExterieurApple(),
                   préférences: Preferences.shared)
     }
 }

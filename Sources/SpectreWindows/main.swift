@@ -59,6 +59,7 @@ typealias Frise = SpectreDessin.Frise<LecteurSurLePont>
 typealias Batterie = SpectreDessin.Batterie<LecteurSurLePont>
 typealias Barre = SpectreDessin.Barre<LecteurSurLePont>
 typealias Commandes = SpectreDessin.Commandes<LecteurSurLePont>
+typealias Accueil = SpectreDessin.Accueil<LecteurSurLePont>
 
 extension SpectreModele.AppModel where Lecteur == LecteurSurLePont {
     /// L'assemblage Windows : à chaque protocole du modèle, sa mise en œuvre.
@@ -69,6 +70,7 @@ extension SpectreModele.AppModel where Lecteur == LecteurSurLePont {
                   pistes: RangementSurLePont(),
                   dialogue: DialogueWindows(fenetre: fenetre),
                   récentsDuSystème: RecentsWindows(),
+                  extérieur: ExterieurWindows(),
                   préférences: PreferencesWindows.partagees)
     }
 }
@@ -81,6 +83,7 @@ var photographierDans: String?
 var sansHabillage = false
 var reglagesOuverts = false
 var mesurerPendant: Double?
+var reposPendant: Double?
 var tailleVoulue = (largeur: 1200, hauteur: 700)
 var arguments = Array(CommandLine.arguments.dropFirst())
 var i = 0
@@ -91,6 +94,9 @@ while i < arguments.count {
         i += 2
     } else if argument == "--fluidite", i + 1 < arguments.count {
         mesurerPendant = Double(arguments[i + 1]) ?? 10
+        i += 2
+    } else if argument == "--repos", i + 1 < arguments.count {
+        reposPendant = Double(arguments[i + 1]) ?? 5
         i += 2
     } else if argument == "--sans-habillage" {
         sansHabillage = true
@@ -135,8 +141,8 @@ final class Application: EchosDeLaFenetre {
     /// Ce que dit la commande qu'on survole. Partagée par le panneau et la colonne :
     /// il n'y a qu'une souris, donc qu'une bulle à l'écran.
     let infobulle = Infobulle()
-    /// La phrase du premier lancement, tant que personne ne l'a lue.
-    let avis = Avis()
+    /// La page de lancement, le diaporama du premier lancement et la mise à jour.
+    let accueil: Accueil
     let commandes: Commandes
     /// Le titre déjà posé sur la fenêtre. Comparé plutôt que reposé à chaque image :
     /// `SetWindowTextW` fait repeindre la barre de titre, cent vingt fois par seconde
@@ -146,6 +152,14 @@ final class Application: EchosDeLaFenetre {
     /// qui n'est rien, mais garder cent mille intervalles en mémoire pour personne
     /// n'a pas de sens.
     var mesures: Mesures?
+    /// Ce qui décide à quelle vitesse la boucle tourne — voir
+    /// `SpectreDessin/Cadence.swift`, qui dit le cœur que cela coûtait.
+    private var cadence = Cadence()
+    /// Ce que la dernière présentation a répondu. Relu par la cadence, et reposé
+    /// sans dessiner quand la boucle est arrêtée.
+    private var fenetreCachee = false
+    /// Compte les images pour `--repos`, quand on le lui demande.
+    private var imagesDessinees = 0
     private var enMarche = true
     private var tailleAChanger: (largeur: Int, hauteur: Int)?
 
@@ -171,8 +185,10 @@ final class Application: EchosDeLaFenetre {
         self.modele = AppModel(fenetre: fenetre.poignee)
         self.commandes = Commandes(modele: modele,
                                    preferences: PreferencesWindows.partagees)
+        self.accueil = Accueil(modele: modele)
         self.gestes = GestesWindows(modele: modele, fenetre: fenetre,
-                                    panneau: panneau, flottant: flottant)
+                                    panneau: panneau, flottant: flottant,
+                                    accueil: accueil)
         modele.renderer = rendu
         rendu.origineDesTeintes = PreferencesWindows.partagees.hueOrigin
         fenetre.echos = self
@@ -236,6 +252,21 @@ final class Application: EchosDeLaFenetre {
             if modele.spectrogram.columnCount > 0, modele.progress == nil,
                !modele.percussionPending, !modele.chordsPending { break }
         }
+        // Sans morceau, il n'y a rien à attendre : c'est la page de lancement — ou le
+        // diaporama du premier lancement — qu'on photographie, et elle est prête dès
+        // la première image. C'est par là qu'on regarde les deux écrans que tout le
+        // reste de l'épreuve ne voit jamais, puisqu'il ouvre toujours un fichier.
+        guard modele.source != nil || modele.spectrogram.columnCount > 0 else {
+            for _ in 0..<10 {
+                viderLaFilePrincipale()
+                _ = fenetre.traiterLesMessages()
+                appliquerLaTaille()
+                rendu.attendreLImageSuivante()
+                uneImage()
+            }
+            uneImageSansPresenter()
+            return ecrire(dans: chemin)
+        }
         guard modele.spectrogram.columnCount > 0 else {
             Journal.erreur("Rien n'a été analysé en \(Int(attente)) s"
                            + (modele.status.map { " — \($0)" } ?? "") + ".")
@@ -247,6 +278,11 @@ final class Application: EchosDeLaFenetre {
         // après coup ne rendrait que du noir — ce qui ressemble en tout point à un
         // nuanceur qui ne dessine rien.
         uneImageSansPresenter()
+        return ecrire(dans: chemin)
+    }
+
+    /// Relit le tampon que la carte s'apprête à présenter, et l'écrit.
+    private func ecrire(dans chemin: String) -> Bool {
         guard let pixels = rendu.relire() else {
             Journal.erreur("La chaîne d'échange n'a rien rendu.")
             return false
@@ -277,15 +313,43 @@ final class Application: EchosDeLaFenetre {
             viderLaFilePrincipale()
             if !fenetre.traiterLesMessages() { break }
             appliquerLaTaille()
+            unTour()
+        }
+        modele.applicationVaSeFermer()
+        PreferencesWindows.partagees.enregistrerMaintenant()
+    }
+
+    /// Un tour de boucle, à l'allure qui convient.
+    ///
+    /// Trois allures, et trois façons d'attendre. La règle qui choisit est dans
+    /// `SpectreDessin/Cadence.swift`, avec la mesure qui l'a fait écrire ; ici il
+    /// n'y a que ce que Windows sait faire de chacune.
+    private func unTour() {
+        switch cadence.allure(quelqueChoseBouge: modele.quelqueChoseBouge,
+                              fenetreCachee: fenetreCachee) {
+        case .pleine:
             // On dort **avant** de dessiner : l'image montrée porte alors l'état le
             // plus frais possible, et c'est ce qui la garde collée au doigt. Dormir
             // après avoir présenté reviendrait à dessiner un état déjà vieux d'une
             // image.
             rendu.attendreLImageSuivante()
             uneImage()
+
+        case .repos:
+            // Et non l'objet d'attente de la chaîne d'échange : il ne sait cadencer
+            // qu'au balayage, c'est-à-dire soixante fois par seconde, ce qui est
+            // précisément ce qu'on cherche à ne pas faire.
+            dormirJusquAUneEntree(Cadence.periodeDeRepos)
+            uneImage()
+
+        case .arretee:
+            // Rien n'est dessiné, rien n'est présenté. On se réveille seulement
+            // pour demander à la carte si la fenêtre est revenue — un `Present` de
+            // pur essai, qui ne coûte pas une image.
+            dormirJusquAUneEntree(Cadence.periodeCachee)
+            rendu.releverSiCachee()
+            fenetreCachee = rendu.fenetreCachee
         }
-        modele.applicationVaSeFermer()
-        PreferencesWindows.partagees.enregistrerMaintenant()
     }
 
     private func appliquerLaTaille() {
@@ -297,6 +361,8 @@ final class Application: EchosDeLaFenetre {
     private func uneImage() {
         uneImageSansPresenter()
         rendu.presenter()
+        fenetreCachee = rendu.fenetreCachee
+        imagesDessinees += 1
         mesures?.uneImage()
         if rendu.fenetreCachee { mesures?.uneImageCachee() }
         accorderLeTitre()
@@ -356,6 +422,14 @@ final class Application: EchosDeLaFenetre {
         rendu.surimprimer(echelle: fenetre.echelle) { pinceau in
             Frise(modele: modele, pinceau: pinceau,
                   largeur: points.largeur, hauteur: hauteurImage).dessiner()
+            // La page de lancement au milieu de l'image, tant qu'il n'y a rien à
+            // montrer. Sous la colonne des pistes et sous le panneau, qui restent
+            // atteignables : ce n'est pas une modale, c'est ce que la fenêtre montre
+            // quand elle est vide.
+            if accueil.pageAMontrer {
+                accueil.dessinerLaPage(pinceau, largeur: points.largeur,
+                                       hauteur: hauteurImage)
+            }
             Batterie(modele: modele, pinceau: pinceau, largeur: points.largeur,
                      haut: hauteurImage, hauteur: hauteurDeLaBatterie).dessiner()
             // Le panneau vient après la frise et avant la barre : il flotte sur
@@ -382,11 +456,11 @@ final class Application: EchosDeLaFenetre {
             // d'être dessinées.
             infobulle.dessiner(pinceau, largeurFenetre: points.largeur,
                                hauteurFenetre: points.hauteur)
-            // Et l'avis par-dessus l'infobulle elle-même : tant qu'il est là, il n'y
-            // a rien d'autre à lire dans cette fenêtre.
-            avis.dessiner(pinceau: pinceau, largeurFenetre: points.largeur,
-                          hauteurFenetre: points.hauteur,
-                          aMontrer: modele.avisDeRapports)
+            // Et les couches du lancement par-dessus l'infobulle elle-même : tant
+            // que le diaporama ou la mise à jour est là, il n'y a rien d'autre à
+            // lire dans cette fenêtre.
+            accueil.dessinerLesCouches(pinceau, largeurFenetre: points.largeur,
+                                       hauteurFenetre: points.hauteur)
         }
     }
 
@@ -426,6 +500,10 @@ final class Application: EchosDeLaFenetre {
 
     func fenetreRecoitUneEntree(_ message: UINT, _ w: WPARAM, _ l: LPARAM) -> Bool {
         gestes.mesures = mesures
+        // Une main sur la fenêtre remet la boucle à pleine cadence, et pour une
+        // seconde — même si le geste n'est pas compris. C'est ici, et non dans le
+        // modèle : un modèle ne sait pas qu'une souris existe.
+        cadence.uneEntree()
         return gestes.repondre(message, w, l)
     }
 
@@ -486,6 +564,66 @@ final class Application: EchosDeLaFenetre {
         }
         mesures = nil
         return compteur.rapport(carte: rendu.nomDeLaCarte)
+    }
+
+    // MARK: Le repos
+
+    /// Ce que coûte l'application quand on ne lui demande rien — devant, puis
+    /// réduite.
+    ///
+    /// **La fenêtre est réduite par programme**, et c'est tout l'intérêt : le
+    /// défaut d'origine ne se voyait qu'application au second plan, c'est-à-dire
+    /// dans l'état où personne ne regarde jamais un relevé. `ShowWindow` met la
+    /// fenêtre dans cet état-là sans qu'une main y soit pour rien, et la mesure
+    /// revient toute seule. Voir `SpectreDessin/Cadence.swift`.
+    ///
+    /// On laisse d'abord l'analyse finir, comme le relevé de fluidité : mesurer un
+    /// repos pendant qu'un cœur calcule la matrice mesurerait l'analyse.
+    func mesurerLeRepos(secondes: Double) -> String {
+        fenetre.montrer()
+        let limite = Horloge.maintenant() + 30
+        while Horloge.maintenant() < limite {
+            viderLaFilePrincipale()
+            _ = fenetre.traiterLesMessages()
+            appliquerLaTaille()
+            rendu.attendreLImageSuivante()
+            uneImage()
+            if modele.spectrogram.columnCount > 0 || modele.source == nil,
+               modele.progress == nil, !modele.percussionPending,
+               !modele.chordsPending { break }
+        }
+
+        func passe(_ nom: String, secondes: Double) -> Repos.Passe {
+            // Une demi-seconde jetée avant de compter : la fenêtre vient de changer
+            // d'état, et l'allure met un tour ou deux à retomber.
+            let chauffe = Horloge.maintenant() + 0.5
+            while Horloge.maintenant() < chauffe {
+                viderLaFilePrincipale()
+                _ = fenetre.traiterLesMessages()
+                unTour()
+            }
+            imagesDessinees = 0
+            let departHorloge = Horloge.maintenant()
+            let departProcesseur = Horloge.tempsProcesseur()
+            while Horloge.maintenant() - departHorloge < secondes {
+                viderLaFilePrincipale()
+                _ = fenetre.traiterLesMessages()
+                unTour()
+            }
+            return Repos.Passe(nom: nom,
+                               secondes: Horloge.maintenant() - departHorloge,
+                               images: imagesDessinees,
+                               processeur: Horloge.tempsProcesseur() - departProcesseur)
+        }
+
+        var relevés: [Repos.Passe] = []
+        relevés.append(passe("fenêtre devant, rien en lecture", secondes: secondes))
+        if let poignee = fenetre.poignee {
+            ShowWindow(poignee, SW_MINIMIZE)
+            relevés.append(passe("fenêtre réduite", secondes: secondes))
+            ShowWindow(poignee, SW_RESTORE)
+        }
+        return Repos.rapport(relevés, fils: ProcessInfo.processInfo.activeProcessorCount)
     }
 }
 
@@ -560,11 +698,16 @@ if let mesurerPendant {
     print(application.mesurerLaFluidite(secondes: mesurerPendant))
     exit(0)
 }
-// Lancée sans fichier, l'application rouvre le dernier morceau consulté. C'est le
-// même appel que sur le Mac, et il ne fait rien si le lancement en désignait un.
+if let reposPendant {
+    print(application.mesurerLeRepos(secondes: reposPendant))
+    exit(0)
+}
+// La question de la version, posée au dépôt sur un fil à part. C'est le même appel
+// que sur le Mac.
 //
-// Seulement sur le chemin de la fenêtre : `--photo` et `--fluidite` doivent porter
-// sur le morceau qu'on leur nomme et sur rien d'autre, faute de quoi une épreuve
-// mesurerait ce qu'on écoutait la veille.
-if morceau == nil { application.modele.reopenLastFile() }
+// Seulement sur le chemin de la fenêtre : `--photo` et `--fluidite` rendent une
+// image puis s'arrêtent, et une machine d'intégration continue n'a aucune raison
+// d'interroger GitHub. C'est la même règle que pour `Rapports.ouvrir` — ce qui sort
+// de la machine sort d'une fenêtre ouverte devant quelqu'un.
+application.modele.demarrer()
 application.tourner()

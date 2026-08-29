@@ -19,6 +19,7 @@ import SpectreSocle
 //     SpectreLinux morceau.wav --sans-habillage       ni réglette, ni batterie, ni barre
 //     SpectreLinux morceau.wav --reglages             le panneau ouvert dès le départ
 //     SpectreLinux morceau.wav --fluidite 5           défile 5 s et chiffre la fluidité
+//     SpectreLinux morceau.wav --repos 5              ne fait rien 5 s, et dit ce que ça coûte
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // CE QUE CE FICHIER EST, ET CE QU'IL N'EST PAS ENCORE
@@ -46,6 +47,7 @@ typealias Frise = SpectreDessin.Frise<LecteurSurLePont>
 typealias Batterie = SpectreDessin.Batterie<LecteurSurLePont>
 typealias Barre = SpectreDessin.Barre<LecteurSurLePont>
 typealias Commandes = SpectreDessin.Commandes<LecteurSurLePont>
+typealias Accueil = SpectreDessin.Accueil<LecteurSurLePont>
 
 extension SpectreModele.AppModel where Lecteur == LecteurSurLePont {
     /// L'assemblage Linux : à chaque protocole du modèle, sa mise en œuvre.
@@ -56,6 +58,7 @@ extension SpectreModele.AppModel where Lecteur == LecteurSurLePont {
                   pistes: RangementSurLePont(),
                   dialogue: DialogueLinux(),
                   récentsDuSystème: RecentsLinux(),
+                  extérieur: ExterieurLinux(),
                   préférences: PreferencesLinux.partagees)
     }
 }
@@ -79,12 +82,12 @@ let positionnels = arguments.enumerated().filter { i, mot in
     !mot.hasPrefix("--") && (i == 0 || !arguments[i - 1].hasPrefix("--"))
 }.map(\.element)
 
-guard let premier = positionnels.first else {
-    Journal.erreur("usage : SpectreLinux morceau.wav [--photo image.ppm]")
-    exit(2)
-}
-let entree = URL(fileURLWithPath: premier)
+let entree = positionnels.first.map { URL(fileURLWithPath: $0) }
 let photo = valeur("--photo")
+
+// Un morceau n'est plus exigé : sans lui, l'application montre sa page de lancement,
+// comme sur les deux autres systèmes. C'est ce que le portage devait à l'étape de la
+// page de lancement, et c'est aussi ce qui permet de la photographier.
 
 /// `--taille LARGEURxHAUTEUR`, la même option que `SpectreCLI` et que la version
 /// Windows : c'est ce qui permet de demander la même image aux trois chemins et de
@@ -122,7 +125,7 @@ SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, Int32(SDL_GL_CONTEXT_PROFILE_CO
 // spectrogramme sortirait flou sur un écran dense — ce qui se remarque immédiatement
 // sur les raies.
 let drapeaux = SpectreFenetreOpenGL | SpectreFenetreRedimensionnable | SpectreFenetreDense
-guard let fenetre = SDL_CreateWindow(entree.lastPathComponent,
+guard let fenetre = SDL_CreateWindow(entree?.lastPathComponent ?? "Spectre",
                                      tailleVoulue?.largeur ?? 1200,
                                      tailleVoulue?.hauteur ?? 700, drapeaux) else {
     Journal.erreur("SDL a refusé d'ouvrir une fenêtre : \(String(cString: SDL_GetError()))")
@@ -156,14 +159,14 @@ Textes.demarrer(choix: nil, notes: nil,
 let modele = AppModel()
 modele.renderer = rendu
 rendu.origineDesTeintes = PreferencesLinux.partagees.hueOrigin
-modele.open(entree)
+if let entree { modele.open(entree) }
 
 let panneau = Panneau()
 if arguments.contains("--reglages") { panneau.ouvert = true }
 /// Ce qui ne se replie jamais : les quatre pistes et la porte des réglages.
 let flottant = Flottant()
-/// La phrase du premier lancement, tant que personne ne l'a lue.
-let avis = Avis()
+/// La page de lancement, le diaporama du premier lancement et la mise à jour.
+let accueil = Accueil(modele: modele)
 /// Ce que dit la commande qu'on survole. Partagée par le panneau et la colonne : il
 /// n'y a qu'une souris, donc qu'une bulle à l'écran.
 let infobulle = Infobulle()
@@ -240,6 +243,14 @@ func uneImage() {
     rendu.surimprimer(echelle: echelle) { pinceau in
         Frise(modele: modele, pinceau: pinceau,
               largeur: points.largeur, hauteur: hauteurImage).dessiner()
+        // La page de lancement au milieu de l'image, tant qu'il n'y a rien à
+        // montrer. Sous la colonne des pistes et sous le panneau, qui restent
+        // atteignables : ce n'est pas une modale, c'est ce que la fenêtre montre
+        // quand elle est vide.
+        if accueil.pageAMontrer {
+            accueil.dessinerLaPage(pinceau, largeur: points.largeur,
+                                   hauteur: hauteurImage)
+        }
         Batterie(modele: modele, pinceau: pinceau, largeur: points.largeur,
                  haut: hauteurImage, hauteur: hauteurDeLaBatterie).dessiner()
         // Le panneau vient après la frise et avant la barre : il flotte sur l'image,
@@ -263,11 +274,11 @@ func uneImage() {
         // la commande survolée, donc en dehors du panneau qui la couperait net.
         infobulle.dessiner(pinceau, largeurFenetre: points.largeur,
                            hauteurFenetre: points.hauteur)
-        // Et l'avis par-dessus l'infobulle elle-même : tant qu'il est là, il n'y a
-        // rien d'autre à lire dans cette fenêtre.
-        avis.dessiner(pinceau: pinceau, largeurFenetre: points.largeur,
-                      hauteurFenetre: points.hauteur,
-                      aMontrer: modele.avisDeRapports)
+        // Et les couches du lancement par-dessus l'infobulle elle-même : tant que le
+        // diaporama ou la mise à jour est là, il n'y a rien d'autre à lire dans
+        // cette fenêtre.
+        accueil.dessinerLesCouches(pinceau, largeurFenetre: points.largeur,
+                                   hauteurFenetre: points.hauteur)
     }
 }
 
@@ -288,6 +299,9 @@ if let photo {
     for _ in 0..<900 {
         viderLaFilePrincipale()
         uneImage()
+        // Sans morceau, il n'y a rien à attendre : c'est la page de lancement qu'on
+        // photographie, et elle est prête dès la première image.
+        if entree == nil { repos += 1; if repos > 5 { break }; usleep(10_000); continue }
         if modele.spectrogram.columnCount > 0, modele.status == nil {
             repos += 1
             if repos > 20 { break }
@@ -312,7 +326,8 @@ if let photo {
 // MARK: - Les gestes
 
 let surface = SurfaceSDL(fenetre: fenetre, modele: modele, panneau: panneau,
-                         flottant: flottant, taillePoints: taillePoints)
+                         flottant: flottant, accueil: accueil,
+                         taillePoints: taillePoints)
 
 // MARK: - Le relevé de fluidité
 
@@ -378,6 +393,128 @@ if let demande = valeur("--fluidite"), let secondes = Double(demande) {
     exit(0)
 }
 
+// MARK: - Un tour de boucle
+
+/// Ce qui décide à quelle vitesse la boucle tourne — voir
+/// `SpectreDessin/Cadence.swift`, qui dit le cœur que cela coûtait sous Windows,
+/// et pourquoi Linux a exactement le même défaut : `SDL_GL_SwapWindow` ne cadence
+/// plus rien dès que le compositeur cesse de composer la fenêtre.
+var cadence = Cadence()
+/// Ce que la dernière présentation a répondu.
+var fenetreCachee = false
+/// Compte les images pour `--repos`.
+var imagesDessinees = 0
+
+/// Vide la file d'évènements. Rend `false` quand l'application doit s'arrêter.
+///
+/// **Tout évènement remet la boucle à pleine cadence**, et non les seuls
+/// évènements de souris : un clavier, un glisser-déposer, un changement de taille
+/// et un retour du compositeur sont tous des raisons de redessiner tout de suite.
+/// Trier ici, c'est se tromper un jour sur un évènement qu'on n'avait pas prévu, et
+/// figer l'écran pour un dixième de seconde sans savoir pourquoi.
+func viderLesEvenements() -> Bool {
+    var evenement = SDL_Event()
+    var vivant = true
+    while SDL_PollEvent(&evenement) {
+        cadence.uneEntree()
+        if !surface.repondre(evenement) { vivant = false }
+    }
+    return vivant
+}
+
+/// Une image, présentée. Le seul endroit qui compte les images et relève l'état de
+/// la fenêtre — deux choses qu'on oublie une fois sur deux quand elles sont écrites
+/// à plusieurs endroits.
+func dessinerEtPresenter() {
+    uneImage()
+    rendu.presenter()
+    fenetreCachee = rendu.fenetreCachee
+    imagesDessinees += 1
+}
+
+/// Un tour, à l'allure qui convient. Rend `false` quand il faut s'arrêter.
+func unTour() -> Bool {
+    let vivant = viderLesEvenements()
+    viderLaFilePrincipale()
+    switch cadence.allure(quelqueChoseBouge: modele.quelqueChoseBouge,
+                          fenetreCachee: fenetreCachee) {
+    case .pleine:
+        // Rien à attendre ici : c'est `SDL_GL_SwapWindow` qui cadence, à
+        // l'intervalle un, exactement comme l'objet d'attente de la chaîne
+        // d'échange sous Windows.
+        dessinerEtPresenter()
+
+    case .repos:
+        // `SDL_WaitEventTimeout` et non `SDL_Delay` : le premier geste rend la main
+        // tout de suite, si bien que l'économie ne se paie pas en latence.
+        _ = SDL_WaitEventTimeout(nil, Int32(Cadence.periodeDeRepos * 1000))
+        dessinerEtPresenter()
+
+    case .arretee:
+        // Rien n'est dessiné : personne ne regarde. On se réveille seulement pour
+        // demander à SDL si la fenêtre est revenue — le compositeur le dit par un
+        // drapeau, et non par un évènement qu'on pourrait attendre.
+        _ = SDL_WaitEventTimeout(nil, Int32(Cadence.periodeCachee * 1000))
+        rendu.releverSiCachee()
+        fenetreCachee = rendu.fenetreCachee
+    }
+    // Une fois par tour : les réglages ne s'écrivent que quand ils ont cessé de
+    // bouger — voir l'en-tête de `ReglagesEnregistres`.
+    PreferencesLinux.partagees.enregistrerSiBesoin()
+    return vivant
+}
+
+// MARK: - Le repos
+
+/// Ce que coûte l'application quand on ne lui demande rien — fenêtre montrée, puis
+/// fenêtre cachée.
+///
+/// **La fenêtre se cache par programme**, et c'est tout l'intérêt : le défaut
+/// d'origine ne se voyait qu'application au second plan, c'est-à-dire dans l'état
+/// où personne ne regarde jamais un relevé. `SDL_HideWindow` met la fenêtre dans
+/// cet état-là — le même que le compositeur produit en la recouvrant, du point de
+/// vue du seul qui compte ici, `spectre_rendu_cachee` — et la mesure revient toute
+/// seule, sans un geste et sans un serveur d'affichage réel.
+func mesurerLeRepos(secondes: Double) -> String {
+    // On laisse d'abord l'analyse finir, comme le relevé de fluidité : mesurer un
+    // repos pendant qu'un cœur calcule la matrice mesurerait l'analyse.
+    for _ in 0..<600 {
+        _ = viderLesEvenements()
+        viderLaFilePrincipale()
+        dessinerEtPresenter()
+        if modele.spectrogram.columnCount > 0 || modele.source == nil,
+           modele.progress == nil, !modele.percussionPending,
+           !modele.chordsPending { break }
+    }
+
+    func passe(_ nom: String) -> Repos.Passe {
+        // Une demi-seconde jetée : la fenêtre vient de changer d'état, et l'allure
+        // met un tour ou deux à retomber.
+        let chauffe = Horloge.maintenant() + 0.5
+        while Horloge.maintenant() < chauffe { _ = unTour() }
+        imagesDessinees = 0
+        let departHorloge = Horloge.maintenant()
+        let departProcesseur = Horloge.tempsProcesseur()
+        while Horloge.maintenant() - departHorloge < secondes { _ = unTour() }
+        return Repos.Passe(nom: nom,
+                           secondes: Horloge.maintenant() - departHorloge,
+                           images: imagesDessinees,
+                           processeur: Horloge.tempsProcesseur() - departProcesseur)
+    }
+
+    var relevés = [passe("fenêtre montrée, rien en lecture")]
+    SDL_HideWindow(fenetre)
+    relevés.append(passe("fenêtre cachée"))
+    SDL_ShowWindow(fenetre)
+    return Repos.rapport(relevés, fils: ProcessInfo.processInfo.activeProcessorCount)
+}
+
+if let demande = valeur("--repos"), let secondes = Double(demande) {
+    print(mesurerLeRepos(secondes: secondes))
+    modele.applicationVaSeFermer()
+    exit(0)
+}
+
 // MARK: - La boucle
 
 // Les rapports de panne s'ouvrent **ici**, et pas plus haut : au-dessus de cette
@@ -387,19 +524,13 @@ if let demande = valeur("--fluidite"), let secondes = Double(demande) {
 // servent de l'application. Ce qui part vient d'une fenêtre ouverte devant
 // quelqu'un. Voir `docs/RAPPORTS.md`.
 Rapports.ouvrir()
+// Et la question de la version, pour la même raison et au même endroit.
+modele.demarrer()
 
 var tourne = true
 var evenement = SDL_Event()
 while tourne {
-    while SDL_PollEvent(&evenement) {
-        if !surface.repondre(evenement) { tourne = false }
-    }
-    viderLaFilePrincipale()
-    uneImage()
-    rendu.presenter()
-    // Une fois par image : les réglages ne s'écrivent que quand ils ont cessé de
-    // bouger — voir l'en-tête de `ReglagesEnregistres`.
-    PreferencesLinux.partagees.enregistrerSiBesoin()
+    if !unTour() { tourne = false }
 }
 modele.applicationVaSeFermer()
 PreferencesLinux.partagees.enregistrerMaintenant()

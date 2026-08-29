@@ -148,7 +148,6 @@ do {
     verifie(!Rapports.actifs, "sans DSN, les rapports sont inertes")
     Rapports.signaler("une panne")
     verifie(Rapports.fileEnAttente().isEmpty, "et rien n'est écrit sur le disque")
-    verifie(!Rapports.avisAMontrer, "l'avis du premier lancement ne s'affiche pas non plus")
     Rapports.remiseAZeroPourLeHarnais()
     Rapports.ouvrir(version: "essai", dsn: "ceci n'est pas une adresse", envoiEnFond: false)
     verifie(!Rapports.actifs, "une adresse illisible ne réveille rien")
@@ -302,20 +301,6 @@ do {
     try? Data("{\"identifiant\":\"0000".utf8).write(to: tronque)
     Rapports.envoyerLaFile()
     verifie(!gestionnaire.fileExists(atPath: tronque.path), "un rapport illisible est jeté")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-titre("L'avis du premier lancement")
-
-do {
-    recommencer()
-    verifie(Rapports.avisAMontrer, "au premier lancement, la phrase est à montrer")
-    Rapports.avisMontre()
-    verifie(!Rapports.avisAMontrer, "au second, elle ne revient pas")
-    Rapports.remiseAZeroPourLeHarnais()
-    Rapports.ouvrir(version: "essai", dsn: adresseDEssai, envoiEnFond: false)
-    verifie(!Rapports.avisAMontrer, "ni au suivant")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

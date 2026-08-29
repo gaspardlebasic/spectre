@@ -132,6 +132,19 @@ int spectre_rendu_presenter(SpectreRendu *rendu);
 /// présenté, si bien que l'image montrée porte l'état le plus frais possible.
 void spectre_rendu_attendre(SpectreRendu *rendu);
 
+/// La fenêtre est-elle toujours cachée ? Sans rien dessiner et sans rien présenter.
+///
+/// Une fenêtre cesse d'être recouverte **sans qu'aucun message ne le dise** : c'est
+/// la carte, et elle seule, qui le sait. Tant que la boucle dessinait quoi qu'il
+/// arrive, `spectre_rendu_presenter` suffisait à s'en apercevoir ; maintenant
+/// qu'elle s'arrête quand personne ne regarde — voir `SpectreDessin/Cadence.swift`
+/// — il lui faut une façon de poser la question qui ne coûte pas une image, sans
+/// quoi une fenêtre réduite ne se rouvrirait jamais.
+///
+/// - Returns: 1 si la fenêtre est cachée, 0 sinon — y compris hors écran, où elle
+///   ne l'est jamais.
+int spectre_rendu_cachee(SpectreRendu *rendu);
+
 /// Relit la dernière image dessinée, en RGB huit bits, rangée par rangée depuis le
 /// **haut**. `octets` doit tenir largeur × hauteur × 3.
 int spectre_rendu_relire(SpectreRendu *rendu, uint8_t *octets);
@@ -219,6 +232,24 @@ float spectre_surimpression_paragraphe(SpectreRendu *rendu, const uint16_t *text
 void spectre_surimpression_arrondi(SpectreRendu *rendu, float x, float y,
                                    float largeur, float hauteur, float rayon,
                                    uint32_t rvba, float epaisseur);
+
+/// Dessine une image PNG, à ses proportions, centrée dans le rectangle donné.
+///
+/// `chemin` est un chemin de fichier en UTF-16 terminé par un zéro — le même format
+/// que le texte, et pour la même raison : c'est ce que Windows attend, et une
+/// frontière qui changerait de forme selon le système obligerait `Pinceau` à savoir
+/// sur quoi il tourne.
+///
+/// **Le fichier est lu au premier appel, puis gardé.** Le diaporama du premier
+/// lancement redessine sa capture cent vingt fois par seconde, et décoder deux
+/// mégapixels de PNG à chaque image ferait de la présentation de l'application la
+/// seule chose qui rame. L'échec est gardé lui aussi : un fichier absent ne doit pas
+/// se rechercher cent vingt fois par seconde non plus.
+///
+/// Ne fait rien quand le fichier manque ou ne se décode pas. Une capture absente
+/// doit laisser le texte du diaporama, qui est ce qui compte.
+void spectre_surimpression_image(SpectreRendu *rendu, const uint16_t *chemin,
+                                 float x, float y, float largeur, float hauteur);
 
 /// Restreint le dessin à un rectangle, jusqu'à `spectre_surimpression_recoller`.
 ///

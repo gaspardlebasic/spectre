@@ -58,6 +58,25 @@ public struct RecentsApple: DocumentsRecents {
     }
 }
 
+/// Le navigateur et le Finder.
+///
+/// Deux lignes, et pas de repli : `NSWorkspace` est là depuis toujours, et un
+/// échec — une adresse que rien ne sait ouvrir — ne casse rien qui compte.
+public struct ExterieurApple: Exterieur {
+    public init() {}
+
+    public func ouvrirLaPage(_ url: URL) {
+        NSWorkspace.shared.open(url)
+    }
+
+    /// `activateFileViewerSelecting` et non `open` : on veut le dossier **montré et
+    /// désigné** dans une fenêtre du Finder, ce qui est le geste de « Afficher dans
+    /// le Finder » ; `open` sur un dossier l'ouvre et laisse chercher lequel c'est.
+    public func montrerLeDossier(_ url: URL) {
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+}
+
 // MARK: - La séparation
 
 extension SeparationJob: TravailAnnulable {}

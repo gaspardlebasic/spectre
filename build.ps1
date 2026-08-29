@@ -155,6 +155,22 @@ if (Test-Path $poids) {
     Write-Host "  (sans les poids de Demucs — voir modele.sh)"
 }
 
+# Les deux captures du diaporama du premier lancement, a cote de l'executable, ou
+# `Ressources.fichier` les cherche. Ce sont les memes fichiers que ceux du README ;
+# renommes en passant, parce que le nom traverse un installeur et deux systemes de
+# fichiers et que ce n'est pas la qu'on veut decouvrir une difference de
+# normalisation Unicode.
+$captures = @{
+    "faire boucler une section au ralenti.png" = "diapo-boucle.png"
+    "s" + [char]0xE9 + "paration des pistes.png" = "diapo-pistes.png"
+}
+foreach ($nom in $captures.Keys) {
+    $source = Join-Path $racine (Join-Path "Resources\Captures" $nom)
+    if (Test-Path -LiteralPath $source) {
+        Copy-Item -LiteralPath $source (Join-Path $cible $captures[$nom]) -Force
+    }
+}
+
 Copy-Item (Join-Path $racine "LICENSE") (Join-Path $cible "LICENSE.txt") -Force
 Copy-Item (Join-Path $racine "NOTICE.md") $cible -Force
 

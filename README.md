@@ -129,6 +129,18 @@ pilotes graphiques, ALSA — vient du système, et c'est délibéré : un paquet
 embarquerait sa propre `libGL` ne verrait pas la carte de la machine sur laquelle il
 tourne. Il faut donc **OpenGL 3.3**, et Wayland ou X11.
 
+**Et sur un Raspberry Pi ?** Les paquets ARM s'y installent — c'est bien la même
+architecture — mais **l'application ne s'y ouvrira pas**, et il vaut mieux le savoir
+avant de télécharger 150 Mo. Le pilote graphique d'un Pi 4 ou d'un Pi 5, `v3d`,
+s'arrête à OpenGL 3.1. Il sait OpenGL ES 3.1, ce qui est une autre spécification et
+ne remplace pas la première. Ce n'est pas une question de version de Mesa ni de
+distribution : c'est ce que la puce expose. Un refus le dit maintenant en clair —
+« cette carte n'offre qu'OpenGL 3.1 » — plutôt que de laisser accuser le paquet.
+
+Les paquets ARM visent donc les machines ARM qui ont un pilote OpenGL complet :
+serveurs et machines virtuelles ARM64, portables sous ARM. Faire tourner Spectre sur
+un Pi demanderait de porter le nuanceur sur OpenGL ES, ce qui n'est pas fait.
+
 Le fichier `.desktop` embarqué dans l'AppImage met Spectre au menu et dans le
 « Ouvrir avec » des fichiers audio, mais seulement pour qui utilise
 `AppImageLauncher` ou `appimaged`. Le `.deb` le fait tout seul.
@@ -148,10 +160,44 @@ de livraison les tire d'une release qui ne sert qu'à cela, `modele-htdemucs-v4`
 les embarque dans chaque paquet — d'où leur taille. Celui qui construit soi-même les
 obtient par `./modele.sh`.
 
+## Ce qu'on voit en ouvrant l'application
+
+**La liste des morceaux déjà travaillés**, et rien d'autre. Un clic sur une ligne
+rouvre le morceau avec sa session — cadrage, contraste, grille, boucle —, et les
+lignes qui portent déjà des pistes séparées le disent : celles-là rouvrent en deux
+secondes, les autres redemanderont quelques minutes de calcul.
+
+Cette page a remplacé la réouverture automatique du dernier morceau. C'était commode
+le jour où l'on retravaille le même passage, et faux tous les autres jours : ouvrir
+Spectre lançait une minute de GPU sur un morceau dont on ne voulait pas. La première
+ligne de la liste *est* ce dernier morceau ; ce qui se faisait tout seul se fait d'un
+clic, et les neuf autres fois on choisit.
+
+**La corbeille au survol d'une ligne** retire le morceau de la liste **et jette ses
+pistes séparées** — trois cents mégaoctets pour un morceau de sept minutes. Les deux
+ensemble, parce que c'est le sens du geste : retirer la ligne en laissant les pistes
+ferait de cette page un endroit où l'on croit faire de la place sans en faire. Le
+fichier audio, lui, n'est pas touché ; il n'est pas à nous.
+
+**Au tout premier lancement**, deux diapositives passent avant : la boucle au
+ralenti et la transposition, puis les quatre pistes et le temps que leur calcul
+demande. Ce sont les deux choses que l'application sait faire et qu'on ne devinerait
+pas en regardant une fenêtre noire. Elles ne reviennent plus ensuite — le témoin est
+un fichier vide dans le rangement, et l'effacer les fait revenir.
+
+**Une nouvelle version publiée** est annoncée après elles, en une modale : le numéro
+d'en face, celui qui tourne, et un bouton qui ouvre la page des versions dans le
+navigateur. Rien ne se télécharge et rien ne s'installe tout seul — l'application
+demande un numéro à GitHub, sans jeton, sans identifiant, et ouvre une page si ce
+numéro est plus grand. `SPECTRE_MAJ=non` retire la question pour qui ne veut pas
+qu'on la pose.
+
 ## Ce que Spectre envoie, et ce qu'elle n'envoie jamais
 
 **Quand quelque chose casse, Spectre en envoie le rapport toute seule**, sans rien
-demander. Elle le dit au premier lancement, au milieu de la fenêtre, une fois.
+demander. Elle le dit au premier lancement, sur la seconde diapositive de la
+présentation, une fois — et ne le dit pas quand rien ne part, ce qui est le cas d'un
+dépôt construit sans adresse d'envoi.
 
 C'est une décision, pas un réglage oublié : personne ne clique sur « Signaler un
 problème », et une panne qu'on n'apprend pas reste là. La v0.4 est partie avec un
@@ -401,8 +447,10 @@ commandent tout ce qu'il y a en dessous — voir « Les cinq langues ». Les dou
 sont écrits en clair sous les deux menus : c'est le seul endroit où l'on voit, sans
 ouvrir un morceau, que l'allemand appelle `B` le si bémol.
 
-**Taille du cache des pistes séparées**, de 500 Mo à 10 Go, avec ce qu'il occupe et
-de quoi le vider (on demande confirmation : ce sont des minutes de GPU). Baisser le
+**Taille du cache des pistes séparées**, de 500 Mo à 10 Go, avec ce qu'il occupe, de
+quoi le vider (on demande confirmation : ce sont des minutes de GPU) et de quoi
+**ouvrir le dossier** dans le Finder — pour reprendre une piste isolée dans un autre
+logiciel, ou pour voir où sont passés les gigaoctets. Baisser le
 plafond fait le ménage tout de suite, en tâche de fond — le baisser sans effet avant
 la prochaine séparation n'aurait servi à rien, c'est justement là qu'on voulait de la
 place.
@@ -422,12 +470,9 @@ l'ancrage change — jouer en mi bémol et voir son tonique en rouge plutôt qu'
 `AnalysisCheck` le vérifie comme une propriété : tous les écarts de teinte, pris deux
 à deux, sont conservés au 10⁻¹⁶ près.
 
-**Fichier ▸ Ouvrir récemment**, et le dernier morceau consulté **se rouvre au
-démarrage** — sauf, bien sûr, si le lancement en désignait déjà un. La réouverture
-attend une demi-seconde : un double-clic dans le Finder délivre son fichier par un
-évènement qui arrive *après* l'apparition de la fenêtre, et ouvrir le morceau
-précédent tout de suite reviendrait à en analyser un pour rien, puis à lancer une
-minute de GPU sur le mauvais.
+**Fichier ▸ Ouvrir récemment** porte la même liste que la page de lancement, et
+c'est la même liste : deux listes tenues en parallèle finiraient par se contredire au
+premier oubli.
 
 La liste est tenue par l'application, dans `Application Support`. `NSDocumentController`
 en tient bien une — celle du Dock et du menu Pomme, qu'on continue de nourrir — mais
@@ -567,6 +612,80 @@ animé en 0,32 s, avec départ et arrivée en douceur, et s'interrompt net dès 
 touche au trackpad. En fin de fichier, quand il n'y a plus rien à découvrir, la
 destination se confond avec la position courante et il ne se passe simplement
 rien.
+
+## Ce que l'application coûte quand elle ne fait rien
+
+Une fenêtre ouverte, un morceau analysé, rien en lecture : **l'application ne doit
+alors presque rien coûter**. Ce n'était pas le cas, et le rapport qui l'a dit venait
+d'un PC : un Core i5 de huitième génération affichait 15 % de processeur, application
+au second plan et rien en train de jouer. Quinze pour cent de huit fils, c'est un
+cœur plein.
+
+La boucle de Windows et celle de Linux dessinaient une image complète à chaque tour,
+sans jamais se demander si quelque chose avait changé — et sans se demander si
+quelqu'un regardait. Le second point est le pire des deux : une fenêtre recouverte
+par une autre cesse d'être cadencée par la carte graphique, si bien que la boucle ne
+dormait plus du tout et tournait aussi vite que le processeur le permettait, pour
+des images que personne ne verrait jamais.
+
+Il y a maintenant **trois allures**, et une règle qui choisit :
+
+| ce qui se passe | ce que fait la boucle |
+|---|---|
+| lecture, analyse, séparation, tourne-page, ou une main sur la fenêtre depuis moins d'une seconde | la cadence de l'écran, comme avant |
+| fenêtre devant, mais rien qui bouge | dix images par seconde |
+| fenêtre réduite ou recouverte | plus une seule image |
+
+Le premier geste réveille la pleine cadence **avant** que le dixième de seconde soit
+écoulé : la boucle au repos ne dort pas sur une minuterie, elle dort sur la file des
+évènements, et une molette la rend tout de suite. Rien n'est donc perdu au toucher,
+et c'est la seule chose qui ne se négocie pas.
+
+Le son, lui, ne passe pas par cette boucle : un morceau qui joue derrière une autre
+fenêtre continue de s'entendre alors que plus rien ne se dessine.
+
+Deux instruments le vérifient, et aucun ne demande d'être devant l'écran.
+`CadenceCheck` éprouve la règle sans fenêtre, sans carte et sans bureau — il tourne
+partout, à chaque `check.sh`. Et l'application sait se mesurer elle-même :
+
+```bash
+SpectreLinux morceau.mp3 --repos 5
+```
+
+Elle réduit sa propre fenêtre, compte les images, et dit ce qu'elle a brûlé :
+
+```
+Au repos
+  fenêtre montrée, rien en lecture      50 images ( 10,0/s)    0,21 s de processeur     4,2 % d'un cœur
+  fenêtre cachée                         0 images (  0,0/s)    0,01 s de processeur     0,2 % d'un cœur
+
+  8 fils sur cette machine : 100 % d'un cœur s'y lit 12 % dans le gestionnaire des tâches.
+```
+
+Le pourcentage est donné en part d'**un cœur**, et le nombre de fils est rappelé
+dessous : c'est très exactement en divisant un cœur plein par huit qu'on lit « 15 % »
+et qu'on prend un défaut pour un détail.
+
+`.\essai.ps1` et `./essai.sh` en font une exigence, et une seule : fenêtre cachée,
+**zéro image**. Ce n'est pas une vitesse, c'est un comptage — il ne dépend ni de la
+carte ni de la charge de la machine, et ne peut donc pas échouer au hasard.
+
+Ce que la règle a changé, mesuré sur la même machine avec le même instrument — une
+machine virtuelle ARM en rendu logiciel, où chaque image coûte cher et où l'écart se
+lit donc très bien :
+
+| | images dessinées | processeur |
+|---|---|---|
+| fenêtre devant, rien qui bouge — **avant** | 22,4/s | 476 % d'un cœur |
+| fenêtre devant, rien qui bouge — après | 6,3/s | 152 % d'un cœur |
+| fenêtre cachée — **avant** | 23,1/s | 482 % d'un cœur |
+| fenêtre cachée — après | **0/s** | **0,3 % d'un cœur** |
+
+La ligne qui compte est la dernière : cachée, l'ancienne boucle dessinait *autant* que
+visible. C'était très exactement le cas dont le rapport était parti.
+
+macOS n'a jamais eu ce défaut : son interface est en SwiftUI, qui ne redessine que ce
+qui a changé.
 
 ## Vitesse et transposition
 

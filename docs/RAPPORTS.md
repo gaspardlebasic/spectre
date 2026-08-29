@@ -207,6 +207,33 @@ l'œil. Un clic n'importe où, ou n'importe quelle touche, la referme pour toujo
 **ce qui ne part pas y est écrit aussi gros que ce qui part** : c'est la moitié qui
 décide si les gens gardent l'application installée.
 
+#### Depuis, l'avis est devenu une diapositive
+
+**La modale n'existe plus.** Le premier lancement montre désormais une présentation
+de deux diapositives — la boucle au ralenti, puis les quatre pistes —, et la phrase
+sur les rapports en est la dernière ligne, dans la teinte qui appelle l'œil. Rien de
+ce qui précède n'a changé de sens : le fond s'assombrit entièrement, la présentation
+ne se montre qu'une fois, et ce qui **ne part pas** est toujours écrit aussi gros que
+ce qui part.
+
+Ce que le déménagement a corrigé, en revanche, tient en une ligne : quelqu'un qui
+découvrait l'application recevait, comme tout premier message, une phrase sur les
+rapports de panne. La présentation remet cette phrase à sa place — la fin d'une
+présentation de l'application, et non son ouverture.
+
+Deux conséquences de forme :
+
+- **Le témoin a quitté `Rapports`.** Il vit dans `Bienvenue`
+  (`SpectreCore/SessionStore.swift`), parce que la présentation se montre **même
+  quand rien ne part** : lié à l'adresse d'envoi, il aurait fait disparaître la
+  présentation de l'application chez qui construit le dépôt sans DSN. Ce qui reste
+  du côté des rapports est `actifs`, que la diapositive consulte pour savoir si elle
+  a quelque chose à annoncer.
+- **`SPECTRE_BIENVENUE=non` la retire**, comme `SPECTRE_RAPPORTS=non` retire les
+  envois. Les épreuves photographient la fenêtre, et une présentation qui la couvre
+  entièrement — c'est son métier — ne laisserait rien à regarder ; elles tournent
+  dans un rangement neuf, donc chacune serait un premier lancement.
+
 #### L'avis ne s'affichait que sur le Mac, et rien ne le disait
 
 Le défaut mérite d'être gardé, parce qu'il est d'une famille qu'on rejouera. Le
@@ -223,7 +250,9 @@ fenêtre normale, là où il aurait dû y avoir un avis au milieu.
 
 La propriété est maintenant **calculée** plutôt que retenue, et `GestesCheck` en
 tient la garde — il est le seul harnais où le modèle est bâti tout en haut du
-fichier, c'est-à-dire dans l'ordre exact des deux systèmes où le défaut vivait.
+fichier, c'est-à-dire dans l'ordre exact des deux systèmes où le défaut vivait. La
+phrase a déménagé dans le diaporama ; le contrôle l'a suivie, et le piège n'a pas
+bougé d'un pouce.
 
 C'est la même leçon que le chantier 4 : **on ne livre pas un dessin que personne n'a
 regardé.** Elle vaut aussi pour un dessin qu'on a regardé sur un seul des trois

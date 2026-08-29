@@ -264,6 +264,8 @@ extension Catalogue {
         .pistesPlafondAide: "A seven-minute track costs about 300 MB. Past the limit, the least recently opened tracks go whole — never the one being played — and get recomputed.",
         .pistesViderLeCache: "Empty the cache",
         .pistesViderLeCacheAide: "Throw away every stored stem. Each track will have to be separated again, about half a minute per track.",
+        .pistesOuvrirLeDossier: "Open the folder",
+        .pistesOuvrirLeDossierAide: "Show the folder where the separated stems are kept in the file browser.",
         .pistesPoidsAbsents: "The Demucs weights are not installed — see `modele.sh`. Without them, the track plays as it is.",
         .pistesPoidsAbsentsWin: "The Demucs weights are not installed — see `modele.sh`. Without them, the track plays as it is.",
         .pistesOnnxAbsent: "ONNX Runtime is not installed: run .\\onnx.ps1, then restart the app.",
@@ -287,11 +289,36 @@ extension Catalogue {
         .accueilRaccourci: "or ⌘O",
         .accueilAnalyse: "Analysing…",
 
+        // MARK: La page de lancement
+        .lancementReprendre: "Pick up a track",
+        .lancementAucunMorceau: "No track opened yet.",
+        .lancementOuvrirUnFichier: "Open a file…",
+        .lancementRetirer: "Remove from the list, and throw away its separated stems",
+        .lancementSepare: "stems separated",
+
+        // MARK: Le diaporama du premier lancement
+        .bienvenueTitreBoucle: "Loop a passage, slowed down",
+        .bienvenueCorpsBoucle: "Shift + drag across the spectrogram picks a passage and loops it. The Speed and Transpose sliders, in the settings panel, slow it down without detuning it and transpose it without slowing it down.",
+        .bienvenueTempoBoucle: "The tempo is found on its own when a track opens. When it lands beside the beat, the panel takes it back: the number can be typed in, and “1 here” puts the first beat of the bar where the playhead is.",
+        .bienvenueTitrePistes: "Four stems, separated on your own machine",
+        .bienvenueCorpsPistes: "Vocals, bass, drums and the rest are pulled apart as soon as a track opens, then kept for next time. The computation takes a few minutes; the bottom bar says where it stands, and the track plays meanwhile.",
+        .bienvenueRapports: "When something breaks, Spectre sends the report on its own. Your file names, your folders and what you listen to are never part of it.",
+        .bienvenueSuivant: "Next",
+        .bienvenueCommencer: "Start",
+        .bienvenuePasser: "Skip",
+
+        // MARK: La mise à jour
+        .majTitre: "Spectre %1$@ is out",
+        .majCorps: "You have version %1$@.",
+        .majTelecharger: "Download",
+        .majPlusTard: "Later",
+
         // MARK: La fenêtre des réglages
         .reglagesPistesSeparees: "Separated stems",
         .reglagesTailleMaximale: "Maximum cache size",
         .reglagesOccupe: "Used",
         .reglagesViderPoints: "Empty…",
+        .reglagesOuvrirLeDossier: "Open the folder",
         .reglagesViderBouton: "Empty",
         .reglagesAnnuler: "Cancel",
         .reglagesCacheExplication: "A seven-minute track costs about 250 MB. Past the limit, the least recently opened tracks go whole — never the one being played — and recompute in half a minute.",
@@ -322,10 +349,6 @@ extension Catalogue {
         .winFriseOuvrir: "Open a file: Ctrl + O",
 
         // MARK: The notice shown once, at first launch
-        .avisRapportsTitre: "Spectre reports its own failures",
-        .avisRapportsCorps: "When something breaks, Spectre sends the report on its own, without asking. That is what gets it fixed: nobody takes the trouble to describe a failure, and a failure nobody hears about stays.",
-        .avisRapportsSecret: "Never part of it: your file names, your folders, or what you listen to. Nothing else is measured — not what you do with the app, not how long you keep it open.",
-        .avisRapportsCompris: "Got it",
 
         // MARK: La ligne de commande
         .cliFichierIntrouvable: "File not found: %1$@",

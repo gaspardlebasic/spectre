@@ -224,6 +224,17 @@ else
     echo "   (sans les poids de Demucs — voir ./modele.sh)"
 fi
 
+# Les deux captures du diaporama du premier lancement, à côté de l'exécutable, où
+# `Ressources.fichier` les cherche. Ce sont **les mêmes fichiers que ceux du
+# README** : une présentation qui montrerait autre chose que la page du dépôt
+# vieillirait deux fois. Renommées en passant — ni espace ni accent —, parce que le
+# nom traverse ensuite un AppImage, un .deb et deux systèmes de fichiers, et que ce
+# n'est pas un endroit où l'on veut découvrir qu'une normalisation Unicode diffère.
+cp "Resources/Captures/faire boucler une section au ralenti.png" \
+   "$APPDIR/usr/bin/diapo-boucle.png"
+cp "Resources/Captures/séparation des pistes.png" \
+   "$APPDIR/usr/bin/diapo-pistes.png"
+
 # ── Ce que le bureau lit ─────────────────────────────────────────────────────
 cp Resources/icone-256.png "$APPDIR/usr/share/icons/hicolor/256x256/apps/spectre.png"
 cp Resources/icone-256.png "$APPDIR/spectre.png"

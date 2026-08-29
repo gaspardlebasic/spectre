@@ -59,6 +59,11 @@ $env:SPECTRE_RANGEMENT = Join-Path $travail "rangement"
 # Et rien ne part chez Sentry : `non` retire l'adresse. `RapportsCheck`, lui, se
 # donne la sienne. Voir `Rapports.ouvrir`.
 $env:SPECTRE_RAPPORTS = "non"
+# Ni diaporama ni mise à jour, pour la même raison que sous macOS : le premier
+# couvre toute la fenêtre qu'on photographie, et l'epreuve tourne dans un rangement
+# neuf — donc chaque passage serait un premier lancement.
+$env:SPECTRE_BIENVENUE = "non"
+$env:SPECTRE_MAJ = "non"
 New-Item -ItemType Directory -Force -Path $env:SPECTRE_RANGEMENT | Out-Null
 
 Etape "Construction"
@@ -203,6 +208,35 @@ if ($Fluidite -gt 0) {
     Verdict "le relevé a bien eu lieu" `
         ([int]$images -gt 100 -and -not $cachees) `
         "$images images, fenêtre visible"
+}
+
+# ── Le repos ─────────────────────────────────────────────────────────────────
+
+# Ce que l'application coûte quand on ne lui demande rien.
+#
+# Contrairement à la fluidité, **on exige ici**, et l'on peut : ce qui est vérifié
+# n'est pas une vitesse mais un comptage, et un comptage ne dépend ni de la carte
+# ni de la charge de la machine. Une fenêtre réduite doit dessiner **zéro** image ;
+# une fenêtre devant, à laquelle on ne demande rien, doit en dessiner dix par
+# seconde et non soixante. Les deux nombres sont dans la règle, et la règle est
+# éprouvée à part par `CadenceCheck`.
+#
+# C'est le contrôle qui manquait : le défaut d'origine — un cœur brûlé derrière une
+# fenêtre recouverte — a vécu jusqu'à ce que quelqu'un ouvre le gestionnaire des
+# tâches. Voir `SpectreDessin/Cadence.swift`.
+Etape "Le repos"
+$repos = (Lancer "$bin\SpectreWindows.exe" @($temoin, "--repos", "3")).Sortie
+$repos | Where-Object { $_ -notmatch '^Spectre :' } | ForEach-Object { Write-Host "    $_" }
+$cachee = $repos | Select-String "fenêtre réduite\s+(\d+) images"
+$devant = $repos | Select-String "rien en lecture\s+(\d+) images \(\s*([\d.,]+)/s"
+Verdict "fenêtre réduite : plus une seule image" `
+    ($null -ne $cachee -and [int]$cachee.Matches.Groups[1].Value -eq 0) `
+    $(if ($cachee) { "$($cachee.Matches.Groups[1].Value) images" } else { "pas de relevé" })
+if ($devant) {
+    $parSeconde = [double]($devant.Matches.Groups[2].Value -replace ',', '.')
+    Verdict "fenêtre devant, rien à faire : la boucle se met au repos" `
+        ($parSeconde -lt 30) `
+        ("{0:N1} images par seconde" -f $parSeconde)
 }
 
 # ── L'image, pour l'œil ──────────────────────────────────────────────────────

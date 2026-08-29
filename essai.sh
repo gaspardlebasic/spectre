@@ -64,6 +64,13 @@ export SPECTRE_RANGEMENT="$PWD/$OUT/rangement"
 # enverrait de vraies pannes de synthèse dans les vraies données, et l'avis du
 # premier lancement viendrait couvrir la fenêtre qu'on photographie.
 export SPECTRE_RAPPORTS=non
+# Ni diaporama ni mise à jour : le premier est fait pour couvrir toute la fenêtre —
+# c'est son métier — et l'épreuve tourne dans un rangement neuf, donc chaque passage
+# serait un premier lancement. Il n'y aurait plus rien à photographier. La seconde
+# irait interroger GitHub à chaque exécution pour une réponse dont l'épreuve ne fait
+# rien. `LancementCheck` les éprouve toutes les deux, sans fenêtre et sans réseau.
+export SPECTRE_BIENVENUE=non
+export SPECTRE_MAJ=non
 mkdir -p "$SPECTRE_RANGEMENT"
 
 vert()  { printf '  \033[32m✓\033[0m %s\n' "$1"; }
@@ -206,6 +213,9 @@ elif [ "$SYSTEME" = "Darwin" ]; then
     # l'épreuve — sans quoi la photographie sortirait dans la langue du Mac.
     open --env SPECTRE_RANGEMENT="$SPECTRE_RANGEMENT" \
          --env SPECTRE_LANGUE="${SPECTRE_LANGUE:-fr}" \
+         --env SPECTRE_RAPPORTS=non \
+         --env SPECTRE_BIENVENUE=non \
+         --env SPECTRE_MAJ=non \
          -a "$PWD/build/Spectre.app" "$PWD/$OUT/temoin.wav"
 
     # Le temps que l'analyse se fasse : elle est hors ligne, donc elle a lieu une
@@ -307,6 +317,56 @@ elif [ "$SYSTEME" = "Darwin" ]; then
     else
       vert "aucun rapport de plantage"
     fi
+
+    # ── Ce que l'application montre quand on ne lui donne rien ────────────────
+    #
+    # Tout ce qui précède ouvre un fichier, donc ne voit jamais la page de
+    # lancement ni le diaporama — c'est-à-dire les deux écrans que la plupart des
+    # gens verront **avant** tout le reste, et que l'auteur ne reverra jamais : son
+    # témoin est écrit depuis des mois et sa liste est pleine.
+    #
+    # On relance donc deux fois sans fichier. La première dans le rangement de
+    # l'épreuve, où le morceau témoin vient d'être ouvert : la liste porte donc une
+    # ligne, et l'on voit ce que voit quelqu'un qui rouvre l'application. La seconde
+    # dans un rangement neuf et sans `SPECTRE_BIENVENUE`, ce qui est très exactement
+    # un premier lancement.
+    #
+    # Aucune souris n'est nécessaire : les deux écrans sont ce que la fenêtre montre
+    # d'elle-même. `LancementCheck` éprouve ce qu'ils font ; ces deux images-ci
+    # disent de quoi ils ont l'air, qui est ce que les harnais ne savent pas dire.
+    photographier_lancement() {
+      local nom="$1" rangement="$2" bienvenue="$3"
+      fermer; sleep 1
+      open --env SPECTRE_RANGEMENT="$rangement" \
+           --env SPECTRE_LANGUE="${SPECTRE_LANGUE:-fr}" \
+           --env SPECTRE_RAPPORTS=non \
+           --env SPECTRE_BIENVENUE="$bienvenue" \
+           --env SPECTRE_MAJ=non \
+           -a "$PWD/build/Spectre.app"
+      local fenetre=""
+      for _ in $(seq 1 20); do
+        sleep 1
+        fenetre="$("$BIN/Fenetre" Spectre 2>/dev/null)"
+        [ -n "$fenetre" ] && break
+      done
+      if [ -z "$fenetre" ]; then
+        rouge "aucune fenêtre sans fichier — $nom"
+        return
+      fi
+      sleep 2
+      if screencapture -x -o -l "${fenetre%% *}" "$OUT/$nom.png" 2>/dev/null \
+           && [ -s "$OUT/$nom.png" ]; then
+        vert "image : $OUT/$nom.png — à regarder"
+      else
+        gris "capture impossible — il faut accorder « Enregistrement de l'écran » au terminal"
+      fi
+    }
+
+    photographier_lancement lancement "$SPECTRE_RANGEMENT" non
+    NEUF="$PWD/$OUT/rangement-neuf"
+    rm -rf "$NEUF"; mkdir -p "$NEUF"
+    photographier_lancement bienvenue "$NEUF" oui
+    fermer; sleep 1
   fi
 
   # ── Le premier temps, une fois les pistes là ───────────────────────────────
@@ -451,6 +511,28 @@ ENCLOS
       fi
     else
       rouge "le relevé de fluidité échoue — voir $OUT/fluidite.log"
+    fi
+
+    # Et ce que l'application coûte quand on ne lui demande **rien**.
+    #
+    # Contrairement à la fluidité, on exige ici, et l'on peut : ce qui est vérifié
+    # n'est pas une vitesse mais un comptage, et un comptage ne dépend ni de la
+    # carte ni de la charge de la machine. Une fenêtre cachée doit dessiner zéro
+    # image. C'est le contrôle qui manquait — le défaut d'origine, un cœur brûlé
+    # derrière une fenêtre recouverte, a vécu jusqu'à ce que quelqu'un ouvre un
+    # moniteur système. Voir `SpectreDessin/Cadence.swift`.
+    if env SPECTRE_RANGEMENT="$SPECTRE_RANGEMENT" "$PWD/$PAQUET" \
+         "$PWD/$OUT/temoin.wav" --repos 3 > "$OUT/repos.log" 2>&1; then
+      grep -A4 '^Au repos' "$OUT/repos.log" | sed 's/^/    /'
+      CACHEE="$(grep 'fenêtre cachée' "$OUT/repos.log" \
+                | grep -oE '[0-9]+ images' | grep -oE '^[0-9]+')"
+      if [ "${CACHEE:-1}" = "0" ]; then
+        vert "fenêtre cachée : plus une seule image dessinée"
+      else
+        rouge "fenêtre cachée : ${CACHEE:-?} images dessinées pour personne"
+      fi
+    else
+      rouge "le relevé de repos échoue — voir $OUT/repos.log"
     fi
 
     # Un fichier de cœur écrit pendant l'épreuve dit ce qu'aucune de ces

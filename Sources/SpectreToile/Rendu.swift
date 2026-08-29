@@ -256,6 +256,17 @@ public final class RenduSpectre: RenduSpectrogramme {
         fenetreCachee = spectre_rendu_presenter(pont) == 2
     }
 
+    /// Redemande à la carte si la fenêtre est cachée, **sans dessiner ni
+    /// présenter**.
+    ///
+    /// C'est ce qui permet à la boucle de s'arrêter tout à fait quand personne ne
+    /// regarde : une fenêtre réduite ou recouverte redevient visible sans qu'aucun
+    /// message ne le dise, et sans cette question elle ne se rouvrirait jamais.
+    /// Voir `SpectreDessin/Cadence.swift`.
+    public func releverSiCachee() {
+        fenetreCachee = spectre_rendu_cachee(pont) != 0
+    }
+
     /// Attend que la carte réclame l'image suivante.
     ///
     /// On dort **avant** de dessiner plutôt qu'après avoir présenté : l'image

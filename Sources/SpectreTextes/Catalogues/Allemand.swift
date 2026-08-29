@@ -270,6 +270,8 @@ extension Catalogue {
         .pistesPlafondAide: "Ein siebenminütiges Stück kostet etwa 300 MB. Über der Grenze gehen die am längsten nicht geöffneten Stücke ganz — nie das gerade gehörte — und werden neu berechnet.",
         .pistesViderLeCache: "Cache leeren",
         .pistesViderLeCacheAide: "Alle abgelegten Spuren wegwerfen. Jedes Stück muss erneut getrennt werden, etwa eine halbe Minute je Stück.",
+        .pistesOuvrirLeDossier: "Ordner öffnen",
+        .pistesOuvrirLeDossierAide: "Den Ordner, in dem die getrennten Spuren liegen, im Dateimanager zeigen.",
         .pistesPoidsAbsents: "Die Demucs-Gewichte sind nicht installiert — siehe `modele.sh`. Ohne sie wird das Stück gelesen, wie es ist.",
         .pistesPoidsAbsentsWin: "Die Demucs-Gewichte sind nicht installiert — siehe `modele.sh`. Ohne sie wird das Stück gelesen, wie es ist.",
         .pistesOnnxAbsent: "ONNX Runtime ist nicht installiert: .\\onnx.ps1 ausführen und die App neu starten.",
@@ -293,11 +295,36 @@ extension Catalogue {
         .accueilRaccourci: "oder ⌘O",
         .accueilAnalyse: "Analyse…",
 
+        // MARK: La page de lancement
+        .lancementReprendre: "Ein Stück wieder aufnehmen",
+        .lancementAucunMorceau: "Bisher wurde kein Stück geöffnet.",
+        .lancementOuvrirUnFichier: "Eine Datei öffnen…",
+        .lancementRetirer: "Aus der Liste nehmen und die getrennten Spuren wegwerfen",
+        .lancementSepare: "Spuren getrennt",
+
+        // MARK: Le diaporama du premier lancement
+        .bienvenueTitreBoucle: "Einen Abschnitt verlangsamt wiederholen",
+        .bienvenueCorpsBoucle: "Umschalt + Ziehen über das Spektrogramm wählt einen Abschnitt und legt ihn in eine Schleife. Die Regler Tempo und Transposition im Einstellungsfenster verlangsamen ihn, ohne ihn zu verstimmen, und transponieren ihn, ohne ihn zu verlangsamen.",
+        .bienvenueTempoBoucle: "Das Tempo wird beim Öffnen von selbst bestimmt. Liegt es daneben, holt das Einstellungsfenster es zurück: die Zahl lässt sich eintippen, und „1 hier“ legt die erste Zählzeit des Takts dorthin, wo der Abspielkopf steht.",
+        .bienvenueTitrePistes: "Vier Spuren, auf Ihrem eigenen Rechner getrennt",
+        .bienvenueCorpsPistes: "Gesang, Bass, Schlagzeug und der Rest werden getrennt, sobald ein Stück geöffnet wird, und für die nächsten Male aufbewahrt. Die Rechnung dauert einige Minuten; die untere Leiste sagt, wie weit sie ist, und das Stück lässt sich währenddessen hören.",
+        .bienvenueRapports: "Wenn etwas kaputtgeht, schickt Spectre den Bericht von selbst. Ihre Dateinamen, Ihre Ordner und was Sie hören gehören nie dazu.",
+        .bienvenueSuivant: "Weiter",
+        .bienvenueCommencer: "Loslegen",
+        .bienvenuePasser: "Überspringen",
+
+        // MARK: La mise à jour
+        .majTitre: "Spectre %1$@ ist da",
+        .majCorps: "Sie haben Version %1$@.",
+        .majTelecharger: "Herunterladen",
+        .majPlusTard: "Später",
+
         // MARK: La fenêtre des réglages
         .reglagesPistesSeparees: "Getrennte Spuren",
         .reglagesTailleMaximale: "Maximale Cache-Größe",
         .reglagesOccupe: "Belegt",
         .reglagesViderPoints: "Leeren…",
+        .reglagesOuvrirLeDossier: "Ordner öffnen",
         .reglagesViderBouton: "Leeren",
         .reglagesAnnuler: "Abbrechen",
         .reglagesCacheExplication: "Ein siebenminütiges Stück kostet etwa 250 MB. Über der Grenze gehen die am längsten nicht geöffneten Stücke ganz — nie das gerade gehörte — und berechnen sich in einer halben Minute neu.",
@@ -328,10 +355,6 @@ extension Catalogue {
         .winFriseOuvrir: "Eine Datei öffnen: Strg + O",
 
         // MARK: Der Hinweis beim ersten Start
-        .avisRapportsTitre: "Spectre meldet seine Pannen selbst",
-        .avisRapportsCorps: "Wenn etwas kaputtgeht, schickt Spectre den Bericht von selbst, ohne zu fragen. Nur so lässt es sich beheben: niemand macht sich die Mühe, eine Panne zu schildern, und eine Panne, von der man nichts erfährt, bleibt.",
-        .avisRapportsSecret: "Niemals dabei: Ihre Dateinamen, Ihre Ordner oder was Sie hören. Sonst wird nichts erfasst — weder was Sie mit der Anwendung tun noch wie lange Sie sie geöffnet haben.",
-        .avisRapportsCompris: "Verstanden",
 
         // MARK: La ligne de commande
         .cliFichierIntrouvable: "Datei nicht gefunden: %1$@",

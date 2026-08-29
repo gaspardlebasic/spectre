@@ -1571,6 +1571,104 @@ Le panneau étant redessiné à chaque image, changer de langue s'y voit à l'im
 suivante — il n'y a rien à rafraîchir, contrairement au Mac, où SwiftUI ne sait pas
 qu'un catalogue a changé sous lui.
 
+## Le cœur qui brûlait derrière la fenêtre
+
+Le rapport tenait en une phrase, et venait d'un PC : **un Core i5 de huitième
+génération, un morceau de 3 min 24 s ouvert, rien en lecture, l'application au
+second plan — 15 % de processeur.**
+
+Quinze pour cent d'une machine à huit fils, c'est un cœur plein. Et « au second
+plan » est la moitié du diagnostic.
+
+### Ce qui se passait
+
+La boucle dessinait une image complète à chaque tour. C'est ce qu'il faut quand on
+défile ; c'est absurde le reste du temps. Mais le vrai défaut était ailleurs, et il
+était déjà écrit dans le fichier, deux lignes plus bas :
+
+```swift
+rendu.attendreLImageSuivante()
+uneImage()
+```
+
+La chaîne d'échange est *waitable* : `spectre_rendu_attendre` dort sur un objet que
+la carte signale quand elle accepte une image de plus. C'est lui qui cadence tout,
+et c'est ce qui remplace l'attente du balayage — voir l'étape 6, qui l'a mis en
+place après avoir mesuré une boucle à deux mille images par seconde.
+
+Or **une fenêtre recouverte n'entre plus dans ce compte**. `Present` rend alors
+`DXGI_STATUS_OCCLUDED` et ne met rien en file : l'objet reste signalé en
+permanence, l'attente cesse de dormir, et la boucle repart à la vitesse du
+processeur — pour dessiner des images que personne ne verra jamais. Un cœur, plein,
+pour rien.
+
+Le plus dur à avaler est que **le code le savait**. `Rendu.fenetreCachee` était
+relevé à chaque image depuis l'étape 6 ; il ne servait qu'à marquer un relevé de
+fluidité comme suspect. L'information était là, juste, et n'avait jamais été
+utilisée pour la seule chose qui en découlait.
+
+### Trois allures
+
+`SpectreDessin/Cadence.swift` porte la règle, partagée avec Linux, qui a
+exactement le même défaut pour une raison jumelle — `SDL_GL_SwapWindow` ne cadence
+plus rien dès que le compositeur cesse de composer la fenêtre.
+
+| ce qui se passe | la boucle |
+|---|---|
+| lecture, analyse, séparation, tourne-page, ou une main depuis moins d'une seconde | la cadence de l'écran |
+| fenêtre devant, rien qui bouge | dix images par seconde |
+| fenêtre réduite ou recouverte | plus une seule image |
+
+Deux points valent d'être retenus.
+
+**On ne dort pas sur une minuterie.** Au repos, la boucle appelle
+`MsgWaitForMultipleObjectsEx` avec `QS_ALLINPUT` : la première molette la réveille,
+et la latence du geste reste celle d'une boucle à pleine cadence. Un `Sleep` aurait
+fait payer l'économie au toucher, ce qui est le seul endroit où l'on ne peut pas
+payer. `MWMO_INPUTAVAILABLE` compte autant que le reste — sans lui, un message déjà
+dans la file au moment de l'appel ne réveille rien.
+
+**Il faut redemander.** Une fenêtre cesse d'être recouverte sans qu'aucun message ne
+le dise ; c'est la carte, et elle seule, qui le sait. D'où `spectre_rendu_cachee`,
+un `Present` avec `DXGI_PRESENT_TEST` : il ne présente rien, il ne fait que rendre
+l'état. Sans lui, une fenêtre réduite ne se rouvrirait jamais.
+
+**La règle est volontairement grossière.** Elle ne cherche pas à savoir *ce qui* a
+changé dans l'image : un dessin qui se souviendrait de ce qu'il a tracé serait plus
+fin et beaucoup plus fragile — une seule chose oubliée, et l'écran se fige sans
+qu'aucun essai ne le dise. Ici, le pire cas est qu'une image tarde d'un dixième de
+seconde.
+
+### Ce que ça change, en nombres
+
+Mesuré avec le même instrument sur la même machine — la machine Linux ARM en rendu
+logiciel, où chaque image coûte cher et où l'écart se lit donc très bien :
+
+| | images dessinées | processeur |
+|---|---|---|
+| fenêtre devant, rien qui bouge — avant | 22,4/s | 476 % d'un cœur |
+| fenêtre devant, rien qui bouge — après | 6,3/s | 152 % d'un cœur |
+| fenêtre cachée — avant | 23,1/s | 482 % d'un cœur |
+| fenêtre cachée — après | **0/s** | **0,3 % d'un cœur** |
+
+La ligne qui compte est la dernière : cachée, l'ancienne boucle dessinait *autant*
+que visible.
+
+### Deux instruments, et pourquoi il en faut deux
+
+`--repos` mesure pour de vrai — il réduit sa propre fenêtre par `ShowWindow`,
+compte les images, et relève `GetProcessTimes`. C'est ce qui a donné le tableau
+ci-dessus, et `.\essai.ps1` en fait une exigence : **fenêtre réduite, zéro image**.
+Un comptage, et non une vitesse : il ne dépend ni de la carte ni de la charge, et
+ne peut donc pas échouer au hasard, contrairement au relevé de fluidité.
+
+Mais `--repos` demande une fenêtre, donc un bureau. `prlctl exec` tombe dans la
+session 0, où Direct3D refuse la chaîne d'échange : la mesure ne peut pas se faire
+d'ici. D'où `CadenceCheck`, qui éprouve la **règle** sans fenêtre, sans carte et
+sans bureau, et tourne donc à chaque compilation, partout. Un défaut qui ne se
+mesure que devant l'écran revient ; celui-ci a vécu jusqu'à ce que quelqu'un ouvre
+un gestionnaire des tâches.
+
 ## L'épreuve complète, sous Windows
 
 `essai.ps1` est le pendant d'`essai.sh`, et il fait tout en une commande :
@@ -1679,6 +1777,29 @@ distribue et s'installe. Ce qui manque encore, et qu'il ne faut pas croire fait 
   au premier lancement, et il faut passer par « Informations complémentaires ». C'est
   le pendant exact de la quarantaine macOS, et cela se règle de la même manière :
   avec un certificat, qui se paie.
-- **Il n'y a pas de mise à jour automatique.** Réinstaller par-dessus fonctionne —
-  l'identifiant d'application est fixe, et l'ancienne version s'efface d'elle-même —
-  mais rien ne va voir si une version plus récente existe.
+- **La mise à jour est annoncée, pas installée.** L'application demande son numéro à
+  GitHub au lancement et propose la page des versions quand il est plus grand — voir
+  `SpectreCore/MiseAJour.swift`. Réinstaller par-dessus fonctionne : l'identifiant
+  d'application est fixe, et l'ancienne version s'efface d'elle-même. Ce qui manque
+  toujours, c'est que le paquet se pose tout seul, et cela demanderait un installeur
+  signé.
+- **Le décodage des captures par WIC n'a jamais tourné.**
+  `spectre_surimpression_image` est le jumeau Direct2D de ce que Cairo fait pour
+  Linux : WIC décode le PNG, `CreateBitmapFromWicBitmap` en fait une `ID2D1Bitmap`,
+  et `spectre_surimpression_lacher` la jette avec le contexte qui la porte — sans
+  quoi le premier coin tiré rendrait la fenêtre noire. Il **compile et s'édite** sur
+  la machine ARM64 ; il n'a pas été *vu*, parce qu'un `prlctl exec` tombe dans la
+  session 0, qui n'a pas de bureau : Direct3D y refuse la chaîne d'échange avant que
+  quoi que ce soit se dessine. Le côté Cairo, lui, est photographié.
+
+  L'édition de liens a d'ailleurs déjà attrapé une faute que la compilation avait
+  laissée passer, et elle mérite d'être retenue : `ID2D1DeviceContext` déclare son
+  propre `DrawBitmap`, ce qui cache les surcharges de `ID2D1RenderTarget`, et
+  qualifier l'appel par la classe de base — `contexte->ID2D1RenderTarget::DrawBitmap`
+  — **coupe l'appel virtuel** et réclame un symbole que personne ne définit. C'est un
+  `static_cast` vers la classe de base qu'il faut, pas une qualification.
+
+  À regarder à la prochaine passe devant l'écran : `.\essai.ps1`, puis
+  `SpectreWindows.exe --photo` **sans fichier**, qui photographie la page de
+  lancement — et, dans un rangement neuf, le diaporama. La capture doit s'y voir, et
+  non un cadre noir.

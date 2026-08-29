@@ -57,6 +57,7 @@ final class SurfaceSDL: SurfaceDeGestes {
     private(set) var gestes: Gestes<LecteurSurLePont>!
 
     init(fenetre: OpaquePointer, modele: AppModel, panneau: Panneau, flottant: Flottant,
+         accueil: Accueil,
          taillePoints: @escaping () -> (largeur: Double, hauteur: Double)) {
         self.fenetre = fenetre
         self.modele = modele
@@ -65,7 +66,7 @@ final class SurfaceSDL: SurfaceDeGestes {
         self.largeur = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_EW_RESIZE)
         self.main = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER)
         self.gestes = Gestes(modele: modele, surface: self,
-                             panneau: panneau, flottant: flottant)
+                             panneau: panneau, flottant: flottant, accueil: accueil)
     }
 
     deinit {

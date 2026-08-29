@@ -342,11 +342,21 @@ public final class Commandes<Lecteur: LecteurAudio> {
             preferences.cacheLimit = paliers[choisi]
             relevéLe = -1
         }
-        if p.boutons([T(.pistesViderLeCache)],
-                     aides: [T(.pistesViderLeCacheAide)],
-                     inactifs: occupe() == 0 ? [0] : []) == 0 {
+        // « Ouvrir le dossier » à côté de « Vider le cache », parce que c'est la
+        // même question posée autrement : le panneau disait ce que le dossier occupe
+        // et savait le jeter, sans jamais permettre d'aller voir. Reprendre une piste
+        // isolée dans un autre logiciel demandait de connaître le chemin de
+        // `%APPDATA%`.
+        switch p.boutons([T(.pistesViderLeCache), T(.pistesOuvrirLeDossier)],
+                         aides: [T(.pistesViderLeCacheAide),
+                                 T(.pistesOuvrirLeDossierAide)],
+                         inactifs: occupe() == 0 ? [0] : []) {
+        case 0:
             modele.viderLeCache()
             relevéLe = -1
+        case 1:
+            modele.montrerLeDossierDesPistes()
+        default: break
         }
     }
 

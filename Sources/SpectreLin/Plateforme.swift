@@ -120,6 +120,33 @@ public struct DialogueLinux: DialogueFichier {
 /// double-clic depuis le gestionnaire de fichiers — et un morceau ouvert par le
 /// sélecteur n'y figure qu'une fois : les entrées se retrouvent par leur adresse.
 /// ─────────────────────────────────────────────────────────────────────────────
+/// Le navigateur, et le gestionnaire de fichiers.
+///
+/// `xdg-open`, qui est la convention freedesktop : chaque bureau y branche ce qu'il
+/// veut, et c'est ce qu'appellent déjà les liens d'un terminal. Pas de `dbus` ni de
+/// portail — le portail sert à *choisir* un fichier depuis un bac à sable, pas à en
+/// montrer un — et pas de GTK, qu'on n'a pas.
+///
+/// En tâche de fond : `xdg-open` est un script shell qui interroge le bureau, ce qui
+/// prend le temps que ça prend, et la fenêtre n'a pas à l'attendre.
+public struct ExterieurLinux: Exterieur {
+    public init() {}
+
+    public func ouvrirLaPage(_ url: URL) { lancer(url.absoluteString) }
+    public func montrerLeDossier(_ url: URL) { lancer(url.path) }
+
+    private func lancer(_ cible: String) {
+        DispatchQueue.global(qos: .utility).async {
+            let processus = Process()
+            processus.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            processus.arguments = ["xdg-open", cible]
+            // Un bureau sans `xdg-open` — cela existe — ne doit pas faire tomber
+            // l'application pour un bouton qu'on aurait pu ne pas cliquer.
+            try? processus.run()
+        }
+    }
+}
+
 public struct RecentsLinux: DocumentsRecents {
     public init() {}
 

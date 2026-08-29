@@ -163,6 +163,19 @@ public enum RecentFiles {
 
     public static func clear() { write([]) }
 
+    /// Retire un morceau de la liste.
+    ///
+    /// La page de lancement s'en sert : y jeter une ligne veut dire « je n'y
+    /// reviendrai pas », et les pistes séparées de ce morceau — trois cents
+    /// mégaoctets par morceau — s'en vont avec elle. C'est le modèle qui enchaîne
+    /// les deux, ce rangement-ci ne connaît pas les pistes.
+    public static func remove(_ url: URL) {
+        let resolved = url.resolvingSymlinksInPath().standardizedFileURL
+        write(all().filter {
+            $0.resolvingSymlinksInPath().standardizedFileURL != resolved
+        })
+    }
+
     private static func write(_ urls: [URL]) {
         guard let file, let data = try? JSONEncoder().encode(urls.map(\.path)) else { return }
         try? data.write(to: file, options: .atomic)
@@ -195,6 +208,21 @@ public enum Storage {
         return folder
     }
 
+    /// Le dossier des pistes séparées.
+    ///
+    /// Écrit **ici et une seule fois** parce que trois choses en dépendent et qu'un
+    /// désaccord entre elles serait invisible : les deux rangements — celui de macOS
+    /// et celui des deux autres portages — y écrivent, et le panneau de réglages
+    /// propose d'aller le voir. Le jour où l'un des trois construirait le chemin de
+    /// son côté, le bouton ouvrirait un dossier vide sans rien dire.
+    public static var pistes: URL? {
+        guard let root else { return nil }
+        let folder = root.appendingPathComponent("pistes", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder,
+                                                 withIntermediateDirectories: true)
+        return folder
+    }
+
     /// L'application s'est appelée Transcripteur. Ses sessions et ses pistes — des
     /// heures de calcul — sont rangées sous l'ancien nom : on reprend le dossier tel
     /// quel plutôt que de faire tout recommencer.
@@ -207,4 +235,55 @@ public enum Storage {
         guard manager.fileExists(atPath: former.path) else { return }
         try? manager.moveItem(at: former, to: folder)
     }
+}
+
+/// Le diaporama du premier lancement a-t-il été vu ?
+///
+/// ─────────────────────────────────────────────────────────────────────────────
+/// UN TÉMOIN SUR LE DISQUE, ET NON UN RÉGLAGE
+///
+/// Le témoin vivait dans `Rapports`, du temps où le premier lancement n'avait
+/// qu'une phrase à dire — celle de l'envoi des pannes. Le diaporama la contient
+/// désormais, avec deux autres choses à montrer, et il se montre **même quand rien
+/// ne part** : le lier à l'adresse d'envoi ferait disparaître la présentation de
+/// l'application chez qui construit le dépôt sans DSN.
+///
+/// Un fichier vide plutôt qu'une clé dans les réglages, pour que `SPECTRE_RANGEMENT`
+/// suffise à donner un premier lancement neuf à qui veut le revoir — c'est ce dont
+/// `LancementCheck` se sert, et c'est aussi le geste qu'on indique à quelqu'un qui
+/// demande comment revoir la présentation.
+///
+/// Et `SPECTRE_BIENVENUE=non` le retire, comme `SPECTRE_RAPPORTS=non` retire les
+/// envois : les épreuves photographient la fenêtre, et un diaporama qui la couvre
+/// entièrement — c'est son métier — ne laisserait rien à regarder. Elles tournent
+/// dans un rangement neuf, donc chacune serait un premier lancement.
+/// ─────────────────────────────────────────────────────────────────────────────
+public enum Bienvenue {
+    private static var temoin: URL? {
+        Storage.root?.appendingPathComponent("bienvenue-vue", isDirectory: false)
+    }
+
+    /// Relu du disque une seule fois : les deux systèmes qui dessinent eux-mêmes
+    /// leur interface posent la question à chaque image, soit cent vingt fois par
+    /// seconde, et un appel de fichier par image est le genre de coût qu'on ne
+    /// remarque que sur la machine la plus lente.
+    private static var dejaVu: Bool?
+
+    public static var aMontrer: Bool {
+        guard ProcessInfo.processInfo.environment["SPECTRE_BIENVENUE"] != "non",
+              let temoin else { return false }
+        if dejaVu == nil { dejaVu = FileManager.default.fileExists(atPath: temoin.path) }
+        return !(dejaVu ?? true)
+    }
+
+    /// Le diaporama a été vu. Il ne reviendra plus, sur aucun lancement.
+    public static func montre() {
+        dejaVu = true
+        guard let temoin else { return }
+        try? Data("vu\n".utf8).write(to: temoin, options: .atomic)
+    }
+
+    /// Rend au processus un premier lancement neuf. N'existe que pour le harnais,
+    /// qui doit rejouer la question après avoir changé de rangement.
+    public static func oublierPourLeHarnais() { dejaVu = nil }
 }

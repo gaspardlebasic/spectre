@@ -1060,6 +1060,55 @@ mais joue tout de même, donc à la mauvaise hauteur. Cela n'arrive pas ici, où
 greffon `plug` d'ALSA convertit, ni sous Windows, où WASAPI convertit. C'est un
 chantier d'après le portage, pas un correctif.
 
+## La boucle qui ne dormait jamais
+
+Le défaut a été rapporté depuis Windows — un Core i5 de huitième génération, un
+morceau ouvert, rien en lecture, l'application au second plan, 15 % de processeur
+— et l'enquête est racontée en détail dans `WINDOWS.md`. Elle vaut d'être lue ici
+parce que **Linux avait exactement le même défaut, pour une raison jumelle**, et
+que la correction est partagée : `SpectreDessin/Cadence.swift`.
+
+Sous Windows, c'est l'objet d'attente de la chaîne d'échange qui cesse de cadencer
+dès que `Present` rend `DXGI_STATUS_OCCLUDED`. Ici, c'est `SDL_GL_SwapWindow` : la
+boucle ne dormait nulle part ailleurs, et `spectre_rendu_presenter` rendait déjà
+« cachée » sans échanger quoi que ce soit dès que la fenêtre l'était. Autrement dit,
+le seul endroit qui faisait dormir la boucle était court-circuité **précisément**
+dans le cas où il n'y avait plus rien à dessiner.
+
+Trois choses ont changé dans `Sources/SpectreLinux/main.swift` :
+
+- **Le sommeil se fait sur la file d'évènements**, par `SDL_WaitEventTimeout`, et
+  non par `SDL_Delay`. Le premier geste rend la main tout de suite : l'économie ne
+  se paie pas en latence, ce qui est la seule chose qui ne se négocie pas.
+- **`SDL_WINDOW_OCCLUDED` a rejoint « cachée » et « réduite ».** C'est celui des
+  trois qui compte vraiment — une fenêtre entièrement recouverte par une autre est
+  le cas de tous les jours, et ni « cachée » ni « réduite » ne le disaient.
+  `spectre_rendu_cachee` rassemble les trois, et `spectre_rendu_presenter` s'en sert
+  désormais plutôt que de tenir sa propre liste : deux listes finissent toujours par
+  diverger.
+- **Tout évènement remet la boucle à pleine cadence**, et non les seuls évènements
+  de souris. Trier ici, c'est se tromper un jour sur un évènement qu'on n'avait pas
+  prévu, et figer l'écran sans savoir pourquoi.
+
+`SpectreLinux --repos 5` mesure ce que ça change, et n'a besoin de personne devant
+l'écran : la fenêtre se cache elle-même par `SDL_HideWindow`. C'est **sur cette
+machine-ci** que le tableau du README a été relevé, sous `xvfb-run` et en rendu
+logiciel — un cas défavorable, où chaque image coûte cher, et où l'écart se lit
+donc très bien :
+
+| | images dessinées | processeur |
+|---|---|---|
+| fenêtre montrée, rien qui bouge — avant | 22,4/s | 476 % d'un cœur |
+| fenêtre montrée, rien qui bouge — après | 6,3/s | 152 % d'un cœur |
+| fenêtre cachée — avant | 23,1/s | 482 % d'un cœur |
+| fenêtre cachée — après | **0/s** | **0,3 % d'un cœur** |
+
+Que la mesure se fasse sous `xvfb-run` n'est pas un pis-aller : c'est ce qui la rend
+reproductible sans session graphique ouverte, donc lançable depuis le Mac par
+`prlctl exec` — et c'est la seule des trois plateformes où la mesure complète tourne
+sans que quelqu'un soit assis devant la machine. Sous Windows, `prlctl exec` tombe
+dans la session 0 et Direct3D refuse la chaîne d'échange.
+
 ## Ce qui reste après le portage
 
 Les neuf étapes sont faites. Ce qui suit n'est plus du portage — ce sont des
@@ -1070,6 +1119,21 @@ du fichier, on le note et l'on joue tout de même, donc à la mauvaise hauteur. 
 plus haut : c'est l'enquête sur la sortie audio qui l'a mis au jour, même si ce
 n'était pas la panne qu'elle cherchait. Sa place est dans le noyau, mesuré par un
 harnais, et non bricolé dans une couche de plateforme.
+
+**Le Raspberry Pi, et ce qui l'empêche.** Le paquet `aarch64` est une vraie
+application ARM, et il s'installe sur un Pi — c'est la même architecture. Il ne s'y
+**ouvrira** pas. Le pilote `v3d` d'un Pi 4 ou d'un Pi 5 s'arrête à OpenGL 3.1 ; il
+sait OpenGL ES 3.1, ce qui est une autre spécification et n'en tient pas lieu. Ce
+n'est ni une question de version de Mesa ni de distribution : c'est ce que la puce
+expose. Le nuanceur demande un contexte 3.3 core et se fait refuser.
+
+Ce qu'il faudrait : porter le nuanceur sur GLES — `#version 310 es`, les qualificatifs
+de précision, et un contexte demandé en `SDL_GL_CONTEXT_PROFILE_ES`. Ce n'est pas
+énorme, mais ce serait **écrit sans pouvoir être éprouvé**, faute de Pi ici, et un
+portage graphique qu'on ne peut pas regarder est exactement ce qu'il ne faut pas
+livrer. En attendant, le refus le dit maintenant en clair — « cette carte n'offre
+qu'OpenGL 3.1 » — au lieu du « Could not create GL context » qui faisait accuser le
+paquet ; voir `ceQueLaCarteOffre` dans `Sources/CPont/gl.c`.
 
 **Le menu du clic droit sous Linux.** Il n'y en a pas ; tout ce qu'il offrirait
 s'atteint autrement. Le jour où il en faudra un, il se dessinera au `Pinceau` et sera
@@ -1083,6 +1147,20 @@ bas, qui dit maintenant *pourquoi* il n'en recevra pas.
 **Le sélecteur de fichiers, éprouvé par une vraie main.** Le portail est là, le
 chemin compile, mais personne n'a cliqué : aucune souris ne se pilote sous Wayland
 depuis un terminal distant. C'est le seul morceau du portage qui ne soit pas mesuré.
+
+**`SpectreLinux` n'exige plus de fichier en argument. Fait.** Il refusait de
+s'ouvrir sans morceau — `usage : SpectreLinux morceau.wav`, puis `exit(2)` —, ce qui
+était sans conséquence tant que la fenêtre vide n'avait rien à montrer. La page de
+lancement, elle, *est* ce qu'on montre quand il n'y a pas de morceau : la refuser
+aurait retiré à Linux la première chose que les gens voient. Un morceau reste exigé
+pour `--photo` avec un fichier et pour `--fluidite`, qui rendent une image de quelque
+chose ; `--photo` sans fichier photographie la page de lancement, et c'est par là
+qu'on la regarde.
+
+**Les captures du diaporama passent par Cairo.** `spectre_surimpression_image` lit un
+PNG par `cairo_image_surface_create_from_png`, le garde après la première lecture et
+le pose à ses proportions dans le cadre qu'on lui donne. C'est le jumeau exact de ce
+que `direct2d.cpp` fait par WIC, et la treizième fonction du contrat entre les deux.
 
 **L'AppImage ARM64. Fait.** Le coureur `ubuntu-22.04-arm` est dans la matrice, et la
 livraison produit les quatre paquets Linux — AppImage et `.deb`, sur les deux

@@ -32,12 +32,13 @@ final class GestesWindows: SurfaceDeGestes {
     private(set) var gestes: Gestes<LecteurSurLePont>!
     private var suitLaSouris = false
 
-    init(modele: AppModel, fenetre: Fenetre, panneau: Panneau, flottant: Flottant) {
+    init(modele: AppModel, fenetre: Fenetre, panneau: Panneau, flottant: Flottant,
+         accueil: Accueil) {
         self.modele = modele
         self.fenetre = fenetre
         self.panneau = panneau
         self.gestes = Gestes(modele: modele, surface: self,
-                             panneau: panneau, flottant: flottant)
+                             panneau: panneau, flottant: flottant, accueil: accueil)
     }
 
     var mesures: Mesures? {

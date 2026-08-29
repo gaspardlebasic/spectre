@@ -163,6 +163,14 @@ final class RangementDePapier: ServiceDeSeparation {
     }
 }
 
+/// Le navigateur et le gestionnaire de fichiers, remplacés par un carnet.
+final class ExterieurDePapier: Exterieur {
+    var pages: [URL] = []
+    var dossiers: [URL] = []
+    func ouvrirLaPage(_ url: URL) { pages.append(url) }
+    func montrerLeDossier(_ url: URL) { dossiers.append(url) }
+}
+
 // MARK: - Le montage
 
 /// Pose une variable d'environnement pour ce processus. `setenv` est du POSIX et
@@ -178,25 +186,83 @@ func poserDansLEnvironnement(_ nom: String, _ valeur: String) {
     #endif
 }
 
-// Un rangement à soi, posé avant le premier appel : la section sur l'avis du premier
-// lancement écrit un témoin sur le disque, et ce n'est pas dans celui de l'utilisateur
-// qu'elle doit le faire — elle lui ferait rater l'avis pour de bon.
+// Un rangement à soi, posé avant le premier appel : la section sur le diaporama du
+// premier lancement écrit un témoin sur le disque, et ce n'est pas dans celui de
+// l'utilisateur qu'elle doit le faire — elle lui ferait rater le diaporama pour de
+// bon.
 let atelier = FileManager.default.temporaryDirectory
     .appendingPathComponent("spectre-gestes-\(ProcessInfo.processInfo.processIdentifier)",
                             isDirectory: true)
 poserDansLEnvironnement("SPECTRE_RANGEMENT", atelier.path)
+// Et l'on **repose** le levier que `essai.ps1` pose pour lui-même : une chose qui se
+// lit dans l'environnement ne s'éprouve pas depuis un script qui l'a posée. C'est la
+// même précaution que dans `LancementCheck`, et elle vient du même défaut — un
+// harnais qui passe tout seul et échoue sous l'épreuve complète.
+poserDansLEnvironnement("SPECTRE_BIENVENUE", "oui")
 
 let modele = AppModel<LecteurDePapier>(
     lecteur: LecteurDePapier(), décodeur: DecodeurDePapier(),
     sinusoide: SinusoideDePapier(), pistes: RangementDePapier(),
     dialogue: DialogueDePapier(), récentsDuSystème: RecentsDePapier(),
-    préférences: ReglagesDePapier())
+    extérieur: ExterieurDePapier(), préférences: ReglagesDePapier())
 
 let surface = SurfaceDePapier()
 let panneau = Panneau()
 let flottant = Flottant()
+let accueil = Accueil(modele: modele)
 let gestes = Gestes(modele: modele, surface: surface, panneau: panneau,
-                    flottant: flottant)
+                    flottant: flottant, accueil: accueil)
+
+// MARK: - Le diaporama du premier lancement
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LE CONTRÔLE QUI VIENT D'UNE PHOTOGRAPHIE
+//
+// La phrase sur les rapports de panne ne s'affichait que sur le Mac, et rien ne le
+// disait : les trois systèmes compilaient, les trois s'ouvraient, et le harnais des
+// rapports éprouve `Rapports` sans passer par le modèle. La cause tenait à l'ordre :
+// sur le Mac les rapports s'ouvrent avant que SwiftUI ne fabrique le modèle, sous
+// Windows et sous Linux le modèle vient d'abord — ce qui est délibéré, pour que
+// `--photo` n'envoie rien. La valeur retenue à la construction était donc fausse deux
+// fois sur trois.
+//
+// Le contrôle est ici et pas ailleurs parce que **`modele` a été bâti tout en haut
+// de ce fichier**, bien avant cette ligne : c'est exactement l'ordre des deux
+// systèmes où le défaut vivait. La phrase a déménagé dans le diaporama ; le piège,
+// lui, n'a pas bougé d'un pouce.
+// ─────────────────────────────────────────────────────────────────────────────
+
+print("\n=== Le diaporama du premier lancement ===")
+
+controle("il couvre la fenêtre au premier lancement", accueil.couvreLaFenetre,
+         "diapositive \(modele.lancement.diapositive + 1) sur \(Lancement.diapositives)")
+controle("et n'annonce aucun envoi tant que rien ne part",
+         !modele.lancement.rapportsAAnnoncer, "aucune adresse d'envoi")
+
+Rapports.remiseAZeroPourLeHarnais()
+Rapports.ouvrir(version: "essai", dsn: "https://cle@exemple.invalid/1",
+                envoiEnFond: false)
+controle("la phrase des rapports paraît même si le modèle est plus vieux qu'eux",
+         modele.lancement.rapportsAAnnoncer, "le modèle date d'avant `Rapports.ouvrir()`")
+
+let teteAvantLeDiaporama = modele.playhead
+gestes.boutonEnfonce(a: CGPoint(x: 400, y: 300))
+controle("un clic est avalé et ne déplace pas la tête de lecture",
+         modele.playhead == teteAvantLeDiaporama, "elle n'a pas bougé")
+
+_ = gestes.touche(.espace)
+controle("l'espace fait avancer le diaporama au lieu de lancer la lecture",
+         modele.lancement.diapositive == 1 && !modele.player.isPlaying,
+         "diapositive 2, lecture arrêtée")
+
+_ = gestes.touche(.echappement)
+controle("Échap le referme, et ne vide pas la boucle par la même occasion",
+         !modele.lancement.diaporama, "refermé")
+
+// À partir d'ici, la fenêtre est celle de tous les jours : rien ne la couvre plus,
+// et les gestes atteignent le modèle. C'est la raison pour laquelle cette section
+// vient en tête et non à la fin — un diaporama qui avale les touches avalerait
+// aussi celles des sections d'après, et elles diraient alors n'importe quoi.
 
 /// Un tour de boucle d'application : la file principale, puis le calcul d'image.
 func unTour() {
@@ -519,40 +585,6 @@ controle("le clic droit est passé à la plateforme",
 gestes.sourisSortie()
 controle("la souris qui sort efface ce qui était survolé",
          modele.hover == nil && surface.forme == .fleche, "rien de survolé")
-
-// MARK: - L'avis du premier lancement
-
-// ─────────────────────────────────────────────────────────────────────────────
-// LE CONTRÔLE QUI VIENT D'UNE PHOTOGRAPHIE
-//
-// L'avis ne s'affichait que sur le Mac, et rien ne le disait : les trois systèmes
-// compilaient, les trois s'ouvraient, et le harnais des rapports éprouve `Rapports`
-// sans passer par le modèle. La cause tenait à l'ordre : sur le Mac les rapports
-// s'ouvrent avant que SwiftUI ne fabrique le modèle, sous Windows et sous Linux le
-// modèle vient d'abord — ce qui est délibéré, pour que `--photo` n'envoie rien. La
-// valeur retenue à la construction était donc fausse deux fois sur trois.
-//
-// Le contrôle est ici et pas ailleurs parce que **`modele` a été bâti tout en haut
-// de ce fichier**, bien avant cette ligne : c'est exactement l'ordre des deux
-// systèmes où le défaut vivait.
-// ─────────────────────────────────────────────────────────────────────────────
-
-print("\n=== L'avis du premier lancement ===")
-
-controle("rien à annoncer tant que rien ne part", !modele.avisDeRapports,
-         "aucune adresse d'envoi")
-
-Rapports.remiseAZeroPourLeHarnais()
-Rapports.ouvrir(version: "essai", dsn: "https://cle@exemple.invalid/1",
-                envoiEnFond: false)
-controle("l'avis paraît même si le modèle est plus vieux que les rapports",
-         modele.avisDeRapports, "le modèle date d'avant `Rapports.ouvrir()`")
-
-let teteAvantLAvis = modele.playhead
-gestes.boutonEnfonce(a: CGPoint(x: 400, y: 300))
-controle("un clic n'importe où le referme", !modele.avisDeRapports, "refermé")
-controle("et ce clic-là n'a rien fait d'autre", modele.playhead == teteAvantLAvis,
-         "la tête de lecture n'a pas bougé")
 
 try? FileManager.default.removeItem(at: atelier)
 

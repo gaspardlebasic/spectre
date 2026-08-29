@@ -180,10 +180,43 @@ static void demanderUnProfil(void) {
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 }
 
+/// Ce que la carte offre vraiment, quand elle a refusé le 3.3 core.
+///
+/// Sans cela, un refus rend « Could not create GL context », et l'on cherche du
+/// côté du paquet une panne qui est celle du pilote. Le cas n'a rien de théorique :
+/// le pilote `v3d` d'un Raspberry Pi 4 ou 5 s'arrête à **OpenGL 3.1** — il sait
+/// GLES 3.1, ce qui n'est pas la même spécification — et refuse donc un contexte
+/// 3.3 core, aussi neuve que soit la machine. Autant le lui dire.
+///
+/// On rouvre un contexte **sans rien demander** : c'est ce que le pilote donne de
+/// mieux, et donc le seul nombre qui réponde à « pourquoi ça ne s'ouvre pas ».
+static void ceQueLaCarteOffre(SDL_Window *fenetre, char *sortie, size_t taille) {
+    sortie[0] = '\0';
+    SDL_GL_ResetAttributes();
+    SDL_GLContext secours = SDL_GL_CreateContext(fenetre);
+    if (!secours) { return; }
+    if (SDL_GL_MakeCurrent(fenetre, secours)) {
+        const GLubyte *version = glGetString(GL_VERSION);
+        const GLubyte *carte = glGetString(GL_RENDERER);
+        if (version) {
+            snprintf(sortie, taille, " — cette carte n'offre qu'OpenGL %s (%s)",
+                     (const char *)version,
+                     carte ? (const char *)carte : "carte inconnue");
+        }
+    }
+    SDL_GL_DestroyContext(secours);
+}
+
 static int demarrer(SpectreRendu *r, const char *source, char *erreur) {
     r->contexte = SDL_GL_CreateContext(r->fenetre);
     if (!r->contexte) {
-        noter(erreur, "contexte OpenGL : %s", SDL_GetError());
+        // Le message de SDL est relevé **avant** la seconde tentative : celle-ci
+        // écrase l'erreur courante, et l'on perdrait la raison du refus.
+        char refus[256];
+        snprintf(refus, sizeof refus, "%s", SDL_GetError());
+        char offre[256];
+        ceQueLaCarteOffre(r->fenetre, offre, sizeof offre);
+        noter(erreur, "contexte OpenGL 3.3 : %s%s", refus, offre);
         return 0;
     }
     if (!SDL_GL_MakeCurrent(r->fenetre, r->contexte)) {
@@ -416,12 +449,26 @@ void spectre_rendu_dessiner(SpectreRendu *rendu, const SpectreUniformes *u) {
     glBindVertexArray(0);
 }
 
+int spectre_rendu_cachee(SpectreRendu *rendu) {
+    // Hors écran, la question n'a pas de sens : il n'y a pas de fenêtre à cacher,
+    // et répondre « cachée » arrêterait la boucle du rendu hors écran.
+    if (!rendu || rendu->cadre || !rendu->fenetre) { return 0; }
+    // Le pendant SDL du `DXGI_PRESENT_TEST` de Windows, et il est plus simple :
+    // SDL tient les drapeaux à jour depuis les événements du compositeur, si bien
+    // qu'il n'y a rien à demander au pilote. `SDL_WINDOW_OCCLUDED` est celui des
+    // trois qui compte vraiment : c'est une fenêtre entièrement recouverte par une
+    // autre, le cas de tous les jours, que ni « cachée » ni « réduite » ne disent.
+    SDL_WindowFlags drapeaux = SDL_GetWindowFlags(rendu->fenetre);
+    return (drapeaux & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED
+                        | SDL_WINDOW_OCCLUDED)) ? 1 : 0;
+}
+
 int spectre_rendu_presenter(SpectreRendu *rendu) {
     if (!rendu || rendu->cadre) { return 0; }       // hors écran : rien à présenter
     // Une fenêtre cachée cesse d'être cadencée par le balayage, et un relevé de
     // fluidité pris à ce moment-là compterait des images que personne ne voit.
-    SDL_WindowFlags drapeaux = SDL_GetWindowFlags(rendu->fenetre);
-    if (drapeaux & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)) { return 2; }
+    // C'est aussi ce qui met la boucle au repos — voir `SpectreDessin/Cadence.swift`.
+    if (spectre_rendu_cachee(rendu)) { return 2; }
     return SDL_GL_SwapWindow(rendu->fenetre) ? 1 : 0;
 }
 

@@ -15,7 +15,7 @@
 //
 // Ce fichier ne porte donc **aucun `#if`**. La bascule d'une plateforme à l'autre
 // se fait un étage plus bas, dans `Sources/CPont`, où `direct2d.cpp` et son jumeau
-// Cairo exportent les mêmes douze fonctions. Le Swift ne sait pas laquelle il
+// Cairo exportent les mêmes treize fonctions. Le Swift ne sait pas laquelle il
 // appelle, et n'a pas à le savoir.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -251,6 +251,24 @@ public struct Pinceau {
     /// primitive au pont pour les pouces des curseurs et les points des icônes.
     public func disque(_ cx: Double, _ cy: Double, _ rayon: Double, _ couleur: UInt32) {
         arrondi(cx - rayon, cy - rayon, rayon * 2, rayon * 2, rayon: rayon, couleur)
+    }
+
+    /// Dessine une image, à ses proportions, centrée dans le rectangle donné.
+    ///
+    /// Le chemin est celui d'un fichier PNG. Le pont le lit au premier appel et le
+    /// garde : ce qui est dessiné ici l'est à chaque image comme tout le reste de la
+    /// surimpression, et décoder deux mégapixels cent vingt fois par seconde ferait
+    /// de la présentation de l'application la seule chose qui rame.
+    ///
+    /// Ne fait rien quand le fichier manque — le diaporama garde alors son texte,
+    /// qui est ce qui compte. C'est ce qui arrive quand on lance l'exécutable depuis
+    /// `.build` plutôt que depuis un paquet assemblé.
+    public func image(_ chemin: String, x: Double, y: Double,
+                      largeur: Double, hauteur: Double) {
+        chemin.withUTF16Terminé { pointeur in
+            spectre_surimpression_image(pont, pointeur, Float(x), Float(y),
+                                        Float(largeur), Float(hauteur))
+        }
     }
 
     /// Restreint le dessin à un rectangle, le temps du bloc.
