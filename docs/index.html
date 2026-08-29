@@ -186,7 +186,7 @@ footer a:hover{color:var(--fg)}
   <p id="poseMac" data-t="installP">The app is not signed with an Apple developer ID, so macOS quarantines it on download. Once it is in Applications:</p>
   <div class="cmd" id="cmdMac"><code id="c1">xattr -dr com.apple.quarantine /Applications/Spectre.app</code><button data-copy="c1" data-t="copy">copy</button></div>
   <p id="poseWin" data-t="installWin" hidden>The installer is not signed by anyone, so SmartScreen shows a blue screen on first launch.</p>
-  <p id="poseLin" data-t="installLin" hidden>On Ubuntu and Debian the .deb installs for real. Elsewhere, take the AppImage. Needs a GPU that speaks OpenGL 3.3, and Wayland or X11.</p>
+  <p id="poseLin" data-t="installLin" hidden>On Ubuntu and Debian the .deb installs for real. Elsewhere, take the AppImage. Needs a GPU that speaks OpenGL 3.3, and Wayland or X11 — a Raspberry Pi will not do, its graphics driver stops at OpenGL 3.1.</p>
   <div class="cmd" id="cmdLin" hidden><code id="cLin">sudo apt install ./Spectre-amd64.deb</code><button data-copy="cLin" data-t="copy">copy</button></div>
   <p id="buildP" data-t="buildP">Or build it yourself — Xcode is not required:</p>
   <div class="cmd"><code id="c2">git clone https://github.com/gaspardlebasic/spectre.git
@@ -196,7 +196,7 @@ cd spectre &amp;&amp; ./build.sh</code><button data-copy="c2" data-t="copy">copy
 <section class="block"><div class="wrap">
   <h2 data-t="otherH">Other platforms</h2>
   <p data-t="otherWin"><strong>Windows</strong> — shipped, for x64 and ARM64, with stem separation.</p>
-  <p data-t="otherLin"><strong>Linux</strong> — shipped, as an x86_64 AppImage, with stem separation.</p>
+  <p data-t="otherLin"><strong>Linux</strong> — shipped, as a .deb and an AppImage, for Intel and ARM, with stem separation.</p>
 </div></section>
 <section class="block"><div class="wrap">
   <h2 data-t="privH">What Spectre sends</h2>
